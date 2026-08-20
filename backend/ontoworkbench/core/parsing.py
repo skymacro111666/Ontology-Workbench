@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import rdflib
 
+from ontoworkbench.core.errors import CoreError
 
-class ParseError(Exception):
-    """Raised for unsupported formats or syntax errors."""
 
-    def __init__(self, code: str, message: str, hint: str | None = None) -> None:
-        """Store the machine code, human message, and optional hint."""
-        self.code, self.message, self.hint = code, message, hint
-        super().__init__(message)
+class ParseError(CoreError):
+    """Raised for unsupported formats or syntax errors (code/message/hint)."""
 
 
 _EXT_MAP = {

@@ -9,12 +9,16 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ontoworkbench.config import Settings
+from ontoworkbench.core.errors import CoreError
+from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.observability.accesslog import access_log_middleware
 from ontoworkbench.observability.logging import setup_logging
 from ontoworkbench.observability.metrics import configure_metrics
 from ontoworkbench.observability.middleware import request_id_ctx, request_id_middleware
+from ontoworkbench.server.cache import OntologyCache
 from ontoworkbench.server.envelope import HTTP_OF, ApiError, ErrorCode
 from ontoworkbench.server.routers import auth as auth_router
+from ontoworkbench.server.routers import ontologies as ontologies_router
 
 # Local development origins (vite dev server); the built SPA is same-origin.
 _LOCAL_DEV_ORIGINS = [
@@ -51,6 +55,8 @@ def create_app(settings: Settings) -> FastAPI:
     setup_logging(settings.log_dir, settings.log_level)
     app = FastAPI(title="Ontology Workbench", docs_url="/api/docs")
     app.state.settings = settings
+    app.state.store = LocalUserDirStore(settings.data_dir)
+    app.state.cache = OntologyCache()
 
     # Register order matters: the LAST registered runs outermost. request-id
     # must be outermost so the access log (inner) inherits its contextvar.
@@ -65,6 +71,7 @@ def create_app(settings: Settings) -> FastAPI:
     )
 
     app.include_router(auth_router.router)
+    app.include_router(ontologies_router.router)
     configure_metrics(app)
 
     @app.exception_handler(ApiError)
@@ -72,6 +79,14 @@ def create_app(settings: Settings) -> FastAPI:
         return JSONResponse(
             status_code=HTTP_OF[exc.code],
             content=_envelope(exc.code, exc.message, None, exc.hint),
+        )
+
+    @app.exception_handler(CoreError)
+    async def on_core_error(request: Request, exc: CoreError) -> JSONResponse:
+        code = ErrorCode(str(exc.code))
+        return JSONResponse(
+            status_code=HTTP_OF[code],
+            content=_envelope(code, exc.message, None, exc.hint),
         )
 
     @app.exception_handler(StarletteHTTPException)
