@@ -4,6 +4,7 @@ from contextvars import ContextVar
 from uuid import uuid4
 
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
+user_id_ctx: ContextVar[str | None] = ContextVar("user_id", default=None)
 
 
 async def request_id_middleware(request, call_next):

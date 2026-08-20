@@ -11,6 +11,7 @@ from ontoworkbench.auth.jwt import decode_token
 from ontoworkbench.db.models import User
 from ontoworkbench.db.repositories import UserRepository
 from ontoworkbench.db.session import get_session
+from ontoworkbench.observability.middleware import user_id_ctx
 from ontoworkbench.server.envelope import ApiError, ErrorCode
 
 
@@ -29,4 +30,5 @@ def get_current_user(request: Request, session: Session = Depends(get_session)) 
     user = UserRepository(session).get(uid) if uid else None
     if user is None:
         raise ApiError(ErrorCode.AUTH_REQUIRED, "Unknown user")
+    user_id_ctx.set(str(user.id))
     return user
