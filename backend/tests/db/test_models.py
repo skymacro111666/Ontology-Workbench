@@ -1,6 +1,9 @@
-"""Schema-level tests: constraints fire as designed."""
+"""Schema-level tests: constraints and DDL defaults behave as designed."""
+
+from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -43,3 +46,15 @@ def test_unique_owner_filename(db: Session) -> None:
         )
     with pytest.raises(IntegrityError):
         db.commit()
+
+
+def test_ddl_defaults_on_raw_insert(db: Session) -> None:
+    """Test that DDL-level defaults fill NOT NULL columns on raw SQL inserts."""
+    db.execute(
+        text("INSERT INTO users (id, username, password_hash) VALUES (:i, :u, :p)"),
+        {"i": uuid4().hex, "u": "rawuser", "p": "h"},
+    )
+    db.commit()
+    row = db.execute(text("SELECT is_admin FROM users WHERE username = 'rawuser'")).fetchone()
+    assert row is not None
+    assert row[0] in (1, True)  # sqlite renders TRUE as 1; PG returns bool

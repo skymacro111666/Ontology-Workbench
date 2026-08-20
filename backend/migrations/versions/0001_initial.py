@@ -28,7 +28,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("username", sa.String(length=64), nullable=False),
         sa.Column("password_hash", sa.String(length=256), nullable=False),
-        sa.Column("is_admin", sa.Boolean(), nullable=False),
+        sa.Column("is_admin", sa.Boolean(), server_default=sa.text("true"), nullable=False),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -52,9 +52,9 @@ def upgrade() -> None:
         sa.Column("filename", sa.String(length=256), nullable=False),
         sa.Column("storage_path", sa.String(length=512), nullable=False),
         sa.Column("format", sa.String(length=16), nullable=False),
-        sa.Column("class_count", sa.Integer(), nullable=False),
-        sa.Column("property_count", sa.Integer(), nullable=False),
-        sa.Column("axiom_count", sa.Integer(), nullable=False),
+        sa.Column("class_count", sa.Integer(), server_default=sa.text("0"), nullable=False),
+        sa.Column("property_count", sa.Integer(), server_default=sa.text("0"), nullable=False),
+        sa.Column("axiom_count", sa.Integer(), server_default=sa.text("0"), nullable=False),
         sa.Column(
             "stats_json",
             sa.JSON().with_variant(postgresql.JSONB(astext_type=Text()), "postgresql"),

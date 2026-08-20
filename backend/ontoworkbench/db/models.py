@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -55,7 +56,7 @@ class User(Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     username: Mapped[str] = mapped_column(String(64), unique=True)
     password_hash: Mapped[str] = mapped_column(String(256))
-    is_admin: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTimeTZ, server_default=func.now(), onupdate=_now
@@ -79,9 +80,9 @@ class Ontology(Base):
     filename: Mapped[str] = mapped_column(String(256))
     storage_path: Mapped[str] = mapped_column(String(512))
     format: Mapped[str] = mapped_column(String(16))
-    class_count: Mapped[int] = mapped_column(Integer, default=0)
-    property_count: Mapped[int] = mapped_column(Integer, default=0)
-    axiom_count: Mapped[int] = mapped_column(Integer, default=0)
+    class_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    property_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    axiom_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     stats_json: Mapped[dict[str, Any] | None] = mapped_column(StatsJSON)
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     file_hash: Mapped[str] = mapped_column(String(64))
