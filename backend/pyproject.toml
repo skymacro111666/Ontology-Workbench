@@ -1,0 +1,48 @@
+[project]
+name = "ontology-workbench"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "pytest>=8", "pytest-cov", "httpx", "ruff>=0.6", "mypy>=1.11",
+  "import-linter>=2", "pre-commit",
+]
+
+[project.scripts]
+ow = "ontoworkbench.cli:app"
+
+[tool.ruff]
+line-length = 100
+[tool.ruff.lint]
+select = ["E", "F", "I", "D", "UP", "B"]
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.11"
+[[tool.mypy.overrides]]
+module = "ontoworkbench.core.*"
+disallow_untyped_defs = true
+[[tool.mypy.overrides]]
+module = "ontoworkbench.db.*"
+disallow_untyped_defs = true
+
+[tool.importlinter]
+root_package = "ontoworkbench"
+
+[[tool.importlinter.contracts]]
+name = "layering"
+type = "layers"
+layers = [
+  "ontoworkbench.server",
+  "ontoworkbench.exporter",
+  "ontoworkbench.core",
+]
+
+[[tool.importlinter.contracts]]
+name = "core-purity"
+type = "forbidden"
+source_modules = ["ontoworkbench.core"]
+forbidden_modules = ["ontoworkbench.server", "ontoworkbench.db", "ontoworkbench.auth", "ontoworkbench.exporter"]
