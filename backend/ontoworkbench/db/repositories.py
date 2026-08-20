@@ -51,6 +51,15 @@ class UserRepository:
         """
         return self._s.scalar(select(User).where(User.username == username))
 
+    def first(self) -> User | None:
+        """Get the earliest-created user (the Phase 1 admin).
+
+        Returns:
+            User if any exist, None otherwise.
+        """
+        stmt = select(User).order_by(User.created_at).limit(1)
+        return self._s.scalars(stmt).first()
+
     def create(self, username: str, password_hash: str) -> User:
         """Create a new user.
 

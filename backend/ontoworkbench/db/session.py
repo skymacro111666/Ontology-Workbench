@@ -22,6 +22,12 @@ def init_engine(db_url: str) -> Engine:
 
 def get_session() -> Generator[Session, None, None]:
     """FastAPI dependency yielding a session; requires init_engine() first."""
-    assert SessionLocal is not None, "init_engine() must run first"
-    with SessionLocal() as session:
+    with sessionmaker_or_fail()() as session:
         yield session
+
+
+def sessionmaker_or_fail() -> sessionmaker[Session]:
+    """Return the initialized sessionmaker; RuntimeError before init_engine."""
+    if SessionLocal is None:
+        raise RuntimeError("init_engine() must run before creating sessions")
+    return SessionLocal

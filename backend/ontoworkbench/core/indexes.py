@@ -49,6 +49,10 @@ class Indexes:
             key=lambda x: x.curie,
         )
 
+    def entity(self, eid: str) -> EntityIR | None:
+        """Look up one entity by eid (full IRI)."""
+        return self._ir.entities.get(eid)
+
     # -- tree -----------------------------------------------------------
     def tree(self, parent_eid: str | None) -> list[TreeNode]:
         """Direct children of parent (or roots when None)."""

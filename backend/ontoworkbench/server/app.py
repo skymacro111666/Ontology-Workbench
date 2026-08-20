@@ -18,6 +18,7 @@ from ontoworkbench.observability.middleware import request_id_ctx, request_id_mi
 from ontoworkbench.server.cache import OntologyCache
 from ontoworkbench.server.envelope import HTTP_OF, ApiError, ErrorCode
 from ontoworkbench.server.routers import auth as auth_router
+from ontoworkbench.server.routers import browse as browse_router
 from ontoworkbench.server.routers import ontologies as ontologies_router
 
 # Local development origins (vite dev server); the built SPA is same-origin.
@@ -72,6 +73,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     app.include_router(auth_router.router)
     app.include_router(ontologies_router.router)
+    app.include_router(browse_router.router)
     configure_metrics(app)
 
     @app.exception_handler(ApiError)
