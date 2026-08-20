@@ -16,6 +16,14 @@ from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+
+@router.get("/status")
+def status(session: Session = Depends(get_session)) -> dict:
+    """Whether first-run setup is still pending; needs no authentication."""
+    need_setup = UserRepository(session).count() == 0
+    return respond({"need_setup": need_setup})
+
+
 # Constant argon2 hash verified for unknown usernames so login always runs
 # one argon2 verification — response time cannot reveal account existence.
 _DUMMY_HASH = hash_password("ow-login-timing-equalizer")

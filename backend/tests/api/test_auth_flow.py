@@ -64,3 +64,15 @@ def test_me_rejects_garbage_token(client: TestClient) -> None:
     client.post("/api/auth/setup", json={"username": "admin", "password": "long-enough-pw"})
     r = client.get("/api/auth/me", headers={"Authorization": "Bearer not-a-jwt"})
     assert r.json()["code"] == "TOKEN_EXPIRED"
+
+
+def test_status_needs_no_auth_and_flips_after_setup(client: TestClient) -> None:
+    """GET /api/auth/status is auth-free and reports pending first-run setup."""
+    fresh = client.get("/api/auth/status")
+    assert fresh.json()["code"] == "OK"
+    assert fresh.json()["data"] == {"need_setup": True}
+
+    client.post("/api/auth/setup", json={"username": "admin", "password": "long-enough-pw"})
+    done = client.get("/api/auth/status")
+    assert done.json()["code"] == "OK"
+    assert done.json()["data"] == {"need_setup": False}

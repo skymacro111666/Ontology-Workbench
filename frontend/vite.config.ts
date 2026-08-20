@@ -8,6 +8,7 @@ export default defineConfig({
     proxy: { '/api': 'http://127.0.0.1:8734' },
   },
   test: {
+    environment: 'jsdom',
     // Kept so CI stays green in checkouts stripped of test files.
     passWithNoTests: true,
   },
