@@ -1,0 +1,32 @@
+{
+  "_comment": "Golden sample: GET /api/ontologies/{id}/entities/{eid} -> 200. Contract-test baseline; do not edit without updating spec §6.",
+  "code": "OK",
+  "message": "success",
+  "data": {
+    "eid": "http://www.co-ode.org/ontologies/pizza/pizza.owl#NamedPizza",
+    "curie": "pizza:NamedPizza",
+    "type": "Class",
+    "label": { "en": "NamedPizza" },
+    "comment": "A pizza that can be found on a restaurant menu, i.e. it has a fixed recipe.",
+    "deprecated": false,
+    "parents": [
+      { "curie": "pizza:Pizza", "label": { "en": "Pizza" } }
+    ],
+    "children": [
+      { "curie": "pizza:American",   "label": { "en": "American" } },
+      { "curie": "pizza:Margherita", "label": { "en": "Margherita" } }
+    ],
+    "properties": [
+      { "curie": "pizza:hasTopping", "type": "ObjectProperty", "label": { "en": "hasTopping" } }
+    ],
+    "referencedBy": [
+      { "curie": "pizza:VegetarianPizza", "relation": "equivalent class axiom" }
+    ],
+    "axioms": [
+      { "turtle": "pizza:NamedPizza rdfs:subClassOf pizza:Pizza, [ owl:onProperty pizza:hasTopping ; owl:someValuesFrom pizza:CheeseTopping ]" }
+    ],
+    "stats": { "directChildren": 3, "totalDescendants": 17 }
+  },
+  "hint": null,
+  "request_id": "3f9c2a71-8b4e-4f6a-9c1d-2e5b7a8f0c33"
+}

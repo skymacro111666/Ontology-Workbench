@@ -1,0 +1,8 @@
+{
+  "_comment": "Golden sample: POST /api/ontologies (duplicate filename) -> 409. Contract-test baseline; do not edit without updating spec §6.",
+  "code": "DUPLICATE_FILENAME",
+  "message": "An ontology named 'pizza.ttl' already exists in your workspace.",
+  "data": null,
+  "hint": "Rename the file before uploading, or delete the existing ontology first.",
+  "request_id": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6"
+}
