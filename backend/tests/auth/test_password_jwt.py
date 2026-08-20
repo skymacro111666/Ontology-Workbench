@@ -17,6 +17,8 @@ def test_password_roundtrip() -> None:
     assert h != "s3cret-pw"
     assert verify_password("s3cret-pw", h)
     assert not verify_password("wrong", h)
+    # a malformed stored hash must fail closed, not raise
+    assert not verify_password("s3cret-pw", "not-an-argon2-hash")
 
 
 def test_token_roundtrip_and_expiry() -> None:

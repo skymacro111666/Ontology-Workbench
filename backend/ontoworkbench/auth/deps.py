@@ -16,7 +16,7 @@ from ontoworkbench.server.envelope import ApiError, ErrorCode
 
 
 def get_current_user(request: Request, session: Session = Depends(get_session)) -> User:
-    """401 without valid bearer token; Phase 2 swaps this for real authN."""
+    """Resolve the bearer token to a User; 401 paths per spec §6."""
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         raise ApiError(ErrorCode.AUTH_REQUIRED, "Authentication required")

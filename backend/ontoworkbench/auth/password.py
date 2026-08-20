@@ -1,7 +1,7 @@
 """argon2id password hashing."""
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
 
 _ph = PasswordHasher()  # argon2id by default
 
@@ -12,8 +12,8 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    """Check plaintext against an argon2id hash."""
+    """Check plaintext against an argon2id hash; malformed hashes fail closed."""
     try:
         return _ph.verify(hashed, password)
-    except VerifyMismatchError:
+    except (VerifyMismatchError, InvalidHashError):
         return False
