@@ -11,8 +11,10 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "alembic>=1.19.1",
+    "fastapi>=0.115.0",
     "pydantic-settings>=2.15.0",
     "sqlalchemy>=2.0.52",
+    "uvicorn>=0.32.0",
 ]
 
 [dependency-groups]
@@ -23,6 +25,14 @@ dev = [
 
 [project.scripts]
 ow = "ontoworkbench.cli:app"
+
+[tool.pytest.ini_options]
+filterwarnings = [
+  # starlette's testclient emits an internal deprecation about httpx vs httpx2
+  # (StarletteDeprecationWarning subclasses UserWarning); not actionable from
+  # our code — filtered to keep test output pristine
+  "ignore:Using `httpx` with `starlette.testclient`:UserWarning",
+]
 
 [tool.ruff]
 line-length = 100
