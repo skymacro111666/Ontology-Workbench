@@ -65,4 +65,4 @@ def test_m1_pizza_full_chain(client: TestClient) -> None:
     assert ov.json()["code"] == "OK"
     # pizza has ~107 entities, below the 500-node degradation threshold
     assert ov.json()["data"]["truncated"] is False
-    assert ov.json()["data"]["total_count"] >= 99
+    assert ov.json()["data"]["totalCount"] >= 99

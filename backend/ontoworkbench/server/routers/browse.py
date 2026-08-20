@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
+from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
 from ontoworkbench.auth.deps import get_current_user
@@ -30,6 +32,20 @@ def _loader(request: Request):
         return build_indexes(build_ir(parse_graph(data, row.format)))
 
     return load
+
+
+def _camel(value: Any) -> Any:
+    """Recursively camelCase payload keys — the browse data contract.
+
+    The golden file docs/api-examples/success-entity.json (contract baseline)
+    serializes data payloads camelCase; core models stay snake_case and
+    auth payloads stay snake_case (their briefs pin that casing).
+    """
+    if isinstance(value, dict):
+        return {to_camel(k): _camel(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_camel(v) for v in value]
+    return value
 
 
 def _owned(
@@ -64,7 +80,7 @@ def tree(
 ) -> dict:
     """Direct children of parent (roots when omitted)."""
     _, ix = _owned(request, user, ontology_id, session)
-    return respond([n.model_dump() for n in ix.tree(parent)])
+    return respond(_camel([n.model_dump() for n in ix.tree(parent)]))
 
 
 @router.get("/{ontology_id}/entities/{eid:path}/neighbors")
@@ -78,7 +94,7 @@ def neighbors(
     """Local graph view around one entity (registered before the greedy route)."""
     _, ix = _owned(request, user, ontology_id, session)
     _entity_or_404(ix, eid)
-    return respond(ix.neighbors(eid))
+    return respond(_camel(ix.neighbors(eid)))
 
 
 @router.get("/{ontology_id}/entities/{eid:path}")
@@ -91,7 +107,7 @@ def entity(
 ) -> dict:
     """One entity's page-shaped IR."""
     _, ix = _owned(request, user, ontology_id, session)
-    return respond(_entity_or_404(ix, eid).model_dump())
+    return respond(_camel(_entity_or_404(ix, eid).model_dump()))
 
 
 @router.get("/{ontology_id}/overview")
@@ -103,7 +119,7 @@ def overview(
 ) -> dict:
     """Bounded whole-graph view."""
     _, ix = _owned(request, user, ontology_id, session)
-    return respond(ix.overview())
+    return respond(_camel(ix.overview()))
 
 
 @router.get("/{ontology_id}/search")
@@ -117,7 +133,7 @@ def search(
 ) -> dict:
     """Search hits over localname/label/comment."""
     _, ix = _owned(request, user, ontology_id, session)
-    return respond([h.model_dump() for h in ix.search(q, limit)])
+    return respond(_camel([h.model_dump() for h in ix.search(q, limit)]))
 
 
 @router.get("/{ontology_id}/raw/{eid:path}")
@@ -131,4 +147,4 @@ def raw(
     """Raw Turtle of one entity's axioms."""
     _, ix = _owned(request, user, ontology_id, session)
     e = _entity_or_404(ix, eid)
-    return respond({"turtle": "\n\n".join(a.turtle for a in e.axioms), "eid": e.eid})
+    return respond(_camel({"turtle": "\n\n".join(a.turtle for a in e.axioms), "eid": e.eid}))

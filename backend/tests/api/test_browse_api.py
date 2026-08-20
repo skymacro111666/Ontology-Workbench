@@ -65,7 +65,30 @@ def test_tree_entity_search_raw(client: TestClient) -> None:
     assert "turtle" in raw and "Dog" in raw["turtle"]
 
     ov = client.get(f"/api/ontologies/{oid}/overview").json()["data"]
-    assert ov["total_count"] == 3 and ov["truncated"] is False
+    assert ov["totalCount"] == 3 and ov["truncated"] is False
+
+
+def test_browse_payloads_are_camelcase(client: TestClient) -> None:
+    """Golden-contract casing: browse data keys serialize as camelCase."""
+    oid = _upload(client)
+    tree = client.get(f"/api/ontologies/{oid}/tree").json()["data"]
+    assert tree[0]["childrenCount"] == 1
+    assert "children_count" not in tree[0]
+
+    eid = quote("http://example.org/Animal", safe="")
+    ent = client.get(f"/api/ontologies/{oid}/entities/{eid}").json()["data"]
+    assert ent["stats"]["directChildren"] == 1
+    assert "referencedBy" in ent
+    assert "referenced_by" not in ent
+    assert "direct_children" not in ent["stats"]
+
+    hits = client.get(f"/api/ontologies/{oid}/search?q=dog").json()["data"]
+    assert "matchedField" in hits[0]
+    assert "matched_field" not in hits[0]
+
+    ov = client.get(f"/api/ontologies/{oid}/overview").json()["data"]
+    assert ov["totalCount"] == 3
+    assert "total_count" not in ov
 
 
 def test_tree_lazy_children(client: TestClient) -> None:
