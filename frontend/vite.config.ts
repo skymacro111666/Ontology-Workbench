@@ -8,7 +8,7 @@ export default defineConfig({
     proxy: { '/api': 'http://127.0.0.1:8734' },
   },
   test: {
-    // Real tests arrive with Task 14 (api client); keep CI green until then.
+    // Kept so CI stays green in checkouts stripped of test files.
     passWithNoTests: true,
   },
 })
