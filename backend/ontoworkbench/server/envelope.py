@@ -7,6 +7,8 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel
 
+from ontoworkbench.observability.middleware import request_id_ctx
+
 T = TypeVar("T")
 
 
@@ -60,3 +62,14 @@ class ApiError(Exception):
         """Store the error code, human message, and optional hint."""
         self.code, self.message, self.hint = code, message, hint
         super().__init__(message)
+
+
+def respond(data: object = None, message: str = "success") -> dict:
+    """Build a five-field success envelope carrying the current request id."""
+    return {
+        "code": ErrorCode.OK.value,
+        "message": message,
+        "data": data,
+        "hint": None,
+        "request_id": request_id_ctx.get(),
+    }

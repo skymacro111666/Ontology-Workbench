@@ -11,8 +11,11 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
     "alembic>=1.19.1",
+    "argon2-cffi>=25.1.0",
     "fastapi>=0.115.0",
     "pydantic-settings>=2.15.0",
+    "pyjwt>=2.10",
+    "python-multipart>=0.0.32",
     "sqlalchemy>=2.0.52",
     "uvicorn>=0.32.0",
 ]
@@ -38,6 +41,9 @@ filterwarnings = [
 line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "D", "UP", "B"]
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependency injection idiom: Depends(...) in argument defaults
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Body"]
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
