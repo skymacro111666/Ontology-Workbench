@@ -30,6 +30,11 @@ export interface PropRef extends Ref {
   ptype: string
 }
 
+/** Reverse reference carrying the axiom relating the two entities. */
+export interface ReferencedRef extends Ref {
+  relation: string
+}
+
 /** Aggregate counts shown on entity pages. */
 export interface EntityStats {
   directChildren: number
@@ -47,7 +52,7 @@ export interface EntityIR {
   parents: Ref[]
   children: Ref[]
   properties: PropRef[]
-  referencedBy: Ref[]
+  referencedBy: ReferencedRef[]
   axioms: { turtle: string }[]
   stats: EntityStats
 }

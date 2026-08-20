@@ -75,3 +75,48 @@ def test_pizza_ir_deterministic_and_stable() -> None:
     assert ir1.counts.class_count == 99
     assert ir1.counts.property_count == 8
     assert ir1.model_dump_json() == ir2.model_dump_json()
+
+
+def test_ir_comment_deprecated_and_descendants() -> None:
+    """Comment/deprecated parse; total_descendants counts the subtree."""
+    ttl = MINI + (
+        "ex:Puppy a owl:Class ; rdfs:subClassOf ex:Dog ; "
+        'rdfs:comment "young"@en ; owl:deprecated true .\n'
+    )
+    g = rdflib.Graph().parse(data=ttl, format="turtle")
+    ir = build_ir(g)
+    dog = ir.entities["http://example.org/Dog"]
+    assert dog.stats.total_descendants == 1  # Puppy
+    thing = ir.entities["http://example.org/Animal"]
+    assert thing.stats.total_descendants == 2  # Dog -> Puppy
+    puppy = ir.entities["http://example.org/Puppy"]
+    assert puppy.comment == "young"
+    assert puppy.deprecated is True
+    assert dog.deprecated is False
+
+
+def test_ir_prefixes_only_used_namespaces() -> None:
+    """Built-in rdflib namespace bindings do not leak into prefixes."""
+    g = rdflib.Graph().parse(data=MINI, format="turtle")
+    ir = build_ir(g)
+    assert set(ir.prefixes) <= {"ex", "rdfs", "owl", "rdf"}  # rdf:type via Turtle 'a'
+    assert "brick" not in ir.prefixes and "csvw" not in ir.prefixes
+
+
+def test_ir_referenced_by_relations() -> None:
+    """Domain/range axioms link classes and properties in both directions."""
+    g = rdflib.Graph().parse(data=MINI, format="turtle")
+    ir = build_ir(g)
+    dog = ir.entities["http://example.org/Dog"]
+    # likes points at Dog via rdfs:domain -> Dog is referenced by likes
+    refs = {(r.curie, r.relation) for r in dog.referenced_by}
+    assert ("ex:likes", "rdfs:domain") in refs
+    likes = ir.entities["http://example.org/likes"]
+    # and likes is referenced by the classes its axioms point at
+    prop_refs = {(r.curie, r.relation) for r in likes.referenced_by}
+    assert ("ex:Dog", "rdfs:domain") in prop_refs
+    assert ("ex:Animal", "rdfs:range") in prop_refs
+    animal = ir.entities["http://example.org/Animal"]
+    animal_refs = {(r.curie, r.relation) for r in animal.referenced_by}
+    assert ("ex:Dog", "subClassOf") in animal_refs
+    assert ("ex:likes", "rdfs:range") in animal_refs

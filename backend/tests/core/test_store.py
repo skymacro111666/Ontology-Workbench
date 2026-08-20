@@ -31,3 +31,12 @@ def test_sample_path_unknown_raises_core_error(tmp_path) -> None:
     with pytest.raises(CoreError) as e:
         store.sample_path("nope")
     assert e.value.code == "NOT_FOUND"
+
+
+def test_save_rejects_path_traversal(tmp_path) -> None:
+    """Filenames with path separators cannot escape the ontology dir."""
+    store = LocalUserDirStore(tmp_path)
+    for bad in ("../escape.ttl", "a/b.ttl", "/abs.ttl"):
+        with pytest.raises(CoreError) as exc:
+            store.save(uuid4(), uuid4(), bad, b"x")
+        assert exc.value.code == "VALIDATION_ERROR"

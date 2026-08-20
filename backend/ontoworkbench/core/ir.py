@@ -29,6 +29,12 @@ class PropRef(Ref):
     ptype: str
 
 
+class ReferencedRef(Ref):
+    """Reverse reference carrying the axiom relating the two entities."""
+
+    relation: str = ""
+
+
 class Axiom(BaseModel):
     """Raw axiom serialized as Turtle."""
 
@@ -54,7 +60,7 @@ class EntityIR(BaseModel):
     parents: list[Ref] = []
     children: list[Ref] = []
     properties: list[PropRef] = []
-    referenced_by: list[Ref] = []
+    referenced_by: list[ReferencedRef] = []
     axioms: list[Axiom] = []
     stats: Stats = Stats()
 
@@ -146,6 +152,38 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
     )
 
     entities: dict[str, EntityIR] = {}
+
+    # Domain/range links walked once: props by class and classes by prop.
+    props_by_class: dict[URIRef, list[URIRef]] = {}
+    classes_by_prop: dict[URIRef, list[tuple[URIRef, str]]] = {}
+    for p in props:
+        for link, relation in ((RDFS.domain, "rdfs:domain"), (RDFS.range, "rdfs:range")):
+            for c in graph.objects(p, link):
+                if isinstance(c, URIRef):
+                    props_by_class.setdefault(c, []).append(p)
+                    classes_by_prop.setdefault(p, []).append((c, relation))
+
+    def _referenced(uri: URIRef, is_class: bool, children: list[Ref]) -> list[ReferencedRef]:
+        """Entities whose axioms mention uri: subclassers and domain/range peers."""
+        refs = {
+            r.eid: ReferencedRef(eid=r.eid, curie=r.curie, label=r.label, relation="subClassOf")
+            for r in children
+        }
+        if is_class:
+            for p in props_by_class.get(uri, []):
+                base = _ref(graph, p)
+                relation = "rdfs:domain" if uri in graph.objects(p, RDFS.domain) else "rdfs:range"
+                refs[base.eid] = ReferencedRef(
+                    eid=base.eid, curie=base.curie, label=base.label, relation=relation
+                )
+        else:
+            for c, relation in classes_by_prop.get(uri, []):
+                base = _ref(graph, c)
+                refs[base.eid] = ReferencedRef(
+                    eid=base.eid, curie=base.curie, label=base.label, relation=relation
+                )
+        return sorted(refs.values(), key=lambda r: r.curie)
+
     for uri in [*classes, *props]:
         is_class = _is_class(graph, uri)
         etype = "Class" if is_class else _ptype_of(graph, uri)
@@ -155,26 +193,16 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
 
         properties: list[PropRef] = []
         if is_class:
-            for p in props:
-                linked = set(graph.objects(p, RDFS.domain)) | set(graph.objects(p, RDFS.range))
-                if uri in linked:
-                    base = _ref(graph, p)
-                    properties.append(
-                        PropRef(
-                            eid=base.eid,
-                            curie=base.curie,
-                            label=base.label,
-                            ptype=_ptype_of(graph, p),
-                        )
+            for p in props_by_class.get(uri, []):
+                base = _ref(graph, p)
+                properties.append(
+                    PropRef(
+                        eid=base.eid,
+                        curie=base.curie,
+                        label=base.label,
+                        ptype=_ptype_of(graph, p),
                     )
-
-        if is_class:
-            referenced = _uri_refs(graph, graph.subjects(RDFS.subClassOf, uri))
-        else:
-            referenced = _uri_refs(
-                graph,
-                (*graph.subjects(RDFS.domain, uri), *graph.subjects(RDFS.range, uri)),
-            )
+                )
 
         comment = next(
             (str(c) for c in graph.objects(uri, RDFS.comment) if isinstance(c, Literal)),
@@ -190,9 +218,28 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
             parents=parents,
             children=children,
             properties=properties,
-            referenced_by=sorted({r.eid: r for r in referenced}.values(), key=lambda r: r.curie),
+            referenced_by=_referenced(uri, is_class, children),
             axioms=[Axiom(turtle=_serialize_triples_about(graph, uri))],
             stats=Stats(direct_children=len(children)),
+        )
+
+    # Total descendants per class (memoized DFS over the assembled children).
+    child_eids: dict[str, list[str]] = {}
+    for e in entities.values():
+        for child in e.children:
+            child_eids.setdefault(e.eid, []).append(child.eid)
+    descendants: dict[str, int] = {}
+
+    def _total_descendants(eid: str) -> int:
+        if eid not in descendants:
+            descendants[eid] = 0  # cycle guard
+            descendants[eid] = sum(1 + _total_descendants(c) for c in child_eids.get(eid, []))
+        return descendants[eid]
+
+    for e in entities.values():
+        e.stats = Stats(
+            direct_children=e.stats.direct_children,
+            total_descendants=_total_descendants(e.eid),
         )
 
     counts = Counts(
@@ -200,5 +247,11 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
         property_count=len(props),
         axiom_count=len(graph),
     )
-    prefixes = {p or "base": str(n) for p, n in graph.namespaces()}
+    # Only namespaces the graph actually uses; rdflib seeds ~29 built-ins.
+    used_iris = {str(t) for triple in graph for t in triple if isinstance(t, URIRef)}
+    prefixes = {
+        p or "base": str(n)
+        for p, n in graph.namespaces()
+        if any(iri.startswith(str(n)) for iri in used_iris)
+    }
     return IRBundle(entities=entities, counts=counts, prefixes=prefixes)

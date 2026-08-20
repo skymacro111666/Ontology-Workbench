@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
@@ -127,7 +127,7 @@ def search(
     ontology_id: str,
     request: Request,
     q: str,
-    limit: int = 20,
+    limit: int = Query(default=20, ge=1),
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:

@@ -77,3 +77,52 @@ def test_overview_truncates_large_graphs() -> None:
     assert ov["truncated"] is True
     assert ov["total_count"] == 601
     assert len(ov["nodes"]) < ov["total_count"]
+
+
+MINI2 = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:Thing a owl:Class .
+ex:Animal a owl:Class ; rdfs:subClassOf ex:Thing ; rdfs:comment "alive"@en .
+ex:Dog a owl:Class ; rdfs:subClassOf ex:Animal ; rdfs:label "小狗狗"@en .
+ex:Cat a owl:Class ; rdfs:subClassOf ex:Animal .
+ex:likes a owl:ObjectProperty ; rdfs:domain ex:Dog ; rdfs:range ex:Cat .
+ex:Ghost a owl:Class ; rdfs:subClassOf <http://external.org/X> .
+"""
+
+
+def make2():
+    """Build indexes over MINI2 (labels, siblings, properties, orphan)."""
+    g = rdflib.Graph().parse(data=MINI2, format="turtle")
+    return build_indexes(build_ir(g))
+
+
+def test_orphan_class_with_external_parent_is_root() -> None:
+    """A class whose only parent is undeclared still renders as a root."""
+    ix = make2()
+    roots = {r.curie for r in ix.tree(None)}
+    assert "ex:Ghost" in roots
+    assert "ex:Thing" in roots
+    ov = ix.overview()
+    ghost_nodes = [n for n in ov["nodes"] if n["curie"] == "ex:Ghost"]
+    assert ghost_nodes, "orphan class must appear in the overview"
+    assert ov["total_count"] == 6
+
+
+def test_neighbors_cover_siblings_and_properties() -> None:
+    """Dog's local view includes its sibling Cat and property likes."""
+    ix = make2()
+    nb = ix.neighbors("http://example.org/Dog")
+    curies = {n["curie"] for n in nb["nodes"]}
+    assert "ex:Cat" in curies
+    assert "ex:likes" in curies
+    kinds = {(e["source"], e["target"]) for e in nb["edges"] if e["kind"] == "property"}
+    assert ("http://example.org/Dog", "http://example.org/likes") in kinds
+
+
+def test_search_hits_label_branch() -> None:
+    """A query matching only the label (not localname/comment) returns a hit."""
+    ix = make2()
+    hits = ix.search("小狗狗")
+    assert [h.curie for h in hits] == ["ex:Dog"]
+    assert hits[0].matched_field == "label"

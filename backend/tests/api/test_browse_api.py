@@ -1,16 +1,9 @@
 """Read APIs over an uploaded mini ontology."""
 
 import io
-from pathlib import Path
 from urllib.parse import quote
 
-import pytest
 from fastapi.testclient import TestClient
-
-from ontoworkbench.config import Settings
-from ontoworkbench.db.models import Base
-from ontoworkbench.db.session import init_engine
-from ontoworkbench.server.app import create_app
 
 MINI = b"""@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -19,22 +12,6 @@ ex:Thing a owl:Class .
 ex:Animal a owl:Class ; rdfs:subClassOf ex:Thing ; rdfs:comment "alive"@en .
 ex:Dog a owl:Class ; rdfs:subClassOf ex:Animal ; rdfs:label "Dog"@en .
 """
-
-
-@pytest.fixture()
-def client(tmp_path: Path) -> TestClient:
-    """Authenticated client with one uploaded mini ontology; yields (client, oid)."""
-    db_url = f"sqlite:///{tmp_path}/test.db"
-    engine = init_engine(db_url)
-    Base.metadata.create_all(engine)
-    app = create_app(
-        Settings.load({"jwt_secret": "t" * 32, "db_url": db_url, "data_dir": tmp_path})
-    )
-    c = TestClient(app)
-    c.post("/api/auth/setup", json={"username": "admin", "password": "long-enough-pw"})
-    r = c.post("/api/auth/login", json={"username": "admin", "password": "long-enough-pw"})
-    c.headers["Authorization"] = f"Bearer {r.json()['data']['token']}"
-    return c
 
 
 def _upload(client: TestClient) -> str:
@@ -107,3 +84,48 @@ def test_unknown_ontology_is_404(client: TestClient) -> None:
     r = client.get(f"/api/ontologies/{uuid.uuid4()}/tree")
     assert r.status_code == 404
     assert r.json()["code"] == "NOT_FOUND"
+
+
+def test_foreign_owner_ontology_is_404(client: TestClient) -> None:
+    """An ontology owned by another user is indistinguishable from missing."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from ontoworkbench.auth.password import hash_password
+    from ontoworkbench.db.models import Base, Ontology
+    from ontoworkbench.db.repositories import UserRepository
+
+    # Second user created directly (the public API is single-admin Phase 1).
+    app = client.app
+    db_url = app.state.settings.db_url
+    engine = create_engine(db_url)
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    other = UserRepository(session).create("intruder", hash_password("long-enough-pw"))
+    row = Ontology(
+        owner_user_id=other.id,
+        filename="foreign.ttl",
+        storage_path="/tmp/foreign.ttl",
+        format="turtle",
+        file_size_bytes=1,
+        file_hash="x",
+        class_count=0,
+        property_count=0,
+        axiom_count=0,
+    )
+    session.add(row)
+    session.commit()
+    foreign_id = str(row.id)
+    session.close()
+
+    r = client.get(f"/api/ontologies/{foreign_id}/tree")
+    assert r.status_code == 404
+    assert r.json()["code"] == "NOT_FOUND"
+
+
+def test_search_limit_must_be_positive(client: TestClient) -> None:
+    """limit=0 is a validation error, not a one-hit answer."""
+    oid = _upload(client)
+    r = client.get(f"/api/ontologies/{oid}/search", params={"q": "dog", "limit": 0})
+    assert r.status_code == 422
+    assert r.json()["code"] == "VALIDATION_ERROR"

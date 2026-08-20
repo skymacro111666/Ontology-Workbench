@@ -44,8 +44,14 @@ class Indexes:
             kids.sort(key=lambda x: x.curie)
 
     def _roots(self) -> list[EntityIR]:
+        # A class whose parents are all external (undeclared) is its own root —
+        # otherwise it would hang off a parent no walk ever visits.
         return sorted(
-            (e for e in self._ir.entities.values() if e.type == "Class" and not e.parents),
+            (
+                e
+                for e in self._ir.entities.values()
+                if e.type == "Class" and not any(p.eid in self._ir.entities for p in e.parents)
+            ),
             key=lambda x: x.curie,
         )
 

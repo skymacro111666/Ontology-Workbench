@@ -24,6 +24,12 @@ class LocalUserDirStore:
 
     def save(self, user_id: UUID, ontology_id: UUID, filename: str, data: bytes) -> Path:
         """Write bytes under a fresh ontology dir; return final path."""
+        if Path(filename).name != filename:
+            raise CoreError(
+                "VALIDATION_ERROR",
+                f"Invalid filename '{filename!r}'",
+                hint="Bare filename required",
+            )
         d = self._dir(user_id, ontology_id)
         d.mkdir(parents=True, exist_ok=True)
         p = d / filename

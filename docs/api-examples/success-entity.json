@@ -1,5 +1,5 @@
 {
-  "_comment": "Golden sample: GET /api/ontologies/{id}/entities/{eid} -> 200. Contract-test baseline; do not edit without updating spec §6.",
+  "_comment": "Golden sample: GET /api/ontologies/{id}/entities/{eid} -> 200. Contract-test baseline; do not edit without updating spec §6. 2026-08-21 reconciliation (M1 fix wave): properties[].type -> ptype (plan Task 9 model name), refs carry eid (always emitted), referencedBy carries relation (implemented per this contract; see tests/api/test_contract.py).",
   "code": "OK",
   "message": "success",
   "data": {
@@ -10,17 +10,17 @@
     "comment": "A pizza that can be found on a restaurant menu, i.e. it has a fixed recipe.",
     "deprecated": false,
     "parents": [
-      { "curie": "pizza:Pizza", "label": { "en": "Pizza" } }
+      { "eid": "http://www.co-ode.org/ontologies/pizza/pizza.owl#Pizza", "curie": "pizza:Pizza", "label": { "en": "Pizza" } }
     ],
     "children": [
-      { "curie": "pizza:American",   "label": { "en": "American" } },
-      { "curie": "pizza:Margherita", "label": { "en": "Margherita" } }
+      { "eid": "http://www.co-ode.org/ontologies/pizza/pizza.owl#American", "curie": "pizza:American", "label": { "en": "American" } },
+      { "eid": "http://www.co-ode.org/ontologies/pizza/pizza.owl#Margherita", "curie": "pizza:Margherita", "label": { "en": "Margherita" } }
     ],
     "properties": [
-      { "curie": "pizza:hasTopping", "type": "ObjectProperty", "label": { "en": "hasTopping" } }
+      { "eid": "http://www.co-ode.org/ontologies/pizza/pizza.owl#hasTopping", "curie": "pizza:hasTopping", "ptype": "ObjectProperty", "label": { "en": "hasTopping" } }
     ],
     "referencedBy": [
-      { "curie": "pizza:VegetarianPizza", "relation": "equivalent class axiom" }
+      { "eid": "http://www.co-ode.org/ontologies/pizza/pizza.owl#VegetarianPizza", "curie": "pizza:VegetarianPizza", "relation": "rdfs:domain" }
     ],
     "axioms": [
       { "turtle": "pizza:NamedPizza rdfs:subClassOf pizza:Pizza, [ owl:onProperty pizza:hasTopping ; owl:someValuesFrom pizza:CheeseTopping ]" }

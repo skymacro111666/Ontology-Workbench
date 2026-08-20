@@ -158,8 +158,12 @@ async def upload_ontology(
     session: Session = Depends(get_session),
 ) -> dict:
     """Multipart upload: sniff, parse, store, register; 150MB cap."""
+    # Reject oversized bodies before buffering them (brief: check before read).
+    if file.size is not None and file.size > MAX_UPLOAD:
+        ow_uploads_total.labels("too_large").inc()
+        raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
     data = await file.read()
-    if len(data) > MAX_UPLOAD:
+    if len(data) > MAX_UPLOAD:  # belt: chunked encodings may report size=None
         ow_uploads_total.labels("too_large").inc()
         raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
     filename = file.filename or "upload"
