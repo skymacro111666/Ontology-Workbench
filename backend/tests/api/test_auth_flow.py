@@ -52,6 +52,13 @@ def test_login_rejects_wrong_password(client: TestClient) -> None:
     assert r.json()["code"] == "AUTH_INVALID_CREDENTIALS"
 
 
+def test_login_rejects_unknown_user(client: TestClient) -> None:
+    """Unknown username runs the dummy-hash path and yields the same error."""
+    client.post("/api/auth/setup", json={"username": "admin", "password": "long-enough-pw"})
+    r = client.post("/api/auth/login", json={"username": "ghost", "password": "wrong-password"})
+    assert r.json()["code"] == "AUTH_INVALID_CREDENTIALS"
+
+
 def test_me_rejects_garbage_token(client: TestClient) -> None:
     """A malformed token is TOKEN_EXPIRED (invalid or expired), not a 500."""
     client.post("/api/auth/setup", json={"username": "admin", "password": "long-enough-pw"})

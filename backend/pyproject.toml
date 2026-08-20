@@ -17,6 +17,7 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.10",
     "python-multipart>=0.0.32",
+    "rdflib>=7.6.0",
     "sqlalchemy>=2.0.52",
     "structlog>=26.1.0",
     "uvicorn>=0.32.0",

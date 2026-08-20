@@ -16,6 +16,10 @@ from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+# Constant argon2 hash verified for unknown usernames so login always runs
+# one argon2 verification — response time cannot reveal account existence.
+_DUMMY_HASH = hash_password("ow-login-timing-equalizer")
+
 
 class Creds(BaseModel):
     """Login/setup payload."""
@@ -38,7 +42,8 @@ def setup(creds: Creds, session: Session = Depends(get_session)) -> dict:
 def login(creds: Creds, request: Request, session: Session = Depends(get_session)) -> dict:
     """Verify credentials and issue a 7-day JWT."""
     user = UserRepository(session).get_by_username(creds.username)
-    if not user or not verify_password(creds.password, user.password_hash):
+    password_ok = verify_password(creds.password, user.password_hash if user else _DUMMY_HASH)
+    if not user or not password_ok:
         raise ApiError(ErrorCode.AUTH_INVALID_CREDENTIALS, "Invalid username or password")
     token, exp = create_token(str(user.id), request.app.state.settings.jwt_secret)
     return respond({"token": token, "expires_at": exp.isoformat()})
