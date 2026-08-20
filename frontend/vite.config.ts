@@ -9,6 +9,11 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    setupFiles: ['src/test/setup.ts'],
+    // jsdom is heavy in constrained environments; run files sequentially.
+    pool: 'forks',
+    poolOptions: { forks: { singleFork: true } },
+    testTimeout: 20000,
     // Kept so CI stays green in checkouts stripped of test files.
     passWithNoTests: true,
   },
