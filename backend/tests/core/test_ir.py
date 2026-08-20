@@ -60,3 +60,18 @@ def test_ir_domain_property_typed() -> None:
     prop_entity = ir.entities["http://example.org/likes"]
     assert prop_entity.type == "ObjectProperty"
     assert prop_entity.stats.direct_children == 0
+
+
+def test_pizza_ir_deterministic_and_stable() -> None:
+    """Pizza IR: stable counts and byte-identical rebuilds (snapshot substitute)."""
+    from pathlib import Path
+
+    from ontoworkbench.core.parsing import parse_graph
+
+    samples = Path(__file__).parents[2] / "ontoworkbench" / "samples"
+    data = (samples / "pizza.ttl").read_bytes()
+    ir1 = build_ir(parse_graph(data, "turtle"))
+    ir2 = build_ir(parse_graph(data, "turtle"))
+    assert ir1.counts.class_count == 99
+    assert ir1.counts.property_count == 8
+    assert ir1.model_dump_json() == ir2.model_dump_json()
