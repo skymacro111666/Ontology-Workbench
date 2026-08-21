@@ -126,7 +126,10 @@ describe('Browse view modes', () => {
     renderBrowse(stubFetch())
     await screen.findAllByText('pizza:Dog')
     await userEvent.click(screen.getByText('分屏'))
-    expect(await screen.findByText('pizza:Animal')).toBeTruthy() // graph side
+    // The curie legitimately appears on both sides at once: the neighbor
+    // node on the canvas and the parents link in the detail pane.
+    const hits = await screen.findAllByText('pizza:Animal')
+    expect(hits.length).toBeGreaterThanOrEqual(2) // graph side + detail side
     expect(screen.getByRole('tab', { name: '概览' })).toBeTruthy() // detail side
   })
 })
