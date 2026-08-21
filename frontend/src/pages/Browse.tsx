@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Button, Layout, Result, Segmented, Space, Spin, Typography } from 'antd'
-import { Link, useParams } from 'react-router'
+import { useEffect } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router'
 import { ApiErr, api } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import Breadcrumb from '../components/Breadcrumb'
@@ -21,6 +22,13 @@ export default function Browse() {
   const viewMode = useBrowseStore((s) => s.viewMode)
   const setViewMode = useBrowseStore((s) => s.setViewMode)
   const selectedEid = useBrowseStore((s) => s.selectedEid)
+  const setSelected = useBrowseStore((s) => s.setSelected)
+  const [sp] = useSearchParams()
+  const eidParam = sp.get('eid')
+  // Deep link from the overview page (?eid=...) preselects the entity.
+  useEffect(() => {
+    if (eidParam) setSelected(eidParam)
+  }, [eidParam, setSelected])
   const { data: meta, isError, error, refetch } = useQuery({
     queryKey: ['ontology', oid],
     queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),

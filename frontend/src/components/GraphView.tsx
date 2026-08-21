@@ -3,13 +3,14 @@ import {
   Controls,
   Panel,
   ReactFlow,
+  useReactFlow,
   type Edge,
   type Node,
   type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Badge, Button, Segmented, theme } from 'antd'
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import type { GEdge, GNode } from '../api/types'
 import { useSystemTheme } from '../hooks/useSystemTheme'
 
@@ -62,6 +63,22 @@ function OntNode({ data }: NodeProps<OntNodeType>) {
 }
 
 const NODE_TYPES = { ont: OntNode }
+
+/**
+ * Fits the canvas onto one node once nodes are measured; must render inside
+ * <ReactFlow> to reach the viewport instance. The timeout lets the first
+ * layout pass settle (jsdom-safe no-op).
+ */
+function FocusFit({ id }: { id: string }) {
+  const { fitView } = useReactFlow()
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void fitView({ nodes: [{ id }], duration: 400, padding: 0.3 })
+    }, 120)
+    return () => clearTimeout(timer)
+  }, [id, fitView])
+  return null
+}
 
 const LAYER_GAP = 170
 const COLUMN_GAP = 210
@@ -128,11 +145,14 @@ export default function GraphView({
   edges,
   onSelect,
   height = '100%',
+  focusId,
 }: {
   nodes: GraphViewNode[]
   edges: GEdge[]
   onSelect: (eid: string) => void
   height?: number | string
+  /** Optional entity to fit-view onto (overview focus param). */
+  focusId?: string
 }) {
   const { token } = theme.useToken()
   const dark = useSystemTheme()
@@ -176,6 +196,7 @@ export default function GraphView({
       >
         <Background color={token.colorBorderSecondary} gap={24} />
         <Controls position="bottom-left" showInteractive={false} />
+        {focusId && <FocusFit id={focusId} />}
         <Panel position="top-right">
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <Button
