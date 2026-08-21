@@ -56,10 +56,12 @@ export default function Browse() {
 
   return (
     <Layout style={{ height: '100vh' }}>
-      <Sider width={304} theme="light" style={{ overflow: 'auto' }}>
-        <Sidebar oid={oid} meta={meta} />
-      </Sider>
+      {/* Inner layout carries the sider; the outer stays column-shaped so
+          the Footer spans the full width below both sider and content. */}
       <Layout>
+        <Sider width={304} theme="light" style={{ overflow: 'auto' }}>
+          <Sidebar oid={oid} meta={meta} />
+        </Sider>
         <Content style={{ padding: '12px 20px', overflow: 'auto' }}>
           <Space direction="vertical" size={4} style={{ width: '100%' }}>
             <Space style={{ width: '100%', justifyContent: 'space-between' }}>

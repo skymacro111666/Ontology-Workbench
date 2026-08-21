@@ -53,9 +53,9 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     """Assemble the app: middlewares + handlers + routers + optional SPA.
 
     The SPA mount is opt-in (the `ow serve` CLI passes the repo build): a
-    mounted "/" would swallow routes registered after create_app (e.g. the
-    instrumentator's startup-registered /metrics), so tests and embeddings
-    that add routes dynamically must stay mount-free by default.
+    mounted "/" would swallow routes registered after create_app (e.g. a
+    test adding its own /api route post-hoc), so callers that add routes
+    dynamically stay mount-free by default.
     """
     setup_logging(settings.log_dir, settings.log_level)
     app = FastAPI(title="Ontology Workbench", docs_url="/api/docs")

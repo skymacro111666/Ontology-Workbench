@@ -9,9 +9,11 @@ from starlette.types import Scope
 
 from ontoworkbench.server.envelope import ErrorCode, error_body
 
+
 # Paths that must never fall back to index.html: unknown API/metrics routes
 # keep returning the JSON envelope exactly like unmatched pre-mount routes.
-_JSON_404_PREFIXES = ("api/", "metrics")
+def _is_api_path(path: str) -> bool:
+    return path.startswith("api/") or path == "metrics" or path.startswith("metrics/")
 
 
 class SPAStaticFiles(StaticFiles):
@@ -24,7 +26,7 @@ class SPAStaticFiles(StaticFiles):
         except HTTPException as exc:
             if exc.status_code != 404:
                 raise
-            if path.startswith(_JSON_404_PREFIXES):
+            if _is_api_path(path):
                 return JSONResponse(
                     status_code=404,
                     content=error_body(ErrorCode.NOT_FOUND, "Not Found"),
