@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,10 +18,11 @@ from ontoworkbench.observability.logging import setup_logging
 from ontoworkbench.observability.metrics import configure_metrics
 from ontoworkbench.observability.middleware import request_id_ctx, request_id_middleware
 from ontoworkbench.server.cache import OntologyCache
-from ontoworkbench.server.envelope import HTTP_OF, ApiError, ErrorCode
+from ontoworkbench.server.envelope import HTTP_OF, ApiError, ErrorCode, error_body, respond
 from ontoworkbench.server.routers import auth as auth_router
 from ontoworkbench.server.routers import browse as browse_router
 from ontoworkbench.server.routers import ontologies as ontologies_router
+from ontoworkbench.server.staticfiles import SPAStaticFiles
 
 # Local development origins (vite dev server); the built SPA is same-origin.
 _LOCAL_DEV_ORIGINS = [
@@ -28,14 +31,9 @@ _LOCAL_DEV_ORIGINS = [
 ]
 
 
-def _envelope(code: ErrorCode, message: str, data=None, hint: str | None = None) -> dict:
-    return {
-        "code": code.value,
-        "message": message,
-        "data": data,
-        "hint": hint,
-        "request_id": request_id_ctx.get(),
-    }
+def default_spa_dist() -> Path:
+    """The source-deploy SPA build: <repo>/frontend/dist (may not exist)."""
+    return Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
 
 def _code_for_http_status(status: int) -> tuple[ErrorCode, int]:
@@ -51,8 +49,14 @@ def _code_for_http_status(status: int) -> tuple[ErrorCode, int]:
     return ErrorCode.VALIDATION_ERROR, status
 
 
-def create_app(settings: Settings) -> FastAPI:
-    """Assemble the app: middlewares + handlers + routers."""
+def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
+    """Assemble the app: middlewares + handlers + routers + optional SPA.
+
+    The SPA mount is opt-in (the `ow serve` CLI passes the repo build): a
+    mounted "/" would swallow routes registered after create_app (e.g. the
+    instrumentator's startup-registered /metrics), so tests and embeddings
+    that add routes dynamically must stay mount-free by default.
+    """
     setup_logging(settings.log_dir, settings.log_level)
     app = FastAPI(title="Ontology Workbench", docs_url="/api/docs")
     app.state.settings = settings
@@ -80,7 +84,7 @@ def create_app(settings: Settings) -> FastAPI:
     async def on_api_error(request: Request, exc: ApiError) -> JSONResponse:
         return JSONResponse(
             status_code=HTTP_OF[exc.code],
-            content=_envelope(exc.code, exc.message, None, exc.hint),
+            content=error_body(exc.code, exc.message, exc.hint),
         )
 
     @app.exception_handler(CoreError)
@@ -88,13 +92,13 @@ def create_app(settings: Settings) -> FastAPI:
         code = ErrorCode(str(exc.code))
         return JSONResponse(
             status_code=HTTP_OF[code],
-            content=_envelope(code, exc.message, None, exc.hint),
+            content=error_body(code, exc.message, exc.hint),
         )
 
     @app.exception_handler(StarletteHTTPException)
     async def on_http(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         code, status = _code_for_http_status(exc.status_code)
-        return JSONResponse(status_code=status, content=_envelope(code, str(exc.detail)))
+        return JSONResponse(status_code=status, content=error_body(code, str(exc.detail)))
 
     @app.exception_handler(RequestValidationError)
     async def on_validation(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -106,7 +110,7 @@ def create_app(settings: Settings) -> FastAPI:
         ]
         return JSONResponse(
             status_code=422,
-            content=_envelope(
+            content=error_body(
                 ErrorCode.VALIDATION_ERROR, "Invalid request parameters", hint=str(safe)
             ),
         )
@@ -117,13 +121,18 @@ def create_app(settings: Settings) -> FastAPI:
         # header must be set here to keep header/body/log ids identical
         response = JSONResponse(
             status_code=500,
-            content=_envelope(ErrorCode.INTERNAL_ERROR, "Internal Server Error"),
+            content=error_body(ErrorCode.INTERNAL_ERROR, "Internal Server Error"),
         )
         response.headers["X-Request-ID"] = request_id_ctx.get()
         return response
 
     @app.get("/api/health")
     async def health() -> dict:
-        return _envelope(ErrorCode.OK, "success", {"status": "up"})
+        return respond({"status": "up"})
+
+    # Mounted last: registered API routes win; unmatched paths fall through
+    # to static assets / index.html (client-side routes) — except API paths.
+    if spa_dist is not None and spa_dist.is_dir():
+        app.mount("/", SPAStaticFiles(directory=str(spa_dist), html=True), name="spa")
 
     return app

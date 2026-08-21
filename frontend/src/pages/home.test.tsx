@@ -66,6 +66,13 @@ describe('Home', () => {
     expect(await screen.findByText(/上传本体/)).toBeTruthy()
   })
 
+  it('shows an error result with retry when the list fails to load', async () => {
+    // Non-JSON body (e.g. a proxy error page): transport-level, not an ApiErr.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('bad gateway', { status: 502 })))
+    renderHome()
+    expect(await screen.findByText('列表加载失败')).toBeTruthy()
+  })
+
   it('offers the three builtin samples', async () => {
     stubFetchOnce({ code: 'OK', message: 'ok', data: { items: [], total: 0 }, hint: null, request_id: 'r' })
     renderHome()

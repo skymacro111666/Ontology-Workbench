@@ -73,3 +73,14 @@ def respond(data: object = None, message: str = "success") -> dict:
         "hint": None,
         "request_id": request_id_ctx.get(),
     }
+
+
+def error_body(code: ErrorCode, message: str, hint: str | None = None) -> dict:
+    """Build a five-field error envelope (handlers and the SPA mount share it)."""
+    return {
+        "code": code.value,
+        "message": message,
+        "data": None,
+        "hint": hint,
+        "request_id": request_id_ctx.get(),
+    }

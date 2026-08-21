@@ -47,7 +47,7 @@ def serve(
 ) -> None:
     """Run the workbench server (migrates the DB, serves API + SPA)."""
     from ontoworkbench.db.session import init_engine
-    from ontoworkbench.server.app import create_app
+    from ontoworkbench.server.app import create_app, default_spa_dist
 
     cli: dict = {"host": host, "port": port}
     if data_dir:
@@ -61,7 +61,12 @@ def serve(
 
     if not no_browser and host in {"127.0.0.1", "localhost"} and sys.stdout.isatty():
         webbrowser.open(f"http://{host}:{settings.port}/")
-    uvicorn.run(create_app(settings), host=settings.host, port=settings.port, log_config=None)
+    uvicorn.run(
+        create_app(settings, spa_dist=default_spa_dist()),
+        host=settings.host,
+        port=settings.port,
+        log_config=None,
+    )
 
 
 @app.command("import")

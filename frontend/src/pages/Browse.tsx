@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Button, Layout, Result, Space, Spin, Typography } from 'antd'
 import { Link, useParams } from 'react-router'
-import { api } from '../api/client'
+import { ApiErr, api } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import Breadcrumb from '../components/Breadcrumb'
 import EntityDetail from '../components/EntityDetail'
@@ -11,17 +11,18 @@ import StatusBar from '../components/StatusBar'
 
 const { Sider, Content, Footer } = Layout
 
-/** Main workbench: tri-tab sidebar + content area + status bar (spec §7.2). */
+/** Main workbench: tri-tab sidebar + content area + full-width status bar. */
 export default function Browse() {
   const { oid = '' } = useParams()
-  const { data: meta, isError } = useQuery({
+  const { data: meta, isError, error, refetch } = useQuery({
     queryKey: ['ontology', oid],
     queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
     retry: false,
   })
 
   if (isError) {
-    return (
+    const missing = error instanceof ApiErr && error.code === 'NOT_FOUND'
+    return missing ? (
       <Result
         status="404"
         title="本体不存在"
@@ -30,6 +31,17 @@ export default function Browse() {
           <Link to="/">
             <Button type="primary">返回首页</Button>
           </Link>
+        }
+      />
+    ) : (
+      <Result
+        status="warning"
+        title="加载失败"
+        subTitle="无法连接服务器，请确认后端已启动。"
+        extra={
+          <Button type="primary" onClick={() => void refetch()}>
+            重试
+          </Button>
         }
       />
     )
@@ -68,10 +80,10 @@ export default function Browse() {
             <EntityDetail oid={oid} />
           </Space>
         </Content>
-        <Footer style={{ padding: '6px 20px', background: 'transparent' }}>
-          <StatusBar meta={meta} />
-        </Footer>
       </Layout>
+      <Footer style={{ padding: '6px 20px' }}>
+        <StatusBar meta={meta} />
+      </Footer>
     </Layout>
   )
 }

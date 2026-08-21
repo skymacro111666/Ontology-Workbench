@@ -34,8 +34,8 @@ export default function UploadDropzone() {
     onError: (err) => {
       if (err instanceof ApiErr && err.code === 'DUPLICATE_FILENAME') {
         message.error('同名本体已存在，请重命名或先删除')
-      } else if (err instanceof ApiErr) {
-        message.error(err.message)
+      } else {
+        message.error(err instanceof ApiErr ? err.message : '上传失败，请稍后重试')
       }
     },
   })
@@ -56,7 +56,7 @@ export default function UploadDropzone() {
         <InboxOutlined />
       </p>
       <p className="ant-upload-text">点击或拖拽文件到此处上传本体</p>
-      <p className="ant-upload-hint">支持 .ttl / .owl / .rdf / .jsonld，单个文件 ≤ 150MB</p>
+      <p className="ant-upload-hint">支持 .ttl / .owl / .rdf / .jsonld / .json，单个文件 ≤ 150MB</p>
     </Upload.Dragger>
   )
 }

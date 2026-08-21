@@ -17,8 +17,14 @@ def client(tmp_path: Path) -> TestClient:
     db_url = f"sqlite:///{tmp_path}/test.db"
     engine = init_engine(db_url)
     Base.metadata.create_all(engine)
+    # A minimal fake SPA dist so every test exercises the mounted app shape.
+    dist = tmp_path / "dist"
+    (dist / "assets").mkdir(parents=True)
+    (dist / "index.html").write_text("<html><body>ow-spa-marker</body></html>")
+    (dist / "assets" / "app.js").write_text("console.log('ow')")
     app = create_app(
-        Settings.load({"jwt_secret": "t" * 32, "db_url": db_url, "data_dir": tmp_path})
+        Settings.load({"jwt_secret": "t" * 32, "db_url": db_url, "data_dir": tmp_path}),
+        spa_dist=dist,
     )
     c = TestClient(app)
     c.post("/api/auth/setup", json={"username": "admin", "password": "long-enough-pw"})

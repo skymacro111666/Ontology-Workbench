@@ -1,6 +1,6 @@
 import { DeleteOutlined, FileTextOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, Card, Col, Empty, Modal, Row, Space, Statistic, Tag, Typography, message } from 'antd'
+import { Button, Card, Col, Empty, Modal, Result, Row, Space, Statistic, Tag, Typography, message } from 'antd'
 import { useNavigate } from 'react-router'
 import { ApiErr, api } from '../api/client'
 import type { OntologyMeta, OntologySummary } from '../api/types'
@@ -23,7 +23,7 @@ export default function Home() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
-  const { data } = useQuery({
+  const { data, isError, refetch } = useQuery({
     queryKey: ['ontologies'],
     queryFn: () => api.get<{ items: OntologySummary[]; total: number }>('/api/ontologies'),
   })
@@ -40,7 +40,7 @@ export default function Home() {
       void queryClient.invalidateQueries({ queryKey: ['ontologies'] })
     },
     onError: (err) => {
-      if (err instanceof ApiErr) message.error(err.message)
+      message.error(err instanceof ApiErr ? err.message : '操作失败，请稍后重试')
     },
   })
 
@@ -51,7 +51,7 @@ export default function Home() {
       openOntology(meta.id)
     },
     onError: (err) => {
-      if (err instanceof ApiErr) message.error(err.message)
+      message.error(err instanceof ApiErr ? err.message : '载入示例失败，请稍后重试')
     },
   })
 
@@ -99,7 +99,18 @@ export default function Home() {
       <Typography.Title level={5} style={{ marginTop: 24 }}>
         本体列表
       </Typography.Title>
-      {items.length === 0 ? (
+      {isError ? (
+        <Result
+          status="warning"
+          title="列表加载失败"
+          subTitle="无法连接服务器，请确认后端已启动。"
+          extra={
+            <Button type="primary" onClick={() => void refetch()}>
+              重试
+            </Button>
+          }
+        />
+      ) : items.length === 0 ? (
         <Empty description="还没有本体，先上传或载入示例" />
       ) : (
         <Row gutter={[12, 12]}>
