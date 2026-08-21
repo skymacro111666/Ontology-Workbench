@@ -11,6 +11,7 @@ import '@xyflow/react/dist/style.css'
 import { Badge, Button, Segmented, theme } from 'antd'
 import { useId, useMemo, useState } from 'react'
 import type { GEdge, GNode } from '../api/types'
+import { useSystemTheme } from '../hooks/useSystemTheme'
 
 /** Node extended with what the canvas renders beyond the API payload. */
 export type GraphViewNode = GNode & {
@@ -134,6 +135,7 @@ export default function GraphView({
   height?: number | string
 }) {
   const { token } = theme.useToken()
+  const dark = useSystemTheme()
   const reactId = useId()
   const [showLabels, setShowLabels] = useState(true)
   const [filter, setFilter] = useState<Filter>('all')
@@ -166,6 +168,7 @@ export default function GraphView({
         nodes={flowNodes}
         edges={flowEdges}
         nodeTypes={NODE_TYPES}
+        colorMode={dark ? 'dark' : 'light'}
         fitView
         minZoom={0.15}
         proOptions={{ hideAttribution: true }}

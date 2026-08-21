@@ -21,7 +21,7 @@ export default function LocalGraph({
   height?: number | string
 }) {
   const setSelected = useBrowseStore((s) => s.setSelected)
-  const { data: nb } = useQuery({
+  const { data: nb, isError } = useQuery({
     enabled: eid !== null,
     queryKey: ['neighbors', oid, eid],
     queryFn: () =>
@@ -42,6 +42,10 @@ export default function LocalGraph({
   if (eid === null) {
     return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="先选择一个实体" />
   }
+  if (isError) {
+    // Mirrors EntityDetail: undeclared eids 404 on the neighbors endpoint.
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="外部实体（未在本体中声明），无局部图" />
+  }
   if (!nb) {
     return (
       <div style={{ padding: 24, textAlign: 'center' }}>
@@ -50,8 +54,16 @@ export default function LocalGraph({
     )
   }
 
+  // The self node ships kind:'self'; map it to its real type so the type
+  // filter treats it as the class/property it actually is.
   const nodes: GraphViewNode[] = nb.nodes.map((n) =>
-    n.id === eid && ent ? { ...n, childCount: ent.stats.directChildren } : n,
+    n.id === eid && ent
+      ? {
+          ...n,
+          kind: ent.type === 'Class' ? 'class' : 'property',
+          childCount: ent.stats.directChildren,
+        }
+      : n,
   )
 
   return (

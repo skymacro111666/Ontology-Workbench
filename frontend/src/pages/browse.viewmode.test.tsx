@@ -102,7 +102,7 @@ describe('Browse view modes', () => {
     await waitFor(() =>
       expect(screen.getAllByText('pizza:Dog').length).toBeGreaterThanOrEqual(3),
     )
-    expect(document.querySelector('.ant-segmented-item-selected')).toBeTruthy()
+    expect(document.querySelector('.ant-segmented-item-selected')?.textContent).toContain('详情')
     expect(screen.getByRole('tab', { name: '概览' })).toBeTruthy()
   })
 

@@ -52,6 +52,15 @@ describe('GraphView', () => {
     await userEvent.click(screen.getByText('全部'))
     expect(screen.getByText('ex:A')).toBeTruthy()
   })
+
+  it('classes-only filter keeps classes and drops the property node', async () => {
+    render(<GraphView nodes={NODES} edges={EDGES} onSelect={vi.fn()} />)
+    expect(await screen.findByText('ex:hasTopping'))
+    await userEvent.click(screen.getByText('仅类'))
+    expect(screen.getByText('ex:A')).toBeTruthy()
+    expect(screen.getByText('ex:B')).toBeTruthy()
+    expect(screen.queryByText('ex:hasTopping')).toBeNull()
+  })
 })
 
 describe('toFlowEdges', () => {
