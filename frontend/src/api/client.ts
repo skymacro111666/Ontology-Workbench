@@ -4,13 +4,15 @@ const TOKEN_KEY = 'ow_token'
 
 /** Error thrown when the envelope carries a non-OK code. */
 export class ApiErr extends Error {
-  constructor(
-    public code: string,
-    message: string,
-    public hint: string | null,
-    public requestId: string,
-  ) {
+  readonly code: string
+  readonly hint: string | null
+  readonly requestId: string
+
+  constructor(code: string, message: string, hint: string | null, requestId: string) {
     super(message)
+    this.code = code
+    this.hint = hint
+    this.requestId = requestId
   }
 }
 
