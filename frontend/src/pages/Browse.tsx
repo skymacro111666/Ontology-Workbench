@@ -4,6 +4,8 @@ import { Link, useParams } from 'react-router'
 import { api } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import Breadcrumb from '../components/Breadcrumb'
+import EntityDetail from '../components/EntityDetail'
+import SearchBox from '../components/SearchBox'
 import Sidebar from '../components/Sidebar'
 import StatusBar from '../components/StatusBar'
 
@@ -53,6 +55,7 @@ export default function Browse() {
                 {meta.title}
               </Typography.Title>
               <Space>
+                <SearchBox oid={oid} />
                 <Link to={`/graph/${oid}`}>
                   <Button size="small">总览图</Button>
                 </Link>
@@ -62,8 +65,7 @@ export default function Browse() {
               </Space>
             </Space>
             <Breadcrumb oid={oid} />
-            {/* Task 18 mounts EntityDetail + RefPanel here. */}
-            <Typography.Text type="secondary">选择左侧实体查看详情</Typography.Text>
+            <EntityDetail oid={oid} />
           </Space>
         </Content>
         <Footer style={{ padding: '6px 20px', background: 'transparent' }}>
