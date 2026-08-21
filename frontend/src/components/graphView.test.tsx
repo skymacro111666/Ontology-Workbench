@@ -72,6 +72,6 @@ describe('toFlowEdges', () => {
     const classesOnly = new Set(['a', 'b'])
     const flow = toFlowEdges(EDGES, classesOnly, true)
     expect(flow).toHaveLength(1) // class-property edge hidden
-    expect(flow[0].kind ?? flow[0].label).toBe('subClassOf')
+    expect(flow[0].label).toBe('subClassOf')
   })
 })

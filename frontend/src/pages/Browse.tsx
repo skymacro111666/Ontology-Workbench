@@ -1,19 +1,26 @@
 import { useQuery } from '@tanstack/react-query'
-import { Button, Layout, Result, Space, Spin, Typography } from 'antd'
+import { Button, Layout, Result, Segmented, Space, Spin, Typography } from 'antd'
 import { Link, useParams } from 'react-router'
 import { ApiErr, api } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import Breadcrumb from '../components/Breadcrumb'
 import EntityDetail from '../components/EntityDetail'
+import LocalGraph from '../components/LocalGraph'
 import SearchBox from '../components/SearchBox'
 import Sidebar from '../components/Sidebar'
 import StatusBar from '../components/StatusBar'
+import { useBrowseStore, type ViewMode } from '../stores/browseStore'
 
 const { Sider, Content, Footer } = Layout
+
+const CANVAS_HEIGHT = 'calc(100vh - 210px)'
 
 /** Main workbench: tri-tab sidebar + content area + full-width status bar. */
 export default function Browse() {
   const { oid = '' } = useParams()
+  const viewMode = useBrowseStore((s) => s.viewMode)
+  const setViewMode = useBrowseStore((s) => s.setViewMode)
+  const selectedEid = useBrowseStore((s) => s.selectedEid)
   const { data: meta, isError, error, refetch } = useQuery({
     queryKey: ['ontology', oid],
     queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
@@ -70,6 +77,16 @@ export default function Browse() {
               </Typography.Title>
               <Space>
                 <SearchBox oid={oid} />
+                <Segmented<ViewMode>
+                  size="small"
+                  value={viewMode}
+                  onChange={(v) => setViewMode(v)}
+                  options={[
+                    { label: '详情', value: 'detail' },
+                    { label: '分屏', value: 'split' },
+                    { label: '图', value: 'graph' },
+                  ]}
+                />
                 <Link to={`/graph/${oid}`}>
                   <Button size="small">总览图</Button>
                 </Link>
@@ -79,7 +96,18 @@ export default function Browse() {
               </Space>
             </Space>
             <Breadcrumb oid={oid} />
-            <EntityDetail oid={oid} />
+            {viewMode === 'detail' && <EntityDetail oid={oid} />}
+            {viewMode === 'graph' && <LocalGraph oid={oid} eid={selectedEid} height={CANVAS_HEIGHT} />}
+            {viewMode === 'split' && (
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <LocalGraph oid={oid} eid={selectedEid} height={CANVAS_HEIGHT} />
+                </div>
+                <div style={{ width: 400, flexShrink: 0 }}>
+                  <EntityDetail oid={oid} />
+                </div>
+              </div>
+            )}
           </Space>
         </Content>
       </Layout>
