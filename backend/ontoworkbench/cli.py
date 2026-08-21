@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import errno
 import os
+import socket
 import sys
 import webbrowser
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
@@ -17,6 +20,9 @@ app = typer.Typer(help="Ontology Workbench — self-hosted ontology workbench.")
 
 PACKAGE_ROOT = Path(__file__).parent
 BACKEND_ROOT = PACKAGE_ROOT.parent
+
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+MAX_PORT_ATTEMPTS = 10
 
 
 def _settings(cli: dict) -> Settings:
@@ -35,6 +41,52 @@ def _migrate(db_url: str, data_dir: Path) -> None:
     cfg = AlembicConfig(str(BACKEND_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
     alembic_command.upgrade(cfg, "head")
+
+
+def _probe_port(host: str, port: int) -> None:
+    """Bind (host, port) momentarily; raise OSError when it is taken or unusable.
+
+    SO_REUSEADDR is set to match what asyncio/uvicorn will do at bind time, so a
+    port left in TIME_WAIT still counts as free.
+    """
+    addrinfo = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)[0]
+    with socket.socket(addrinfo[0], socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(addrinfo[4])
+
+
+def _warn_stderr(message: str) -> None:
+    """Emit a serve-time warning to stderr (injectable for tests)."""
+    typer.echo(message, err=True)
+
+
+def resolve_serve_port(
+    host: str,
+    port: int,
+    probe: Callable[[str, int], None] = _probe_port,
+    warn: Callable[[str], None] = _warn_stderr,
+) -> int:
+    """Return the first port at or after `port` that can be bound (spec §6/§10).
+
+    On EADDRINUSE the candidate bumps +1 (up to MAX_PORT_ATTEMPTS tries, each
+    bump logged); any other OSError (e.g. unknown host) propagates immediately.
+    """
+    for attempt in range(MAX_PORT_ATTEMPTS):
+        candidate = port + attempt
+        try:
+            probe(host, candidate)
+        except OSError as exc:
+            if exc.errno != errno.EADDRINUSE:
+                raise
+            if attempt + 1 < MAX_PORT_ATTEMPTS:
+                warn(f"port {candidate} is in use — trying {candidate + 1}")
+                continue
+            break
+        return candidate
+    raise OSError(
+        f"ports {port}-{port + MAX_PORT_ATTEMPTS - 1} are all in use; "
+        "pass a different --port or free one and retry"
+    )
 
 
 @app.command()
@@ -59,12 +111,24 @@ def serve(
     _migrate(settings.db_url, settings.data_dir)
     init_engine(settings.db_url)
 
+    try:
+        serve_port = resolve_serve_port(settings.host, settings.port)
+    except OSError as exc:
+        typer.echo(f"cannot serve on {settings.host}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    if settings.host not in LOOPBACK_HOSTS:
+        typer.echo(
+            f"host {settings.host} is non-loopback — place this instance behind a "
+            "reverse proxy with HTTPS before exposing it",
+            err=True,
+        )
+
     if not no_browser and host in {"127.0.0.1", "localhost"} and sys.stdout.isatty():
-        webbrowser.open(f"http://{host}:{settings.port}/")
+        webbrowser.open(f"http://{host}:{serve_port}/")
     uvicorn.run(
         create_app(settings, spa_dist=default_spa_dist()),
         host=settings.host,
-        port=settings.port,
+        port=serve_port,
         log_config=None,
     )
 
