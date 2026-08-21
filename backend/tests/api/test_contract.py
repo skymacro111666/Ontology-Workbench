@@ -21,9 +21,9 @@ def test_entity_payload_matches_golden_structure(client: TestClient) -> None:
     data = client.get(f"/api/ontologies/{oid}/entities/{eid}").json()["data"]
 
     golden_data = GOLDEN["data"]
-    assert set(data) == set(
-        golden_data
-    ), f"top-level drift: +{set(data) - set(golden_data)} -{set(golden_data) - set(data)}"
+    assert set(data) == set(golden_data), (
+        f"top-level drift: +{set(data) - set(golden_data)} -{set(golden_data) - set(data)}"
+    )
     assert set(data["stats"]) == set(golden_data["stats"])
 
     # Ref lists: live refs may carry eid (golden abbreviates); relation on
