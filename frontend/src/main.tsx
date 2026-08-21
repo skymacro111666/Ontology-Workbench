@@ -10,7 +10,9 @@ import App from './App'
 import { useSystemTheme } from './hooks/useSystemTheme'
 import './index.css'
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } })
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
+})
 
 /** Applies app-wide providers; dark mode follows the OS via useSystemTheme. */
 function Root() {

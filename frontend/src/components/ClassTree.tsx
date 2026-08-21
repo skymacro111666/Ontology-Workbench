@@ -68,27 +68,35 @@ export default function ClassTree({ oid }: { oid: string }) {
         .catch(() => null)
 
     void (async () => {
-      // Chain bottom-up via the first parent (primary lineage, Phase 1).
-      const chain: string[] = []
-      let cursor: string | null = revealEid
-      const seen = new Set<string>()
-      while (cursor && !seen.has(cursor) && chain.length < 32) {
-        seen.add(cursor)
-        const ent = await entityOf(cursor)
-        if (!ent) break
-        chain.push(cursor)
-        const parent = ent.parents.find((p) => p.eid !== cursor)
-        cursor = parent ? parent.eid : null
-      }
-      // Top-down: materialize children so every ancestor becomes expandable.
-      for (const eid of chain.reverse()) {
-        if (cancelled) return
-        await loadChildren(eid)
-      }
-      if (!cancelled) {
-        setExpandedKeys(chain)
-        setSelected(revealEid)
-        clearReveal()
+      try {
+        // Chain bottom-up via the first parent (primary lineage, Phase 1).
+        const chain: string[] = []
+        let cursor: string | null = revealEid
+        const seen = new Set<string>()
+        while (cursor && !seen.has(cursor) && chain.length < 32) {
+          seen.add(cursor)
+          const ent = await entityOf(cursor)
+          if (!ent) break
+          chain.push(cursor)
+          const parent = ent.parents.find((p) => p.eid !== cursor)
+          cursor = parent ? parent.eid : null
+        }
+        // Top-down: materialize children so every ancestor becomes expandable.
+        for (const eid of chain.reverse()) {
+          if (cancelled) return
+          await loadChildren(eid)
+        }
+        if (!cancelled) {
+          // Expand ancestors only (the target is visible through its parent);
+          // keep branches the user already expanded.
+          setExpandedKeys((prev) => Array.from(new Set([...prev, ...chain.slice(0, -1)])))
+          setSelected(revealEid)
+        }
+      } catch {
+        // A failed walk leaves selection working (detail renders); the tree
+        // just does not auto-expand this time.
+      } finally {
+        if (!cancelled) clearReveal()
       }
     })()
 
