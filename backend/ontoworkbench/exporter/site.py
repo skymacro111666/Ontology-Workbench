@@ -1,0 +1,123 @@
+"""Static docs-site export: renders the IR into a deployable HTML tree.
+
+One page per entity plus an index page, a client-side search index, and a
+small native-JS layer (spec §8). The exporter consumes the same IR the API
+serves - the double consumer is the point of the IR abstraction.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import shutil
+from pathlib import Path
+
+from jinja2 import Environment, FileSystemLoader
+from pydantic import BaseModel
+
+from ontoworkbench.core.errors import CoreError
+from ontoworkbench.core.indexes import Indexes
+from ontoworkbench.core.ir import EntityIR, IRBundle
+
+_TEMPLATES = Path(__file__).parent / "templates"
+
+
+class ExportResult(BaseModel):
+    """Outcome of one export run."""
+
+    output_dir: Path
+    page_count: int
+
+
+def file_of(eid: str) -> str:
+    """Stable page filename for an entity IRI (sha1 prefix, HTML-safe)."""
+    return f"entities/{hashlib.sha1(eid.encode()).hexdigest()[:16]}.html"
+
+
+def _env() -> Environment:
+    loader = FileSystemLoader(str(_TEMPLATES))
+    return Environment(loader=loader, autoescape=True)
+
+
+def _sidebar_tree(indexes: Indexes) -> list[dict]:
+    """Nested class tree for the sidebar: curie/eid/file/children."""
+
+    def node_of(e: EntityIR) -> dict:
+        return {
+            "curie": e.curie,
+            "eid": e.eid,
+            "file": file_of(e.eid),
+            "children": [
+                node_of(child) for c in e.children if (child := indexes.entity(c.eid)) is not None
+            ]
+            if e.type == "Class"
+            else [],
+        }
+
+    roots: list[dict] = []
+    for tn in indexes.tree(None):
+        ent = indexes.entity(tn.eid)
+        if ent is not None:
+            roots.append(node_of(ent))
+    return roots
+
+
+def export_site(
+    ir: IRBundle,
+    indexes: Indexes,
+    out_dir: Path,
+    title: str,
+    force: bool = False,
+) -> ExportResult:
+    """Render the whole site under out_dir; refuse non-empty dirs unless force."""
+    if out_dir.exists() and any(out_dir.iterdir()):
+        if not force:
+            raise CoreError(
+                "VALIDATION_ERROR",
+                f"Output directory not empty: {out_dir}",
+                "Choose another --out or pass force=true",
+            )
+        for child in out_dir.iterdir():
+            shutil.rmtree(child) if child.is_dir() else child.unlink()
+
+    (out_dir / "entities").mkdir(parents=True, exist_ok=True)
+    (out_dir / "data").mkdir(parents=True, exist_ok=True)
+    env = _env()
+    tree = _sidebar_tree(indexes)
+
+    entity_tpl = env.get_template("entity.html.j2")
+    search_index: list[dict] = []
+    entity_map: dict[str, str] = {}
+    for e in ir.entities.values():
+        rel = file_of(e.eid)
+        entity_map[e.eid] = rel
+        search_index.append({"curie": e.curie, "label": e.label, "eid": e.eid, "file": rel})
+        page = entity_tpl.render(
+            title=f"{e.curie} - {title}",
+            site_title=title,
+            e=e,
+            file_of=file_of,
+            tree=tree,
+        )
+        (out_dir / rel).write_text(page, encoding="utf-8")
+
+    index_page = env.get_template("index.html.j2").render(
+        title=title,
+        site_title=title,
+        counts=ir.counts,
+        prefixes=ir.prefixes,
+        tree=tree,
+        top_classes=tree,
+    )
+    (out_dir / "index.html").write_text(index_page, encoding="utf-8")
+
+    (out_dir / "data" / "index.json").write_text(
+        json.dumps(search_index, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    (out_dir / "data" / "entities.json").write_text(
+        json.dumps(entity_map, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    for asset in ("site.css", "site.js"):
+        shutil.copyfile(_TEMPLATES / asset, out_dir / asset)
+
+    return ExportResult(output_dir=out_dir, page_count=1 + len(entity_map))

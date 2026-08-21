@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="index.html">▣ {{ site_title }}</a>
+    <input id="ow-search" type="search" placeholder="Search entities…" autocomplete="off"
+           aria-label="Search entities">
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="Class tree">
+      <details open>
+        <summary>Classes</summary>
+        <ul class="tree">
+          {% macro node(n) %}
+          <li>
+            <details {% if not n.children %}class="leaf"{% endif %}>
+              <summary><a href="{{ n.file }}">{{ n.curie }}</a></summary>
+              {% if n.children %}
+              <ul>
+                {% for c in n.children %}{{ node(c) }}{% endfor %}
+              </ul>
+              {% endif %}
+            </details>
+          </li>
+          {% endmacro %}
+          {% for n in tree %}{{ node(n) }}{% endfor %}
+        </ul>
+      </details>
+    </nav>
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <div id="ow-search-results" class="search-results" hidden></div>
+  <script src="site.js"></script>
+</body>
+</html>

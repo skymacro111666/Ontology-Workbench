@@ -1,0 +1,26 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p class="stats">
+  {{ counts.class_count }} classes · {{ counts.property_count }} properties ·
+  {{ counts.axiom_count }} axioms
+</p>
+<h2>Top-level classes</h2>
+<ul>
+  {% for n in top_classes %}
+  <li><a href="{{ n.file }}"><code>{{ n.curie }}</code></a>
+    {% if n.children %}<span class="muted">({{ n.children | length }} direct subclasses)</span>{% endif %}
+  </li>
+  {% else %}
+  <li class="muted">No OWL classes found.</li>
+  {% endfor %}
+</ul>
+{% if prefixes %}
+<h2>Prefixes</h2>
+<table class="kv">
+  {% for p, iri in prefixes.items() %}
+  <tr><td><code>{{ p }}</code></td><td class="muted">{{ iri }}</td></tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

@@ -13,6 +13,7 @@ dependencies = [
     "alembic>=1.19.1",
     "argon2-cffi>=25.1.0",
     "fastapi>=0.115.0",
+    "jinja2>=3.1.6",
     "prometheus-fastapi-instrumentator>=8.1.0",
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.10",

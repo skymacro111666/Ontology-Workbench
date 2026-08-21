@@ -1,0 +1,45 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<article>
+  <h1><code>{{ e.curie }}</code> <small class="muted">{{ e.type }}</small></h1>
+  {% for lang, text in e.label.items() %}<span class="tag">{{ text }} ({{ lang }})</span>{% endfor %}
+  {% if e.deprecated %}<span class="tag warn">deprecated</span>{% endif %}
+  {% if e.comment %}<p class="comment">{{ e.comment }}</p>{% endif %}
+
+  <h2>Parents</h2>
+  <ul>
+    {% for p in e.parents %}<li><a href="{{ file_of(p.eid) }}"><code>{{ p.curie }}</code></a></li>
+    {% else %}<li class="muted">—</li>{% endfor %}
+  </ul>
+
+  <h2>Children ({{ e.stats.direct_children }} direct · {{ e.stats.total_descendants }} total)</h2>
+  <ul>
+    {% for c in e.children %}<li><a href="{{ file_of(c.eid) }}"><code>{{ c.curie }}</code></a></li>
+    {% else %}<li class="muted">—</li>{% endfor %}
+  </ul>
+
+  {% if e.properties %}
+  <h2>Properties</h2>
+  <table class="kv">
+    <tr><th>curie</th><th>type</th><th>label</th></tr>
+    {% for p in e.properties %}
+    <tr><td><a href="{{ file_of(p.eid) }}"><code>{{ p.curie }}</code></a></td>
+        <td>{{ p.ptype }}</td><td class="muted">{{ p.label.values() | list | join(', ') }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  {% if e.referenced_by %}
+  <h2>Referenced by</h2>
+  <ul>
+    {% for r in e.referenced_by %}
+    <li><a href="{{ file_of(r.eid) }}"><code>{{ r.curie }}</code></a>
+        {% if r.relation %}<span class="muted">via {{ r.relation }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  <h2>Axioms (Turtle)</h2>
+  {% for a in e.axioms %}<pre class="code">{{ a.turtle }}</pre>{% endfor %}
+</article>
+{% endblock %}
