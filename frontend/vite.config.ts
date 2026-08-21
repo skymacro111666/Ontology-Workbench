@@ -10,8 +10,14 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['src/test/setup.ts'],
-    // jsdom is heavy in constrained environments; run files sequentially.
-    pool: 'forks',
+    // jsdom is heavy in constrained environments, so files run sequentially.
+    // The `threads` pool runs them inside one reused worker thread
+    // (fileParallelism: false pins maxWorkers to 1 — Vitest 4 removed
+    // poolOptions.threads.singleThread in favor of this). The previous `forks`
+    // pool tore down a process per file, and react-dom's queued setImmediate
+    // could fire after jsdom teardown, failing otherwise-green runs with an
+    // unhandled ReferenceError.
+    pool: 'threads',
     fileParallelism: false,
     testTimeout: 20000,
     // Kept so CI stays green in checkouts stripped of test files.
