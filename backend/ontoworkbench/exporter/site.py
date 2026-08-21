@@ -10,7 +10,9 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import time
 from pathlib import Path
+from uuid import UUID
 
 from jinja2 import Environment, FileSystemLoader
 from pydantic import BaseModel
@@ -27,6 +29,12 @@ class ExportResult(BaseModel):
 
     output_dir: Path
     page_count: int
+
+
+def default_out_dir(data_dir: Path, ontology_id: UUID) -> Path:
+    """Timestamped default target shared by the API route and the CLI."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    return data_dir / "exports" / f"{ontology_id}-{stamp}"
 
 
 def file_of(eid: str) -> str:

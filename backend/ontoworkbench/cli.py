@@ -134,14 +134,56 @@ def import_ontology(
 
 
 @app.command("export-site")
-def export_site(
+def export_site_cmd(
     ontology_id: Annotated[str, typer.Argument(help="Ontology UUID")],
-    out: Annotated[str, typer.Option()] = "site",
+    out: Annotated[
+        str | None, typer.Option(help="Output dir (default {data_dir}/exports/{id}-{timestamp})")
+    ] = None,
     force: Annotated[bool, typer.Option()] = False,
+    data_dir: Annotated[str | None, typer.Option()] = None,
 ) -> None:
-    """Export an ontology as a static docs site (implemented in M4)."""
-    typer.echo("not implemented: export-site lands in M4", err=True)
-    raise typer.Exit(code=2)
+    """Export a stored ontology as a static docs site (same path as the API)."""
+    from uuid import UUID
+
+    from ontoworkbench.core.errors import CoreError
+    from ontoworkbench.core.indexes import build_indexes
+    from ontoworkbench.core.ir import build_ir
+    from ontoworkbench.core.parsing import parse_graph
+    from ontoworkbench.db.repositories import OntologyRepository, UserRepository
+    from ontoworkbench.db.session import init_engine, sessionmaker_or_fail
+    from ontoworkbench.exporter.site import default_out_dir, export_site
+
+    cli: dict = {}
+    if data_dir:
+        cli["data_dir"] = Path(data_dir)
+    settings = _settings(cli)
+    _migrate(settings.db_url, settings.data_dir)
+    init_engine(settings.db_url)
+
+    try:
+        oid = UUID(ontology_id)
+    except ValueError:
+        typer.echo(f"not a UUID: {ontology_id}", err=True)
+        raise typer.Exit(code=2) from None
+
+    with sessionmaker_or_fail()() as session:
+        admin = UserRepository(session).first()
+        if admin is None:
+            typer.echo("no user yet — run `ow serve` and complete /setup first", err=True)
+            raise typer.Exit(code=2)
+        row = OntologyRepository(session).get_owned(admin.id, oid)
+        if row is None:
+            typer.echo(f"no such ontology: {ontology_id}", err=True)
+            raise typer.Exit(code=2)
+        data = Path(row.storage_path).read_bytes()
+        ir = build_ir(parse_graph(data, row.format))
+        target = Path(out) if out else default_out_dir(settings.data_dir, oid)
+        try:
+            result = export_site(ir, build_indexes(ir), target, row.title or row.filename, force)
+        except CoreError as exc:
+            typer.echo(f"{exc.code}: {exc.message} ({exc.hint})", err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(f"exported {row.filename} -> {result.output_dir} ({result.page_count} pages)")
 
 
 if __name__ == "__main__":  # pragma: no cover

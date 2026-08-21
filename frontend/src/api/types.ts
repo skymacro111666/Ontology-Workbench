@@ -116,3 +116,9 @@ export interface OntologyMeta extends OntologySummary {
   fileHash: string
   prefixes: Record<string, string>
 }
+
+/** Docs-site export result (POST /api/ontologies/{id}/export/site). */
+export interface ExportSiteResult {
+  outputDir: string
+  pageCount: number
+}

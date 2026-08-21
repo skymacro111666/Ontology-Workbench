@@ -21,6 +21,7 @@ from ontoworkbench.server.cache import OntologyCache
 from ontoworkbench.server.envelope import HTTP_OF, ApiError, ErrorCode, error_body, respond
 from ontoworkbench.server.routers import auth as auth_router
 from ontoworkbench.server.routers import browse as browse_router
+from ontoworkbench.server.routers import export as export_router
 from ontoworkbench.server.routers import ontologies as ontologies_router
 from ontoworkbench.server.staticfiles import SPAStaticFiles
 
@@ -78,6 +79,7 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     app.include_router(auth_router.router)
     app.include_router(ontologies_router.router)
     app.include_router(browse_router.router)
+    app.include_router(export_router.router)
     configure_metrics(app)
 
     @app.exception_handler(ApiError)
