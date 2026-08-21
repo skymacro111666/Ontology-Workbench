@@ -19,5 +19,8 @@ frontend/dist/
 .idea/
 .vscode/
 
-# 对话记录
-CONVERSATION.md
+# Claude Code 会话产物(worktrees、settings.local.json)
+.claude/
+
+# 工具默认输出(tools/gen_big_ontology.py 生成于 cwd)
+tmp_big_ontology.ttl
