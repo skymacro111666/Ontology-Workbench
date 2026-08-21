@@ -78,3 +78,10 @@ name = "core-purity"
 type = "forbidden"
 source_modules = ["ontoworkbench.core"]
 forbidden_modules = ["ontoworkbench.server", "ontoworkbench.db", "ontoworkbench.auth", "ontoworkbench.exporter"]
+
+# Spec §11.4: core / db / auth must not import any upper layer.
+[[tool.importlinter.contracts]]
+name = "lower-purity"
+type = "forbidden"
+source_modules = ["ontoworkbench.core", "ontoworkbench.db", "ontoworkbench.auth"]
+forbidden_modules = ["ontoworkbench.server", "ontoworkbench.exporter", "ontoworkbench.observability"]

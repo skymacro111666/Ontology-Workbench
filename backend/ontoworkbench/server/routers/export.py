@@ -10,7 +10,6 @@ from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
-from ontoworkbench.auth.deps import get_current_user
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir
 from ontoworkbench.core.parsing import parse_graph
@@ -20,6 +19,7 @@ from ontoworkbench.db.repositories import OntologyRepository
 from ontoworkbench.db.session import get_session
 from ontoworkbench.exporter.site import default_out_dir, export_site
 from ontoworkbench.observability.metrics import ow_parse_seconds
+from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
 router = APIRouter(prefix="/api/ontologies", tags=["export"])

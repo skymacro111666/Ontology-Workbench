@@ -6,12 +6,12 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from ontoworkbench.auth.deps import get_current_user
 from ontoworkbench.auth.jwt import create_token
 from ontoworkbench.auth.password import hash_password, verify_password
 from ontoworkbench.db.models import User
 from ontoworkbench.db.repositories import UserRepository
 from ontoworkbench.db.session import get_session
+from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])

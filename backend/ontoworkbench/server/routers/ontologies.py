@@ -11,7 +11,6 @@ from pydantic.alias_generators import to_camel
 from rdflib import DCTERMS, OWL, RDF
 from sqlalchemy.orm import Session
 
-from ontoworkbench.auth.deps import get_current_user
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir
 from ontoworkbench.core.parsing import parse_graph, sniff_format
@@ -21,6 +20,7 @@ from ontoworkbench.db.repositories import OntologyRepository
 from ontoworkbench.db.session import get_session
 from ontoworkbench.observability.metrics import ow_parse_seconds, ow_uploads_total
 from ontoworkbench.server.cache import OntologyCache
+from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
 router = APIRouter(prefix="/api", tags=["ontologies"])
