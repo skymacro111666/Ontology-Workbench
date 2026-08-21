@@ -10,13 +10,18 @@ from ontoworkbench.core.ir import EntityIR, IRBundle
 
 MAX_OVERVIEW_NODES = 500
 
+# Sentinel parent for the sidebar's property tab: tree(parent=__props__)
+# lists property entities (eids are full IRIs, so this cannot collide).
+PROPS_PARENT = "__props__"
+
 
 class TreeNode(BaseModel):
-    """One node of the lazily-loaded class tree."""
+    """One node of the lazily-loaded class/property tree."""
 
     eid: str
     curie: str
     label: dict[str, str] = {}
+    type: str = "Class"
     children_count: int = 0
 
 
@@ -61,9 +66,18 @@ class Indexes:
 
     # -- tree -----------------------------------------------------------
     def tree(self, parent_eid: str | None) -> list[TreeNode]:
-        """Direct children of parent (or roots when None)."""
+        """Direct children of parent (or roots when None).
+
+        PROPS_PARENT is the sentinel for the sidebar's property tab:
+        it lists property entities with the same lazy-loading semantics.
+        """
         if parent_eid is None:
             items: list[EntityIR] = self._roots()
+        elif parent_eid == PROPS_PARENT:
+            items = sorted(
+                (e for e in self._ir.entities.values() if e.type != "Class"),
+                key=lambda x: x.curie,
+            )
         else:
             items = self._children.get(parent_eid, [])
         return [
@@ -71,6 +85,7 @@ class Indexes:
                 eid=e.eid,
                 curie=e.curie,
                 label=e.label,
+                type=e.type,
                 children_count=len(self._children.get(e.eid, [])),
             )
             for e in items

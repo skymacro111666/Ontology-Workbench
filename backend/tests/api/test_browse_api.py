@@ -77,6 +77,46 @@ def test_tree_lazy_children(client: TestClient) -> None:
     assert [k["curie"] for k in kids] == ["ex:Dog"]
 
 
+MINI_PROPS = (
+    MINI
+    + b"""ex:livesIn a owl:ObjectProperty ; rdfs:domain ex:Animal ;
+rdfs:range ex:Thing .
+ex:age a owl:DatatypeProperty ; rdfs:domain ex:Dog .
+"""
+)
+
+
+def _upload_props(client: TestClient) -> str:
+    r = client.post(
+        "/api/ontologies",
+        files={"file": ("mini-props.ttl", io.BytesIO(MINI_PROPS), "text/turtle")},
+    )
+    return r.json()["data"]["id"]
+
+
+def test_tree_props_sentinel(client: TestClient) -> None:
+    """tree?parent=__props__ lists property nodes with their type (PropList source)."""
+    oid = _upload_props(client)
+    props = client.get(f"/api/ontologies/{oid}/tree", params={"parent": "__props__"}).json()["data"]
+    assert [p["curie"] for p in props] == ["ex:age", "ex:livesIn"]
+    assert {p["type"] for p in props} == {"ObjectProperty", "DatatypeProperty"}
+    assert all(p["childrenCount"] == 0 for p in props)
+    # The class tree is unaffected by the sentinel branch.
+    roots = client.get(f"/api/ontologies/{oid}/tree").json()["data"]
+    assert all(n["type"] == "Class" for n in roots)
+
+
+def test_meta_endpoint(client: TestClient) -> None:
+    """GET /meta serves the browse page's metadata (counts + prefixes), owner-checked."""
+    oid = _upload_props(client)
+    meta = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    assert meta["filename"] == "mini-props.ttl"
+    assert meta["classCount"] == 3
+    assert meta["propertyCount"] == 2
+    assert meta["prefixes"]["ex"] == "http://example.org/"
+    assert "owl" in meta["prefixes"]
+
+
 def test_unknown_ontology_is_404(client: TestClient) -> None:
     """A random UUID yields the uniform NOT_FOUND envelope."""
     import uuid

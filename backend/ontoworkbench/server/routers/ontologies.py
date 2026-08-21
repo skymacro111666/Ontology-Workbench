@@ -181,6 +181,23 @@ def list_ontologies(
     return respond({"items": [_summary(r) for r in rows], "total": len(rows)})
 
 
+@router.get("/ontologies/{ontology_id}/meta")
+def get_meta(
+    ontology_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """One ontology's metadata (counts + prefixes); uniform 404 otherwise."""
+    try:
+        oid = _to_uuid(ontology_id)
+    except ValueError:
+        raise ApiError(ErrorCode.NOT_FOUND, "No such ontology") from None
+    row = OntologyRepository(session).get_owned(user.id, oid) if oid else None
+    if not row:
+        raise ApiError(ErrorCode.NOT_FOUND, "No such ontology")
+    return respond(_meta(row))
+
+
 @router.delete("/ontologies/{ontology_id}")
 def delete_ontology(
     ontology_id: str,
