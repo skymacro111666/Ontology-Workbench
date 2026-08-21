@@ -11,7 +11,7 @@
 
 打开本体后进入 `/browse` 主工作区:
 
-- **顶栏**:本体标题 + 即时搜索框(防抖 150ms,按标签 / 本地名 / 注释做前缀+子串匹配)+ 总览图入口 + 导出按钮。
+- **顶栏**:本体标题 + 即时搜索框(防抖 150ms,按标签 / 本地名 / 注释做大小写不敏感的子串匹配)+ 总览图入口 + 导出按钮。
 - **左侧栏**:顶部统计摘要头("101 类 · 38 属性"),下方三个标签页——**类**(按 `rdfs:subClassOf` 层级树,虚拟滚动 + 懒加载,大本体不卡)、**属性**(对象 / 数据属性列表)、**前缀**(prefix ↔ IRI 对照表)。
 - **内容区**:面包屑类谱系(`schema:Thing › Person`)标示当前层级位置;底部状态栏实时显示文件名、类 / 属性数、triples 数与解析耗时。
 
@@ -70,7 +70,7 @@ cd ../backend && uv run ow serve
 
 访问 `http://127.0.0.1:8734`:首次启动引导创建管理员(一次性,此后永久关闭),登录后载入示例本体即可体验。首次运行自动从 `.env.example` 生成 `backend/.env`(`OW_JWT_SECRET` 自动生成写回)。
 
-**配置优先级:CLI 参数 > 环境变量(`.env`)> 默认值**。常用变量:`OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_LOG_DIR` / `OW_DB_URL`(默认 SQLite,可切 PostgreSQL)/ `OW_LOG_LEVEL`。非回环绑定时启动日志会提示置于反向代理 / HTTPS 之后。
+**配置优先级:CLI 参数 > 环境变量(`.env`)> 默认值**。常用变量:`OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_LOG_DIR` / `OW_DB_URL`(默认 SQLite,可切 PostgreSQL)/ `OW_LOG_LEVEL`。端口被占用时自动 +1 重试(至多 10 个);非回环绑定时启动会向 stderr 输出警告,建议置于反向代理 / HTTPS 之后。
 
 ## 工程化与可观测性
 
@@ -94,7 +94,7 @@ Competitor A 与 Competitor B 验证了需求,也定义了基线:隐私敏感场
 
 - **只读**:全部编辑能力后置(Phase 2 起步);无 SHACL / 推理 / SPARQL 控制台 / 个体展示。
 - **单用户**:多用户与数据隔离的后端骨架已就绪,管理界面 Phase 2 提供。
-- **SKOS 尽力显示**:Concept 按 `skos:broader` 进入类树;不承诺完整 SKOS 支持。
+- **仅渲染 OWL 实体**:Phase 1 只展示 `owl:Class` / `owl:ObjectProperty` / `owl:DatatypeProperty` 实体;纯 SKOS(如 `skos:Concept` / `skos:broader`)或其他无 OWL 类的本体,类树为空。SKOS 支持属 Phase 2。
 - **大本体**:> 50MB 上传给警告但尝试解析;总览图 > 500 节点降级为顶层 3 层。
 
 ## Overview (English)
