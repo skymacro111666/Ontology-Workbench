@@ -25,8 +25,7 @@
       .catch(function () {
         index = [];
         results.hidden = false;
-        results.innerHTML =
-          '<a>Search unavailable (data/index.json not loadable from file://)</a>';
+        showMessage('Search unavailable (data/index.json not loadable from file://)');
       });
   }
 
@@ -35,27 +34,47 @@
     return hay.indexOf(q) !== -1;
   }
 
+  // Ontology-authored strings (curie, label) only ever pass through textContent;
+  // anchors are assembled with DOM APIs so nothing is parsed as markup.
+  function resultLink(entry) {
+    var a = document.createElement('a');
+    a.href = entry.file;
+    var code = document.createElement('code');
+    code.textContent = entry.curie;
+    a.appendChild(code);
+    var label = labelOf(entry);
+    if (label) {
+      a.appendChild(document.createTextNode(' '));
+      var span = document.createElement('span');
+      span.className = 'muted';
+      span.textContent = label;
+      a.appendChild(span);
+    }
+    return a;
+  }
+
+  function showMessage(text) {
+    results.textContent = '';
+    var a = document.createElement('a');
+    a.textContent = text;
+    results.appendChild(a);
+  }
+
   function render(query) {
     if (!query) {
       results.hidden = true;
-      results.innerHTML = '';
+      results.textContent = '';
       return;
     }
     var hits = index.filter(function (e) { return matches(e, query); }).slice(0, 30);
     activeIndex = -1;
     results.hidden = false;
-    results.innerHTML = hits.length
-      ? hits
-          .map(function (e) {
-            var label = labelOf(e);
-            return (
-              '<a href="' + e.file + '"><code>' + e.curie + '</code>' +
-              (label ? ' <span class="muted">' + label + '</span>' : '') +
-              '</a>'
-            );
-          })
-          .join('')
-      : '<a>No matches</a>';
+    results.textContent = '';
+    if (!hits.length) {
+      showMessage('No matches');
+      return;
+    }
+    hits.forEach(function (e) { results.appendChild(resultLink(e)); });
   }
 
   input.addEventListener('input', function () {

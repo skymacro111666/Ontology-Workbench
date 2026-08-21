@@ -18,6 +18,24 @@ ex:B a owl:Class ; rdfs:subClassOf ex:A .
 ex:likes a owl:ObjectProperty ; rdfs:domain ex:A ; rdfs:range ex:B .
 """
 
+# subClassOf cycle hanging off a root: Root <- A <- B <- A (review finding Q1).
+CYCLIC = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:Root a owl:Class .
+ex:A a owl:Class ; rdfs:subClassOf ex:Root, ex:B .
+ex:B a owl:Class ; rdfs:subClassOf ex:A .
+"""
+
+# Label carrying markup: must never reach a rendered page as raw HTML (Q2).
+XSS_LABEL = "<img src=x onerror=alert(1)>"
+XSS = f"""@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:A a owl:Class ; rdfs:label "{XSS_LABEL}"@en .
+ex:B a owl:Class ; rdfs:subClassOf ex:A .
+"""
+
 
 def built():
     """Parse MINI once into (ir, indexes) for the export tests."""
@@ -88,3 +106,35 @@ def test_dark_mode_follows_system(tmp_path: Path) -> None:
     export_site(ir, ix, tmp_path, title="Mini")
     css = (tmp_path / "site.css").read_text(encoding="utf-8")
     assert "prefers-color-scheme: dark" in css
+
+
+def test_export_survives_subclassof_cycle(tmp_path: Path) -> None:
+    """A subClassOf cycle off a root exports fine; both members stay in the tree."""
+    g = rdflib.Graph().parse(data=CYCLIC, format="turtle")
+    ir = build_ir(g)
+    result = export_site(ir, build_indexes(ir), tmp_path, title="Cyclic")
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "ex:Root" in html
+    assert "ex:A" in html and "ex:B" in html  # cycle members rendered, not crashed
+    assert result.page_count == 4  # index + Root + A + B
+
+
+def test_label_markup_escaped_in_pages_raw_in_data(tmp_path: Path) -> None:
+    """Label markup never reaches a rendered page raw; data/index.json stays raw."""
+    g = rdflib.Graph().parse(data=XSS, format="turtle")
+    ir = build_ir(g)
+    export_site(ir, build_indexes(ir), tmp_path, title="XSS")
+    pages = list(tmp_path.rglob("*.html"))
+    assert pages  # sanity: there are rendered pages to check
+    for page in pages:
+        assert "<img" not in page.read_text(encoding="utf-8")
+    data = (tmp_path / "data" / "index.json").read_text(encoding="utf-8")
+    assert XSS_LABEL in data  # data stays raw; only HTML rendering escapes
+
+
+def test_site_js_uses_dom_apis_not_innerhtml(tmp_path: Path) -> None:
+    """Pin the client-side fix: search results are built via DOM APIs, never innerHTML."""
+    ir, ix = built()
+    export_site(ir, ix, tmp_path, title="Mini")
+    js = (tmp_path / "site.js").read_text(encoding="utf-8")
+    assert "innerHTML" not in js  # no string-to-markup sink anywhere in the file

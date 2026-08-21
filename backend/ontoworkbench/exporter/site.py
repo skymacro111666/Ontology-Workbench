@@ -50,13 +50,22 @@ def _env() -> Environment:
 def _sidebar_tree(indexes: Indexes) -> list[dict]:
     """Nested class tree for the sidebar: curie/eid/file/children."""
 
-    def node_of(e: EntityIR) -> dict:
+    def leaf_of(child: EntityIR) -> dict:
+        return {"curie": child.curie, "eid": child.eid, "file": file_of(child.eid), "children": []}
+
+    def node_of(e: EntityIR, seen: frozenset[str]) -> dict:
+        # seen is the root-to-e eid path; a child already on it closes a
+        # subClassOf cycle - render it as a leaf instead of descending
+        # (same posture as core's _total_descendants cycle guard).
+        path = seen | {e.eid}
         return {
             "curie": e.curie,
             "eid": e.eid,
             "file": file_of(e.eid),
             "children": [
-                node_of(child) for c in e.children if (child := indexes.entity(c.eid)) is not None
+                node_of(child, path) if child.eid not in path else leaf_of(child)
+                for c in e.children
+                if (child := indexes.entity(c.eid)) is not None
             ]
             if e.type == "Class"
             else [],
@@ -66,7 +75,7 @@ def _sidebar_tree(indexes: Indexes) -> list[dict]:
     for tn in indexes.tree(None):
         ent = indexes.entity(tn.eid)
         if ent is not None:
-            roots.append(node_of(ent))
+            roots.append(node_of(ent, frozenset()))
     return roots
 
 
