@@ -97,7 +97,7 @@ describe('Graph overview page', () => {
       `/graph/oid-1?focus=${encodeURIComponent('http://example.org/Dog')}`,
     )
     const dog = await screen.findByText('ex:Dog')
-    // Highlighted node renders the primary-color border (jsdom normalizes the hex).
-    await waitFor(() => expect(dog.parentElement?.style.border).toContain('rgb(13, 148, 136)'))
+    // Focused node is highlighted with the primary border class (Tailwind token).
+    await waitFor(() => expect(dog.className).toContain('border-primary'))
   })
 })
