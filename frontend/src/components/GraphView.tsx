@@ -17,7 +17,6 @@ import { cn } from '@/lib/utils'
 
 /** Node extended with what the canvas renders beyond the API payload. */
 export type GraphViewNode = GNode & {
-  childCount?: number
   highlighted?: boolean
 }
 
@@ -67,19 +66,6 @@ function EntityFlowNode({ data }: NodeProps<EntityFlowNodeType>) {
 }
 
 const NODE_TYPES = { entity: EntityFlowNode }
-
-/**
- * useTheme throws outside a provider, and page-level tests mount consumers
- * bare; fall back to the .dark class ThemeProvider itself maintains on
- * <html>, which tracks the same resolved value.
- */
-function useResolvedTheme(): 'light' | 'dark' {
-  try {
-    return useTheme().resolved
-  } catch {
-    return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
-  }
-}
 
 /**
  * Fits the canvas onto one node once nodes are measured; must render inside
@@ -174,7 +160,7 @@ export default function GraphView({
   /** Whether the zoom/fit control cluster is rendered (default true). */
   showControls?: boolean
 }) {
-  const resolved = useResolvedTheme()
+  const resolved = useTheme().resolved
   const [showLabels, setShowLabels] = useState(true)
   const [filter, setFilter] = useState<Filter>('all')
 

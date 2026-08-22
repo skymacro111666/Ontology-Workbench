@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Browse from './Browse'
 import { useBrowseStore } from '../stores/browseStore'
+import { ThemeProvider } from '../theme/ThemeProvider'
 import type { Envelope, EntityIR, NodesEdges, OntologyMeta } from '../api/types'
 
 const EID = 'http://example.org/Dog'
@@ -90,12 +91,15 @@ function renderBrowse(
     fetchMock,
     ...render(
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={[entry]}>
-          {/* Route params only resolve through a Routes declaration. */}
-          <Routes>
-            <Route path="/browse/:oid" element={<Browse />} />
-          </Routes>
-        </MemoryRouter>
+        {/* GraphView reads the resolved color mode through the provider. */}
+        <ThemeProvider>
+          <MemoryRouter initialEntries={[entry]}>
+            {/* Route params only resolve through a Routes declaration. */}
+            <Routes>
+              <Route path="/browse/:oid" element={<Browse />} />
+            </Routes>
+          </MemoryRouter>
+        </ThemeProvider>
       </QueryClientProvider>,
     ),
   }
