@@ -1,4 +1,61 @@
-/* Global reset only; colors and radii come from AntD theme tokens. */
+@import '@fontsource/manrope/400.css';
+@import '@fontsource/manrope/600.css';
+@import '@fontsource/fira-code/400.css';
+
+/* Migration period: theme+utilities only — preflight would fight AntD.
+   Task 15 switches to `@import 'tailwindcss';` */
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-soft: #eef2ff;
+  --color-primary-border: #c7d2fe;
+  --color-canvas: #f8fafc;
+  --color-panel: #ffffff;
+  --color-line: #e2e8f0;
+  --color-ink: #0f172a;
+  --color-ink-2: #475569;
+  --color-ink-3: #94a3b8;
+  --color-edge-sub: #8b5cf6;
+  --radius-ctl: 8px;
+  --radius-card: 10px;
+  --font-sans: Manrope, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'Fira Code', ui-monospace, Consolas, monospace;
+}
+
+.dark {
+  --color-primary: #818cf8;
+  --color-primary-hover: #a5b4fc;
+  --color-primary-soft: #6366f11f;
+  --color-primary-border: #6366f155;
+  --color-canvas: #0f172a;
+  --color-panel: #1e293b;
+  --color-line: #334155;
+  --color-ink: #e2e8f0;
+  --color-ink-2: #94a3b8;
+  --color-ink-3: #64748b;
+}
+
+/* Canvas dot grid for graph areas. */
+.canvas-dots {
+  background-image: radial-gradient(circle at 1px 1px, var(--color-line) 1px, transparent 0);
+  background-size: 22px 22px;
+}
+/* Uppercase micro-label (spec §3). */
+.microlabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+}
+
+/* Baseline kept from the pre-rewrite index.css so AntD pages render
+   identically during migration (preflight replaces this in task 15). */
 html,
 body,
 #root {
@@ -7,11 +64,6 @@ body,
 }
 
 body {
-  font-family:
-    Manrope,
-    -apple-system,
-    'PingFang SC',
-    'Microsoft YaHei',
-    sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
