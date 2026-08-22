@@ -262,4 +262,22 @@ describe('Browse four-zone workspace', () => {
     await userEvent.click(screen.getByRole('button', { name: '原始 TTL' }))
     expect(await screen.findByText(/a owl:Class/)).toBeTruthy()
   })
+
+  it('TTL ask then split keeps the compact pane on its overview', async () => {
+    useBrowseStore.setState({ selectedEid: EID })
+    renderBrowse(stubFetch())
+    await screen.findAllByText('pizza:Dog')
+    // Landed on detail with the TTL tab open; the signal stays set.
+    await userEvent.click(screen.getByRole('button', { name: '原始 TTL' }))
+    expect(await screen.findByText(/a owl:Class/)).toBeTruthy()
+    await switchMode('分屏')
+    // The compact pane mounts fresh while ttlFocusEid still targets the
+    // entity: overview must win (compact has no TTL tab to select).
+    const tab = screen.getByRole('tab', { name: '概览' })
+    expect(tab.getAttribute('aria-selected')).toBe('true')
+    const content = document.getElementById(tab.getAttribute('aria-controls') ?? '')
+    expect(content?.getAttribute('data-state')).toBe('active')
+    // Overview body (parents section) is actually mounted, not a blank pane.
+    expect(content?.textContent).toContain('pizza:Animal')
+  })
 })

@@ -130,6 +130,15 @@ describe('EntityDetail', () => {
     expect(await screen.findByText(/a owl:Class/)).toBeTruthy()
   })
 
+  it('compact stays on its overview even when the TTL signal targets this entity', async () => {
+    // Compact renders no TTL tab; honoring the signal would select a
+    // nonexistent tab and leave the overview content unmounted (blank pane).
+    useBrowseStore.setState({ ttlFocusEid: EID })
+    renderDetail(stubFetch(), { compact: true })
+    expect(await screen.findByText('pizza:Dog')).toBeTruthy()
+    expect(screen.getByRole('tab', { name: '概览' }).getAttribute('aria-selected')).toBe('true')
+  })
+
   it('falls back to the store selection when eid prop is omitted (old Browse)', async () => {
     useBrowseStore.setState({ selectedEid: EID })
     const fetchMock = stubFetch()

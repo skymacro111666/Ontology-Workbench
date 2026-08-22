@@ -135,7 +135,8 @@ function Overview({ ent, compact }: { ent: EntityIR; compact: boolean }) {
  *  fallback kept for its tested contract — Browse passes eid explicitly).
  *  `compact` drops the TTL tab and stats line for the split-view right column.
  *  Tabs open on TTL when the store carries an inspector TTL request for this
- *  entity (`openTtl`); Browse re-keys the pane per request so repeats refire. */
+ *  entity (`openTtl`); Browse re-keys the pane per request so repeats refire.
+ *  Compact always opens on overview — it has no TTL tab to select. */
 export default function EntityDetail({
   oid,
   eid,
@@ -189,7 +190,9 @@ export default function EntityDetail({
     <div className="flex flex-col gap-3">
       <h3 className="font-mono text-base font-semibold break-all">{ent.curie}</h3>
       <Tabs
-        defaultValue={ttlFocusEid !== null && ttlFocusEid === selectedEid ? 'ttl' : 'overview'}
+        defaultValue={
+          !compact && ttlFocusEid !== null && ttlFocusEid === selectedEid ? 'ttl' : 'overview'
+        }
       >
         <TabsList>
           <TabsTrigger value="overview">概览</TabsTrigger>
