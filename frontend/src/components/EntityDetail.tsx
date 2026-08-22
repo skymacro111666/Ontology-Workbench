@@ -131,9 +131,11 @@ function Overview({ ent, compact }: { ent: EntityIR; compact: boolean }) {
 }
 
 /** Detail state of the selected entity: overview / raw TTL tabs.
- *  `eid` prop wins; when omitted the browse-store selection is used so the
- *  not-yet-rewritten Browse page keeps working (middle-state rule, until T11).
- *  `compact` drops the TTL tab and stats line for the split-view right column. */
+ *  `eid` prop wins; when omitted the browse-store selection is used (legacy
+ *  fallback kept for its tested contract — Browse passes eid explicitly).
+ *  `compact` drops the TTL tab and stats line for the split-view right column.
+ *  Tabs open on TTL when the store carries an inspector TTL request for this
+ *  entity (`openTtl`); Browse re-keys the pane per request so repeats refire. */
 export default function EntityDetail({
   oid,
   eid,
@@ -144,6 +146,7 @@ export default function EntityDetail({
   compact?: boolean
 }) {
   const storeEid = useBrowseStore((s) => s.selectedEid)
+  const ttlFocusEid = useBrowseStore((s) => s.ttlFocusEid)
   const selectedEid = eid !== undefined ? eid : storeEid
 
   const { data: ent, isError } = useQuery({
@@ -153,8 +156,9 @@ export default function EntityDetail({
       api.get<EntityIR>(`/api/ontologies/${oid}/entities/${encodeURIComponent(selectedEid as string)}`),
     retry: false,
   })
+  // Compact renders no TTL tab, so it never fetches the raw payload either.
   const { data: raw } = useQuery({
-    enabled: selectedEid !== null,
+    enabled: selectedEid !== null && !compact,
     queryKey: ['raw', oid, selectedEid],
     queryFn: () =>
       api.get<{ turtle: string }>(
@@ -184,7 +188,9 @@ export default function EntityDetail({
   return (
     <div className="flex flex-col gap-3">
       <h3 className="font-mono text-base font-semibold break-all">{ent.curie}</h3>
-      <Tabs defaultValue="overview">
+      <Tabs
+        defaultValue={ttlFocusEid !== null && ttlFocusEid === selectedEid ? 'ttl' : 'overview'}
+      >
         <TabsList>
           <TabsTrigger value="overview">概览</TabsTrigger>
           {!compact && <TabsTrigger value="ttl">原始 TTL</TabsTrigger>}

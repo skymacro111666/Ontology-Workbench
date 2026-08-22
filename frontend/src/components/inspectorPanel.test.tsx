@@ -89,7 +89,13 @@ function renderPanel(
 }
 
 beforeEach(() => {
-  useBrowseStore.setState({ selectedEid: null, viewMode: 'detail', revealEid: null })
+  useBrowseStore.setState({
+    selectedEid: null,
+    viewMode: 'detail',
+    revealEid: null,
+    ttlFocusEid: null,
+    ttlNonce: 0,
+  })
 })
 
 afterEach(() => {
@@ -131,12 +137,14 @@ describe('InspectorPanel', () => {
     expect(useBrowseStore.getState().selectedEid).toBe('http://example.org/Kennel')
   })
 
-  it('raw TTL action switches the view mode to detail', async () => {
+  it('raw TTL action switches to detail and signals the TTL tab', async () => {
     useBrowseStore.setState({ viewMode: 'graph' })
     renderPanel()
     await screen.findByText('pizza:Dog')
     await userEvent.click(screen.getByRole('button', { name: '原始 TTL' }))
     expect(useBrowseStore.getState().viewMode).toBe('detail')
+    // The store signal the central EntityDetail consumes to open its TTL tab.
+    expect(useBrowseStore.getState().ttlFocusEid).toBe(EID)
   })
 
   it('overview action links to the graph page with the focus param', async () => {

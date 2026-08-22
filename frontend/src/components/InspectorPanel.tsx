@@ -77,6 +77,7 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
  *  Compact by design — the full content lives in the central detail view. */
 export default function InspectorPanel({ oid, eid }: { oid: string; eid: string | null }) {
   const setViewMode = useBrowseStore((s) => s.setViewMode)
+  const openTtl = useBrowseStore((s) => s.openTtl)
 
   const { data: ent, isError } = useQuery({
     enabled: eid !== null,
@@ -142,16 +143,19 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
       </Section>
 
       <div className="border-line mt-auto flex flex-col gap-2 border-t pt-3">
+        {/* Switches to detail AND opens the central TTL tab via the store
+            signal EntityDetail consumes (T11 assembly wiring). */}
         <Button
           variant="outline"
           size="sm"
           className="w-full"
-          onClick={() => setViewMode('detail')}
+          onClick={() => {
+            setViewMode('detail')
+            openTtl(ent.eid)
+          }}
         >
           原始 TTL
         </Button>
-        {/* TODO(T11): after switching to detail, scroll the central EntityDetail
-            to its TTL tab — needs a store signal that does not exist yet. */}
         <Button variant="secondary" size="sm" className="w-full" asChild>
           <Link to={`/graph/${oid}?focus=${encodeURIComponent(ent.eid)}`}>在总览中查看</Link>
         </Button>

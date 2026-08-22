@@ -1,30 +1,156 @@
 import { useQuery } from '@tanstack/react-query'
-import { Button, Layout, Result, Segmented, Space, Spin, Typography } from 'antd'
 import { useEffect } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { ApiErr, api } from '../api/client'
-import type { OntologyMeta } from '../api/types'
-import Breadcrumb from '../components/Breadcrumb'
+import type { EntityIR, NodesEdges, OntologyMeta, Ref } from '../api/types'
+import ClassTree from '../components/ClassTree'
 import EntityDetail from '../components/EntityDetail'
-import LocalGraph from '../components/LocalGraph'
-import SearchBox from '../components/SearchBox'
-import Sidebar from '../components/Sidebar'
-import StatusBar from '../components/StatusBar'
+import GraphView, { type GraphViewNode } from '../components/GraphView'
+import InspectorPanel from '../components/InspectorPanel'
 import { useBrowseStore, type ViewMode } from '../stores/browseStore'
+import { Button } from '@/components/ui/button'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
-const { Sider, Content, Footer } = Layout
+const MAX_DEPTH = 32
 
-const CANVAS_HEIGHT = 'calc(100vh - 210px)'
+/** One lineage level: renders its own ancestor chain first, then itself.
+ *  An external (undeclared) ancestor renders as plain text and ends the chain.
+ *  Each level's /entities call is a cached query, so revisits are instant. */
+function Lineage({ oid, ancestor, depth }: { oid: string; ancestor: Ref; depth: number }) {
+  const reveal = useBrowseStore((s) => s.reveal)
+  const { data: ent, isError } = useQuery({
+    queryKey: ['entity', oid, ancestor.eid],
+    queryFn: () =>
+      api.get<EntityIR>(`/api/ontologies/${oid}/entities/${encodeURIComponent(ancestor.eid)}`),
+    retry: false,
+  })
 
-/** Main workbench: tri-tab sidebar + content area + full-width status bar. */
+  if (isError) {
+    return <span className="text-ink-3">{ancestor.curie}</span>
+  }
+  const parent = depth < MAX_DEPTH ? ent?.parents.find((p) => p.eid !== ancestor.eid) : undefined
+  return (
+    <>
+      {ent && parent && (
+        <>
+          <Lineage oid={oid} ancestor={parent} depth={depth + 1} />
+          <span className="text-ink-3 mx-1.5" aria-hidden="true">
+            ›
+          </span>
+        </>
+      )}
+      <button
+        type="button"
+        className="text-primary hover:text-primary-hover truncate underline-offset-4 hover:underline"
+        onClick={() => reveal(ancestor.eid)}
+      >
+        {ent?.curie ?? ancestor.curie}
+      </button>
+    </>
+  )
+}
+
+/** Toolbar breadcrumb: root › … › selected; every level funnels through
+ *  reveal() so the class tree follows the navigation (spec §7.4). */
+function EntityBreadcrumb({ oid }: { oid: string }) {
+  const selectedEid = useBrowseStore((s) => s.selectedEid)
+  const { data: ent } = useQuery({
+    enabled: selectedEid !== null,
+    queryKey: ['entity', oid, selectedEid],
+    queryFn: () =>
+      api.get<EntityIR>(
+        `/api/ontologies/${oid}/entities/${encodeURIComponent(selectedEid as string)}`,
+      ),
+    retry: false,
+  })
+
+  if (!selectedEid || !ent) return null
+  const parent = ent.parents.find((p) => p.eid !== selectedEid)
+  return (
+    <nav aria-label="类谱系" className="flex min-w-0 items-baseline">
+      {parent && (
+        <>
+          <Lineage oid={oid} ancestor={parent} depth={0} />
+          <span className="text-ink-3 mx-1.5" aria-hidden="true">
+            ›
+          </span>
+        </>
+      )}
+      <strong className="truncate">{ent.curie}</strong>
+    </nav>
+  )
+}
+
+/** Neighbors canvas for split/graph modes: /neighbors around the selection
+ *  (ported from the deleted LocalGraph; the overview link moved to the toolbar). */
+function NeighborsCanvas({ oid, eid }: { oid: string; eid: string | null }) {
+  const reveal = useBrowseStore((s) => s.reveal)
+  const { data: nb, isError } = useQuery({
+    enabled: eid !== null,
+    queryKey: ['neighbors', oid, eid],
+    queryFn: () =>
+      api.get<NodesEdges>(
+        `/api/ontologies/${oid}/entities/${encodeURIComponent(eid as string)}/neighbors`,
+      ),
+    retry: false,
+  })
+  // Shares the ['entity'] cache with the detail pane, breadcrumb, inspector.
+  const { data: ent } = useQuery({
+    enabled: eid !== null,
+    queryKey: ['entity', oid, eid],
+    queryFn: () =>
+      api.get<EntityIR>(
+        `/api/ontologies/${oid}/entities/${encodeURIComponent(eid as string)}`,
+      ),
+    retry: false,
+  })
+
+  if (eid === null) {
+    return (
+      <div className="border-line text-ink-3 rounded-card flex h-full items-center justify-center border border-dashed text-sm">
+        先选择一个实体
+      </div>
+    )
+  }
+  if (isError) {
+    // Mirrors EntityDetail: undeclared eids 404 on the neighbors endpoint.
+    return (
+      <div className="border-line text-ink-3 rounded-card flex h-full items-center justify-center border border-dashed text-sm">
+        外部实体（未在本体中声明），无局部图
+      </div>
+    )
+  }
+  if (!nb) {
+    return <div className="text-ink-3 py-16 text-center text-sm">加载中…</div>
+  }
+
+  // The self node ships kind:'self'; map it to its real type so the type
+  // filter treats it as the class/property it actually is, and ring it as
+  // the anchor of the neighborhood.
+  const nodes: GraphViewNode[] = nb.nodes.map((n) => {
+    if (n.id !== eid) return n
+    return {
+      ...n,
+      kind: ent ? (ent.type === 'Class' ? 'class' : 'property') : n.kind,
+      highlighted: true,
+    }
+  })
+
+  return <GraphView nodes={nodes} edges={nb.edges} onSelect={reveal} />
+}
+
+/** Main workspace: four-zone grid — class tree, content (three view modes),
+ *  resident inspector, status bar (spec §7.2). */
 export default function Browse() {
   const { oid = '' } = useParams()
+  const [sp] = useSearchParams()
+  const eidParam = sp.get('eid')
   const viewMode = useBrowseStore((s) => s.viewMode)
   const setViewMode = useBrowseStore((s) => s.setViewMode)
   const selectedEid = useBrowseStore((s) => s.selectedEid)
   const setSelected = useBrowseStore((s) => s.setSelected)
-  const [sp] = useSearchParams()
-  const eidParam = sp.get('eid')
+  const ttlFocusEid = useBrowseStore((s) => s.ttlFocusEid)
+  const ttlNonce = useBrowseStore((s) => s.ttlNonce)
   // Deep link from the overview page (?eid=...) preselects the entity.
   useEffect(() => {
     if (eidParam) setSelected(eidParam)
@@ -37,91 +163,113 @@ export default function Browse() {
 
   if (isError) {
     const missing = error instanceof ApiErr && error.code === 'NOT_FOUND'
-    return missing ? (
-      <Result
-        status="404"
-        title="本体不存在"
-        subTitle="它可能已被删除，或不属于当前用户。"
-        extra={
-          <Link to="/">
-            <Button type="primary">返回首页</Button>
-          </Link>
-        }
-      />
-    ) : (
-      <Result
-        status="warning"
-        title="加载失败"
-        subTitle="无法连接服务器，请确认后端已启动。"
-        extra={
-          <Button type="primary" onClick={() => void refetch()}>
+    return (
+      <div className="border-line rounded-card text-ink-2 mx-auto mt-16 flex w-full max-w-[420px] flex-col items-center gap-3 border px-6 py-12 text-center">
+        <div className="flex flex-col gap-1">
+          <p className="font-medium">{missing ? '本体不存在' : '加载失败'}</p>
+          <p className="text-sm">
+            {missing ? '它可能已被删除，或不属于当前用户。' : '无法连接服务器，请确认后端已启动。'}
+          </p>
+        </div>
+        {missing ? (
+          <Button size="sm" asChild>
+            <Link to="/">返回首页</Link>
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => void refetch()}>
             重试
           </Button>
-        }
-      />
-    )
-  }
-  if (!meta) {
-    return (
-      <div style={{ padding: 48, textAlign: 'center' }}>
-        <Spin />
+        )}
       </div>
     )
   }
+  if (!meta) {
+    return <div className="text-ink-3 py-16 text-center text-sm">加载中…</div>
+  }
 
   return (
-    <Layout style={{ height: '100vh' }}>
-      {/* Inner layout carries the sider; the outer stays column-shaped so
-          the Footer spans the full width below both sider and content. */}
-      <Layout>
-        <Sider width={304} theme="light" style={{ overflow: 'auto' }}>
-          <Sidebar oid={oid} meta={meta} />
-        </Sider>
-        <Content style={{ padding: '12px 20px', overflow: 'auto' }}>
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-            <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-              <Typography.Title level={5} style={{ margin: 0 }}>
-                {meta.title}
-              </Typography.Title>
-              <Space>
-                <SearchBox oid={oid} />
-                <Segmented<ViewMode>
-                  size="small"
-                  value={viewMode}
-                  onChange={(v) => setViewMode(v)}
-                  options={[
-                    { label: '详情', value: 'detail' },
-                    { label: '分屏', value: 'split' },
-                    { label: '图', value: 'graph' },
-                  ]}
-                />
-                <Link to={`/graph/${oid}`}>
-                  <Button size="small">总览图</Button>
-                </Link>
-                <Link to={`/export/${oid}`}>
-                  <Button size="small">导出</Button>
-                </Link>
-              </Space>
-            </Space>
-            <Breadcrumb oid={oid} />
-            {viewMode === 'detail' && <EntityDetail oid={oid} />}
-            {viewMode === 'graph' && <LocalGraph oid={oid} eid={selectedEid} height={CANVAS_HEIGHT} />}
-            {viewMode === 'split' && (
-              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <LocalGraph oid={oid} eid={selectedEid} height={CANVAS_HEIGHT} />
-                </div>
-                <div style={{ width: 400, flexShrink: 0 }}>
-                  <EntityDetail oid={oid} />
-                </div>
+    <div className="grid h-full min-h-0 grid-cols-[264px_1fr_312px] grid-rows-[1fr_30px]">
+      {/* Zone 1: class tree */}
+      <aside className="border-line min-h-0 overflow-hidden border-r p-2">
+        <ClassTree oid={oid} />
+      </aside>
+
+      {/* Zone 2: content — toolbar over the three view modes */}
+      <section aria-label="内容区" className="border-line flex min-h-0 flex-col border-r">
+        <div className="border-line flex shrink-0 items-center gap-3 border-b px-3 py-2">
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={viewMode}
+            onValueChange={(v) => {
+              if (v) setViewMode(v as ViewMode)
+            }}
+          >
+            <ToggleGroupItem value="detail">详情</ToggleGroupItem>
+            <ToggleGroupItem value="split">分屏</ToggleGroupItem>
+            <ToggleGroupItem value="graph">图</ToggleGroupItem>
+          </ToggleGroup>
+          <div className="text-ink-2 min-w-0 flex-1 font-mono text-xs">
+            <EntityBreadcrumb oid={oid} />
+          </div>
+          {selectedEid !== null && (
+            <Button variant="outline" size="sm" className="shrink-0" asChild>
+              <Link to={`/graph/${oid}?focus=${encodeURIComponent(selectedEid)}`}>
+                在总览中查看
+              </Link>
+            </Button>
+          )}
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          {viewMode === 'detail' && (
+            // Re-keyed per inspector TTL request so the pane remounts with
+            // its TTL tab open; nonce keeps repeated asks re-triggering.
+            <EntityDetail
+              oid={oid}
+              eid={selectedEid}
+              key={ttlFocusEid !== null && ttlFocusEid === selectedEid ? `ttl-${ttlNonce}` : 'default'}
+            />
+          )}
+          {viewMode === 'split' && (
+            <div className="flex h-full min-h-0 gap-4">
+              <div className="min-w-0 flex-1">
+                <NeighborsCanvas oid={oid} eid={selectedEid} />
               </div>
-            )}
-          </Space>
-        </Content>
-      </Layout>
-      <Footer style={{ padding: '6px 20px' }}>
-        <StatusBar meta={meta} />
-      </Footer>
-    </Layout>
+              <div className="w-[400px] shrink-0 overflow-y-auto">
+                <EntityDetail oid={oid} eid={selectedEid} compact />
+              </div>
+            </div>
+          )}
+          {viewMode === 'graph' && <NeighborsCanvas oid={oid} eid={selectedEid} />}
+        </div>
+      </section>
+
+      {/* Zone 3: resident inspector */}
+      <aside className="min-h-0 overflow-hidden p-2">
+        <InspectorPanel oid={oid} eid={selectedEid} />
+      </aside>
+
+      {/* Zone 4: status bar */}
+      <footer className="border-line bg-panel text-ink-2 row-start-2 col-span-full flex items-center gap-2 border-t px-3 text-xs">
+        <span className="font-mono">{meta.filename}</span>
+        <span className="text-ink-3" aria-hidden="true">
+          ·
+        </span>
+        <span>{meta.classCount} 类</span>
+        <span className="text-ink-3" aria-hidden="true">
+          ·
+        </span>
+        <span>{meta.propertyCount} 属性</span>
+        <span className="text-ink-3" aria-hidden="true">
+          ·
+        </span>
+        <span>{meta.axiomCount} 公理</span>
+        <span className="text-ink-3" aria-hidden="true">
+          ·
+        </span>
+        <span>解析 OK</span>
+      </footer>
+    </div>
   )
 }

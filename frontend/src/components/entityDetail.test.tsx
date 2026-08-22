@@ -9,7 +9,7 @@ import type { Envelope, EntityIR } from '../api/types'
 const EID = 'http://example.org/Dog'
 const PARENT = 'http://example.org/Animal'
 
-/** Same shape as entity() in browse.viewmode.test.tsx, extended with
+/** Same shape as entity() in browse.test.tsx, extended with
  *  children/properties/referencedBy entries so every overview section renders. */
 function entity(): EntityIR {
   return {
@@ -66,7 +66,13 @@ function renderDetail(fetchMock: ReturnType<typeof stubFetch>, props: { eid?: st
 }
 
 beforeEach(() => {
-  useBrowseStore.setState({ selectedEid: null, viewMode: 'detail', revealEid: null })
+  useBrowseStore.setState({
+    selectedEid: null,
+    viewMode: 'detail',
+    revealEid: null,
+    ttlFocusEid: null,
+    ttlNonce: 0,
+  })
 })
 
 afterEach(() => {
@@ -105,13 +111,23 @@ describe('EntityDetail', () => {
     expect(await screen.findByText(/a owl:Class/)).toBeTruthy()
   })
 
-  it('compact mode hides the TTL tab and stats but keeps the overview', async () => {
-    renderDetail(stubFetch(), { compact: true })
+  it('compact mode hides the TTL tab and stats, and fetches no raw TTL', async () => {
+    const fetchMock = stubFetch()
+    renderDetail(fetchMock, { compact: true })
     expect(await screen.findByText('pizza:Dog')).toBeTruthy()
     expect(screen.getByRole('tab', { name: '概览' })).toBeTruthy()
     expect(screen.queryByRole('tab', { name: '原始 TTL' })).toBeNull()
     expect(screen.queryByText(/直接子类/)).toBeNull()
     expect(screen.getByText('pizza:Animal')).toBeTruthy()
+    // Compact renders no TTL tab, so the raw query stays disabled.
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/raw/'))).toBe(false)
+  })
+
+  it('opens on the TTL tab when the inspector TTL signal targets this entity', async () => {
+    useBrowseStore.setState({ ttlFocusEid: EID })
+    renderDetail(stubFetch())
+    // TTL content mounts without any tab click — the signal was consumed.
+    expect(await screen.findByText(/a owl:Class/)).toBeTruthy()
   })
 
   it('falls back to the store selection when eid prop is omitted (old Browse)', async () => {
