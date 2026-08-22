@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -43,4 +43,17 @@ it('rejects files over 150MB before uploading', async () => {
   await userEvent.upload(input, big)
   expect(await screen.findByText(/超过 150MB/)).toBeTruthy()
   expect(fetchMock).not.toHaveBeenCalled()
+})
+
+it('clears the size error when the dialog reopens', async () => {
+  vi.stubGlobal('fetch', vi.fn())
+  wrap()
+  const big = new File([new Uint8Array(10)], 'huge.ttl')
+  Object.defineProperty(big, 'size', { value: 151 * 1024 * 1024 })
+  const input = document.querySelector('input[type=file]') as HTMLInputElement
+  await userEvent.upload(input, big)
+  expect(await screen.findByText(/超过 150MB/)).toBeTruthy()
+  act(() => useUiStore.getState().setImportOpen(false))
+  act(() => useUiStore.getState().setImportOpen(true))
+  expect(screen.queryByText(/超过 150MB/)).toBeNull()
 })

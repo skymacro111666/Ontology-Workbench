@@ -54,6 +54,20 @@ export default function ImportDialog() {
     }
   }
 
+  // Opening always comes from the store (this dialog has no DialogTrigger),
+  // so Radix only ever delivers `false` through onOpenChange; clear the last
+  // session's messages on the closed→open transition (render-time state
+  // adjustment per react.dev "You Might Not Need an Effect" — a useEffect here
+  // trips react-hooks/set-state-in-effect).
+  const [prevOpen, setPrevOpen] = useState(open)
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (open) {
+      setSizeError(null)
+      setStatus(null)
+    }
+  }
+
   return (
     <>
       {/* Outside the portal so it outlives the closing dialog (status messages
@@ -63,16 +77,7 @@ export default function ImportDialog() {
           {status}
         </p>
       )}
-      <Dialog
-        open={open}
-        onOpenChange={(next) => {
-          setImportOpen(next)
-          if (next) {
-            setSizeError(null)
-            setStatus(null)
-          }
-        }}
-      >
+      <Dialog open={open} onOpenChange={setImportOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>导入本体</DialogTitle>
