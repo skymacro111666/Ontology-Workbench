@@ -1,11 +1,27 @@
-import { DeleteOutlined, FileTextOutlined } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, Card, Col, Empty, Modal, Result, Row, Space, Statistic, Tag, Typography, message } from 'antd'
+import { FileTextIcon, Trash2Icon } from 'lucide-react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router'
+import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
 import type { OntologyMeta, OntologySummary } from '../api/types'
 import { LAST_OID_KEY } from '../auth/AuthContext'
-import UploadDropzone from '../components/UploadDropzone'
+import EmptyState from '../components/EmptyState'
+import StatTiles from '../components/StatTiles'
+import { useUiStore } from '../stores/uiStore'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 
 const SAMPLES: { name: string; description: string }[] = [
   { name: 'pizza', description: '经典 Pizza 本体（类/属性/公理齐全）' },
@@ -18,12 +34,19 @@ function formatSize(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
-/** Home: stats header, upload dropzone, ontology cards, builtin samples. */
+/** ISO timestamp → YYYY-MM-DD, stable across locales and timezones. */
+function formatDate(iso: string): string {
+  return iso.slice(0, 10)
+}
+
+/** Home (工作台): stat tiles, builtin samples, ontology list cards. */
 export default function Home() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const setImportOpen = useUiStore((s) => s.setImportOpen)
+  const [deleteTarget, setDeleteTarget] = useState<OntologySummary | null>(null)
 
-  const { data, isError, refetch } = useQuery({
+  const { data, isError, isPending, refetch } = useQuery({
     queryKey: ['ontologies'],
     queryFn: () => api.get<{ items: OntologySummary[]; total: number }>('/api/ontologies'),
   })
@@ -36,11 +59,11 @@ export default function Home() {
   const del = useMutation({
     mutationFn: (id: string) => api.del(`/api/ontologies/${id}`),
     onSuccess: () => {
-      message.success('已删除')
+      toast.success('已删除')
       void queryClient.invalidateQueries({ queryKey: ['ontologies'] })
     },
     onError: (err) => {
-      message.error(err instanceof ApiErr ? err.message : '操作失败，请稍后重试')
+      toast.error(err instanceof ApiErr ? err.message : '操作失败，请稍后重试')
     },
   })
 
@@ -51,119 +74,129 @@ export default function Home() {
       openOntology(meta.id)
     },
     onError: (err) => {
-      message.error(err instanceof ApiErr ? err.message : '载入示例失败，请稍后重试')
+      toast.error(err instanceof ApiErr ? err.message : '载入示例失败，请稍后重试')
     },
   })
 
   const items: OntologySummary[] = data?.items ?? []
   const totalClasses = items.reduce((sum, o) => sum + o.classCount, 0)
   const totalProperties = items.reduce((sum, o) => sum + o.propertyCount, 0)
+  const totalAxioms = items.reduce((sum, o) => sum + o.axiomCount, 0)
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200, margin: '0 auto' }}>
-      <Typography.Title level={3}>我的本体</Typography.Title>
+    <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
+      <h1 className="text-lg font-semibold">我的本体</h1>
 
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col>
-          <Statistic title="本体" value={items.length} />
-        </Col>
-        <Col>
-          <Statistic title="类" value={totalClasses} />
-        </Col>
-        <Col>
-          <Statistic title="属性" value={totalProperties} />
-        </Col>
-      </Row>
+      <StatTiles
+        ontologies={items.length}
+        classes={totalClasses}
+        properties={totalProperties}
+        axioms={totalAxioms}
+      />
 
-      <UploadDropzone />
-
-      <Typography.Title level={5} style={{ marginTop: 24 }}>
-        内置示例
-      </Typography.Title>
-      <Row gutter={12}>
-        {SAMPLES.map((s) => (
-          <Col key={s.name}>
-            <Card
-              size="small"
-              hoverable
-              style={{ width: 220 }}
+      <section className="flex flex-col gap-3" aria-label="内置示例">
+        <h2 className="text-sm font-semibold">内置示例</h2>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {SAMPLES.map((s) => (
+            <button
+              key={s.name}
+              type="button"
               onClick={() => sample.mutate(s.name)}
-              loading={sample.isPending && sample.variables === s.name}
+              disabled={sample.isPending && sample.variables === s.name}
+              className="rounded-card outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:opacity-60"
             >
-              <Card.Meta title={s.name} description={s.description} />
-            </Card>
-          </Col>
-        ))}
-      </Row>
+              <Card className="rounded-card gap-2 py-4 transition-colors hover:border-primary">
+                <CardContent className="flex flex-col gap-1 px-4">
+                  <span className="text-sm font-semibold">{s.name}</span>
+                  <span className="text-ink-2 text-sm">{s.description}</span>
+                </CardContent>
+              </Card>
+            </button>
+          ))}
+        </div>
+      </section>
 
-      <Typography.Title level={5} style={{ marginTop: 24 }}>
-        本体列表
-      </Typography.Title>
-      {isError ? (
-        <Result
-          status="warning"
-          title="列表加载失败"
-          subTitle="无法连接服务器，请确认后端已启动。"
-          extra={
-            <Button type="primary" onClick={() => void refetch()}>
+      <section className="flex flex-col gap-3" aria-label="本体列表">
+        <h2 className="text-sm font-semibold">本体列表</h2>
+        {isError ? (
+          <div className="border-line flex flex-col items-center gap-3 rounded-card border px-6 py-12 text-center">
+            <div className="flex flex-col gap-1">
+              <p className="font-medium">列表加载失败</p>
+              <p className="text-ink-2 text-sm">无法连接服务器，请确认后端已启动。</p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => void refetch()}>
               重试
             </Button>
-          }
-        />
-      ) : items.length === 0 ? (
-        <Empty description="还没有本体，先上传或载入示例" />
-      ) : (
-        <Row gutter={[12, 12]}>
-          {items.map((o) => (
-            <Col key={o.id} xs={24} md={12} lg={8}>
-              <Card
-                size="small"
-                title={
-                  <Space>
-                    <FileTextOutlined />
-                    <span>{o.title}</span>
-                  </Space>
-                }
-                extra={
-                  <Space>
-                    <Button size="small" onClick={() => openOntology(o.id)}>
-                      打开
-                    </Button>
-                    <Button
-                      size="small"
-                      danger
-                      aria-label={`删除 ${o.title}`}
-                      icon={<DeleteOutlined />}
-                      onClick={() =>
-                        Modal.confirm({
-                          title: `删除「${o.title}」？`,
-                          content: '文件与索引将一并移除，不可恢复。',
-                          okText: '删除',
-                          okButtonProps: { danger: true },
-                          cancelText: '取消',
-                          onOk: () => del.mutate(o.id),
-                        })
-                      }
-                    />
-                  </Space>
-                }
-              >
-                <Space direction="vertical" size={2} style={{ width: '100%' }}>
-                  <Space wrap>
-                    <Tag>{o.format}</Tag>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      {o.filename} · {formatSize(o.fileSizeBytes)}
-                    </Typography.Text>
-                  </Space>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          </div>
+        ) : isPending ? null : items.length === 0 ? (
+          <EmptyState
+            onLoadSample={() => sample.mutate('pizza')}
+            onImport={() => setImportOpen(true)}
+          />
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {items.map((o) => (
+              <Card key={o.id} className="rounded-card gap-2.5 py-4">
+                <CardContent className="flex flex-col gap-1.5 px-4">
+                  <div className="flex items-center gap-2">
+                    <FileTextIcon className="text-ink-3 size-4 shrink-0" aria-hidden />
+                    <span className="truncate text-sm font-medium">{o.title}</span>
+                    <Badge variant="secondary" className="font-mono">
+                      {o.format}
+                    </Badge>
+                    <span className="ml-auto flex shrink-0 gap-1">
+                      <Button size="sm" variant="outline" onClick={() => openOntology(o.id)}>
+                        打开
+                      </Button>
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={`删除 ${o.title}`}
+                        onClick={() => setDeleteTarget(o)}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </span>
+                  </div>
+                  <p className="text-ink-2 truncate text-sm">
+                    <span className="font-mono">{o.filename}</span> · {formatSize(o.fileSizeBytes)}{' '}
+                    · {formatDate(o.createdAt)}
+                  </p>
+                  <p className="text-ink-2 text-sm">
                     {o.classCount} 类 · {o.propertyCount} 属性 · {o.axiomCount} 公理
-                  </Typography.Text>
-                </Space>
+                  </p>
+                </CardContent>
               </Card>
-            </Col>
-          ))}
-        </Row>
-      )}
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Controlled per-card delete confirm; open only while a target is set. */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除「{deleteTarget?.title}」？</AlertDialogTitle>
+            <AlertDialogDescription>文件与索引将一并移除，不可恢复。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              onClick={() => {
+                if (deleteTarget) del.mutate(deleteTarget.id)
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
