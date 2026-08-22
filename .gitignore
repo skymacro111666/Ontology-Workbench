@@ -27,3 +27,6 @@ tmp_big_ontology.ttl
 
 # 临时目录(竞品截图、mockup、打包产物)
 tmp/
+
+# SDD 执行工作区(ledger/brief/report 草稿)
+.superpowers/
