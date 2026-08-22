@@ -1,79 +1,151 @@
 import { useQuery } from '@tanstack/react-query'
-import { Empty, Space, Spin, Table, Tabs, Tag, Typography } from 'antd'
 import { api } from '../api/client'
-import type { EntityIR, PropRef, Ref } from '../api/types'
+import type { EntityIR, PropRef, Ref, ReferencedRef } from '../api/types'
 import { useBrowseStore } from '../stores/browseStore'
-import RefPanel from './RefPanel'
+import { Badge } from '@/components/ui/badge'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-const MONO = { fontFamily: "'Fira Code', monospace" }
-
-/** Clickable entity links (parents/children lists, back-refs navigate too). */
+/** Clickable entity links for the parents/children lists. */
 function RefLinks({ refs }: { refs: Ref[] }) {
   const setSelected = useBrowseStore((s) => s.setSelected)
-  if (refs.length === 0) return <Typography.Text type="secondary">—</Typography.Text>
+  if (refs.length === 0) return <span className="text-ink-3">—</span>
   return (
-    <Space wrap size={4}>
+    <div className="flex flex-wrap gap-x-3 gap-y-1">
       {refs.map((r) => (
-        <a key={r.eid} style={MONO} onClick={() => setSelected(r.eid)}>
+        <button
+          key={r.eid}
+          type="button"
+          className="text-primary hover:text-primary-hover font-mono text-sm break-all underline-offset-4 hover:underline"
+          onClick={() => setSelected(r.eid)}
+        >
           {r.curie}
-        </a>
+        </button>
       ))}
-    </Space>
+    </div>
   )
 }
 
-function Overview({ ent }: { ent: EntityIR }) {
+/** Property rows: curie + its type. */
+function PropertyTable({ rows }: { rows: PropRef[] }) {
   return (
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      <Space wrap>
-        <Tag>{ent.type}</Tag>
-        {Object.entries(ent.label).map(([lang, value]) => (
-          <Tag key={lang}>
-            {lang}: {value}
-          </Tag>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>属性</TableHead>
+          <TableHead className="w-44">类型</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((r) => (
+          <TableRow key={r.eid}>
+            <TableCell className="font-mono">{r.curie}</TableCell>
+            <TableCell>{r.ptype}</TableCell>
+          </TableRow>
         ))}
-        {ent.deprecated && <Tag color="warning">deprecated</Tag>}
-      </Space>
+      </TableBody>
+    </Table>
+  )
+}
 
-      {ent.comment && <Typography.Paragraph>{ent.comment}</Typography.Paragraph>}
+/** Reverse references (absorbed from RefPanel): who mentions this entity,
+ *  row click navigates to the referencing entity. */
+function BackRefTable({ refs }: { refs: ReferencedRef[] }) {
+  const setSelected = useBrowseStore((s) => s.setSelected)
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>CURIE</TableHead>
+          <TableHead className="w-44">关系</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {refs.map((r) => (
+          <TableRow key={r.eid} className="cursor-pointer" onClick={() => setSelected(r.eid)}>
+            <TableCell className="font-mono">{r.curie}</TableCell>
+            <TableCell>{r.relation}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
 
-      <div>
-        <Typography.Text type="secondary">父类</Typography.Text>
-        <div>
-          <RefLinks refs={ent.parents} />
-        </div>
+function Overview({ ent, compact }: { ent: EntityIR; compact: boolean }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Badge variant="secondary" className="font-mono">
+          {ent.type}
+        </Badge>
+        {Object.entries(ent.label).map(([lang, value]) => (
+          <Badge key={lang} variant="outline">
+            {lang}: {value}
+          </Badge>
+        ))}
+        {ent.deprecated && <Badge variant="destructive">deprecated</Badge>}
       </div>
-      <div>
-        <Typography.Text type="secondary">子类</Typography.Text>
-        <div>
-          <RefLinks refs={ent.children} />
-        </div>
-      </div>
+
+      {ent.comment && <p className="text-ink-2 text-sm">{ent.comment}</p>}
+
+      <section className="flex flex-col gap-1.5">
+        <span className="microlabel">父类</span>
+        <RefLinks refs={ent.parents} />
+      </section>
+      <section className="flex flex-col gap-1.5">
+        <span className="microlabel">子类</span>
+        <RefLinks refs={ent.children} />
+      </section>
 
       {ent.properties.length > 0 && (
-        <Table<PropRef>
-          size="small"
-          rowKey="eid"
-          pagination={false}
-          dataSource={ent.properties}
-          columns={[
-            { title: '属性', dataIndex: 'curie' },
-            { title: '类型', dataIndex: 'ptype', width: 150 },
-            { title: '标签', render: (_, r) => r.label?.en ?? r.label?.zh ?? '' },
-          ]}
-        />
+        <section className="flex flex-col gap-1.5">
+          <span className="microlabel">属性</span>
+          <PropertyTable rows={ent.properties} />
+        </section>
       )}
 
-      <Typography.Text type="secondary">
-        直接子类 {ent.stats.directChildren} · 全部后代 {ent.stats.totalDescendants}
-      </Typography.Text>
-    </Space>
+      <section className="flex flex-col gap-1.5">
+        <span className="microlabel">反向引用</span>
+        {ent.referencedBy.length > 0 ? (
+          <BackRefTable refs={ent.referencedBy} />
+        ) : (
+          <span className="text-ink-3 text-sm">暂无反向引用</span>
+        )}
+      </section>
+
+      {!compact && (
+        <p className="text-ink-2 text-sm">
+          直接子类 {ent.stats.directChildren} · 全部后代 {ent.stats.totalDescendants}
+        </p>
+      )}
+    </div>
   )
 }
 
-/** Detail state of the selected entity: overview/TTL tabs + back-ref panel. */
-export default function EntityDetail({ oid }: { oid: string }) {
-  const selectedEid = useBrowseStore((s) => s.selectedEid)
+/** Detail state of the selected entity: overview / raw TTL tabs.
+ *  `eid` prop wins; when omitted the browse-store selection is used so the
+ *  not-yet-rewritten Browse page keeps working (middle-state rule, until T11).
+ *  `compact` drops the TTL tab and stats line for the split-view right column. */
+export default function EntityDetail({
+  oid,
+  eid,
+  compact = false,
+}: {
+  oid: string
+  eid?: string | null
+  compact?: boolean
+}) {
+  const storeEid = useBrowseStore((s) => s.selectedEid)
+  const selectedEid = eid !== undefined ? eid : storeEid
+
   const { data: ent, isError } = useQuery({
     enabled: selectedEid !== null,
     queryKey: ['entity', oid, selectedEid],
@@ -85,49 +157,49 @@ export default function EntityDetail({ oid }: { oid: string }) {
     enabled: selectedEid !== null,
     queryKey: ['raw', oid, selectedEid],
     queryFn: () =>
-      api.get<{ turtle: string; eid: string }>(
+      api.get<{ turtle: string }>(
         `/api/ontologies/${oid}/raw/${encodeURIComponent(selectedEid as string)}`,
       ),
     retry: false,
   })
 
   if (selectedEid === null) {
-    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择左侧实体查看详情" />
-  }
-  if (isError) {
     return (
-      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="外部实体（未在本体中声明），无详情页" />
-    )
-  }
-  if (!ent) {
-    return (
-      <div style={{ padding: 24, textAlign: 'center' }}>
-        <Spin />
+      <div className="text-ink-3 rounded-card border-line flex items-center justify-center border border-dashed py-16 text-sm">
+        选择左侧实体查看详情
       </div>
     )
   }
+  if (isError) {
+    return (
+      <div className="text-ink-3 rounded-card border-line flex items-center justify-center border border-dashed py-16 text-sm">
+        外部实体（未在本体中声明），无详情页
+      </div>
+    )
+  }
+  if (!ent) {
+    return <div className="text-ink-3 py-16 text-center text-sm">加载中…</div>
+  }
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Typography.Title level={5} style={MONO} copyable>
-        {ent.curie}
-      </Typography.Title>
-      <Tabs
-        tabPlacement="start"
-        items={[
-          { key: 'overview', label: '概览', children: <Overview ent={ent} /> },
-          {
-            key: 'ttl',
-            label: '原始TTL',
-            children: (
-              <pre style={{ ...MONO, fontSize: 12, overflowX: 'auto' }}>
-                {raw?.turtle ?? '…'}
-              </pre>
-            ),
-          },
-        ]}
-      />
-      <RefPanel refs={ent.referencedBy} />
-    </Space>
+    <div className="flex flex-col gap-3">
+      <h3 className="font-mono text-base font-semibold break-all">{ent.curie}</h3>
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview">概览</TabsTrigger>
+          {!compact && <TabsTrigger value="ttl">原始 TTL</TabsTrigger>}
+        </TabsList>
+        <TabsContent value="overview">
+          <Overview ent={ent} compact={compact} />
+        </TabsContent>
+        {!compact && (
+          <TabsContent value="ttl">
+            <pre className="text-ink-2 font-mono text-xs whitespace-pre-wrap break-all">
+              {raw?.turtle ?? '…'}
+            </pre>
+          </TabsContent>
+        )}
+      </Tabs>
+    </div>
   )
 }
