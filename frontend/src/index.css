@@ -25,6 +25,26 @@
   --radius-card: 10px;
   --font-sans: Manrope, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   --font-mono: 'Fira Code', ui-monospace, Consolas, monospace;
+
+  /* shadcn semantic tokens mapped onto Workbench Pro palette */
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-ink);
+  --color-card: var(--color-panel);
+  --color-card-foreground: var(--color-ink);
+  --color-popover: var(--color-panel);
+  --color-popover-foreground: var(--color-ink);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--color-canvas);
+  --color-secondary-foreground: var(--color-ink);
+  --color-muted: var(--color-canvas);
+  --color-muted-foreground: var(--color-ink-3);
+  --color-accent: var(--color-primary-soft);
+  --color-accent-foreground: var(--color-primary-hover);
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--color-line);
+  --color-input: var(--color-line);
+  --color-ring: var(--color-primary);
 }
 
 .dark {
@@ -38,6 +58,8 @@
   --color-ink: #e2e8f0;
   --color-ink-2: #94a3b8;
   --color-ink-3: #64748b;
+  --color-primary-foreground: #0f172a;
+  --color-destructive: #f87171;
 }
 
 /* Canvas dot grid for graph areas. */

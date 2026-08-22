@@ -7,4 +7,10 @@ describe('shadcn ui base', () => {
     render(<Button variant="outline">导入</Button>)
     expect(screen.getByRole('button', { name: '导入' })).toBeTruthy()
   })
+
+  it('outline variant carries the semantic border utility', () => {
+    render(<Button variant="outline">语义</Button>)
+    const btn = screen.getByRole('button', { name: '语义' })
+    expect(btn.className.split(/\s+/)).toContain('border')
+  })
 })
