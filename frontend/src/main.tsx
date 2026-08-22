@@ -7,6 +7,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import App from './App'
+import { Toaster } from './components/ui/sonner'
 import { useSystemTheme } from './hooks/useSystemTheme'
 import './index.css'
 
@@ -33,6 +34,7 @@ function Root() {
         <BrowserRouter>
           <App />
         </BrowserRouter>
+        <Toaster />
       </ConfigProvider>
     </QueryClientProvider>
   )
