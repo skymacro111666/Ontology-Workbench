@@ -1,5 +1,4 @@
 import {
-  Background,
   Controls,
   Panel,
   ReactFlow,
@@ -9,10 +8,12 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Badge, Button, Segmented, theme } from 'antd'
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { GEdge, GNode } from '../api/types'
-import { useSystemTheme } from '../hooks/useSystemTheme'
+import { useTheme } from '../theme/ThemeProvider'
+import { Toggle } from '@/components/ui/toggle'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import { cn } from '@/lib/utils'
 
 /** Node extended with what the canvas renders beyond the API payload. */
 export type GraphViewNode = GNode & {
@@ -22,47 +23,63 @@ export type GraphViewNode = GNode & {
 
 type Filter = 'all' | 'classes' | 'props'
 
-/** Edge semantics (spec §7.3): shape + color per relation kind. */
-const EDGE_VISUALS: Record<string, { stroke: string; strokeDasharray?: string }> = {
-  subClassOf: { stroke: '#8B5CF6', strokeDasharray: '6 4' }, // dashed purple
-  property: { stroke: '#0D9488' }, // solid teal
-  datatype: { stroke: '#6B7280', strokeDasharray: '1 4' }, // dotted gray
+/**
+ * Edge semantics (spec §7.3), expressed through palette tokens so dark mode
+ * rides the CSS overrides: subclass dashed purple, object property solid
+ * indigo, data property dotted slate.
+ */
+const EDGE_VISUALS: Record<string, { stroke: string; dash?: string }> = {
+  subClassOf: { stroke: 'var(--color-edge-sub)', dash: '6 5' },
+  property: { stroke: 'var(--color-primary)' },
+  datatype: { stroke: 'var(--color-ink-3)', dash: '1 4' },
 }
 
-type OntNodeData = { curie: string; childCount?: number; highlighted?: boolean }
-type OntNodeType = Node<OntNodeData, 'ont'>
+/** Legend copy tied to the visuals above so the two cannot drift apart. */
+const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
+  { label: '子类（subClassOf）', visual: EDGE_VISUALS.subClassOf },
+  { label: '对象属性', visual: EDGE_VISUALS.property },
+  { label: '数据属性', visual: EDGE_VISUALS.datatype },
+]
 
-/** Rounded-rect node: CURIE + direct-subclass badge (spec §7.3). */
-function OntNode({ data }: NodeProps<OntNodeType>) {
-  const { token } = theme.useToken()
+type EntityNodeData = { curie: string; subCount: number; highlighted?: boolean }
+type EntityFlowNodeType = Node<EntityNodeData, 'entity'>
+
+/** Rounded-rect node: CURIE plus a top-right direct-subclass badge (spec §7.3). */
+function EntityFlowNode({ data }: NodeProps<EntityFlowNodeType>) {
   return (
     <div
-      className="ow-gnode"
-      style={{
-        padding: '4px 10px',
-        borderRadius: token.borderRadius,
-        border: `1px solid ${data.highlighted ? token.colorPrimary : token.colorBorder}`,
-        background: token.colorBgContainer,
-        boxShadow: data.highlighted ? `0 0 0 2px ${token.colorPrimary}33` : undefined,
-        fontFamily: "'Fira Code', monospace",
-        fontSize: 12,
-      }}
-    >
-      {data.childCount !== undefined && data.childCount > 0 && (
-        <Badge
-          count={data.childCount}
-          size="small"
-          color={token.colorPrimary}
-          offset={[6, -6]}
-          style={{ position: 'absolute', top: -8, right: -10 }}
-        />
+      className={cn(
+        'border-line bg-panel text-ink relative rounded-lg border px-2.5 py-1 font-mono text-xs shadow-xs',
+        data.highlighted && 'border-primary ring-primary/25 ring-2',
       )}
-      <span>{data.curie}</span>
+    >
+      {data.curie}
+      {data.subCount > 0 && (
+        <span
+          title="直接子类数"
+          className="bg-primary text-primary-foreground absolute -top-2 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+        >
+          {data.subCount}
+        </span>
+      )}
     </div>
   )
 }
 
-const NODE_TYPES = { ont: OntNode }
+const NODE_TYPES = { entity: EntityFlowNode }
+
+/**
+ * useTheme throws outside a provider, and page-level tests mount consumers
+ * bare; fall back to the .dark class ThemeProvider itself maintains on
+ * <html>, which tracks the same resolved value.
+ */
+function useResolvedTheme(): 'light' | 'dark' {
+  try {
+    return useTheme().resolved
+  } catch {
+    return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+  }
+}
 
 /**
  * Fits the canvas onto one node once nodes are measured; must render inside
@@ -133,8 +150,8 @@ export function toFlowEdges(edges: GEdge[], visibleIds: Set<string>, showLabels:
         source: e.source,
         target: e.target,
         label: showLabels ? e.kind : undefined,
-        style: { stroke: visual.stroke, strokeDasharray: visual.strokeDasharray },
-        labelStyle: { fontFamily: "'Fira Code', monospace", fontSize: 10 },
+        style: { stroke: visual.stroke, strokeDasharray: visual.dash, strokeWidth: 1.5 },
+        labelStyle: { fontFamily: 'var(--font-mono)', fontSize: 10 },
       }
     })
 }
@@ -146,17 +163,18 @@ export default function GraphView({
   onSelect,
   height = '100%',
   focusId,
+  showControls = true,
 }: {
   nodes: GraphViewNode[]
   edges: GEdge[]
-  onSelect: (eid: string) => void
+  onSelect?: (eid: string) => void
   height?: number | string
   /** Optional entity to fit-view onto (overview focus param). */
   focusId?: string
+  /** Whether the zoom/fit control cluster is rendered (default true). */
+  showControls?: boolean
 }) {
-  const { token } = theme.useToken()
-  const dark = useSystemTheme()
-  const reactId = useId()
+  const resolved = useResolvedTheme()
   const [showLabels, setShowLabels] = useState(true)
   const [filter, setFilter] = useState<Filter>('all')
 
@@ -166,15 +184,24 @@ export default function GraphView({
     return nodes.filter((n) => want(n.kind))
   }, [nodes, filter])
 
-  const flowNodes: OntNodeType[] = useMemo(() => {
+  /** Direct-subclass badge input: subClassOf edges pointing at each node. */
+  const subCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const e of edges) {
+      if (e.kind === 'subClassOf') counts.set(e.target, (counts.get(e.target) ?? 0) + 1)
+    }
+    return counts
+  }, [edges])
+
+  const flowNodes: EntityFlowNodeType[] = useMemo(() => {
     const pos = layeredPositions(nodes, edges)
     return visible.map((n) => ({
       id: n.id,
-      type: 'ont' as const,
+      type: 'entity' as const,
       position: pos.get(n.id) ?? { x: 0, y: 0 },
-      data: { curie: n.curie, childCount: n.childCount, highlighted: n.highlighted },
+      data: { curie: n.curie, subCount: subCounts.get(n.id) ?? 0, highlighted: n.highlighted },
     }))
-  }, [nodes, edges, visible])
+  }, [nodes, edges, visible, subCounts])
 
   const flowEdges = useMemo(() => {
     const visibleIds = new Set(visible.map((n) => n.id))
@@ -182,40 +209,65 @@ export default function GraphView({
   }, [edges, visible, showLabels])
 
   return (
-    <div style={{ height, width: '100%', background: token.colorBgContainer, borderRadius: token.borderRadius }}>
+    <div
+      className="canvas-dots bg-canvas border-line rounded-card relative overflow-hidden border"
+      style={{ height, width: '100%' }}
+    >
       <ReactFlow
-        key={reactId}
         nodes={flowNodes}
         edges={flowEdges}
         nodeTypes={NODE_TYPES}
-        colorMode={dark ? 'dark' : 'light'}
+        colorMode={resolved}
         fitView
         minZoom={0.15}
         proOptions={{ hideAttribution: true }}
-        onNodeClick={(_, node) => onSelect(node.id)}
+        onNodeClick={(_, node) => onSelect?.(node.id)}
       >
-        <Background color={token.colorBorderSecondary} gap={24} />
-        <Controls position="bottom-left" showInteractive={false} />
+        {showControls && <Controls position="bottom-right" showInteractive={false} />}
         {focusId && <FocusFit id={focusId} />}
+        <Panel position="bottom-left">
+          <div className="border-line bg-panel/90 rounded-ctl flex flex-col gap-1 border p-2 shadow-xs backdrop-blur">
+            {LEGEND.map(({ label, visual }) => (
+              <div key={label} className="flex items-center gap-2">
+                <svg width="26" height="6" aria-hidden="true" className="shrink-0">
+                  <line
+                    x1="1"
+                    y1="3"
+                    x2="25"
+                    y2="3"
+                    stroke={visual.stroke}
+                    strokeWidth="1.5"
+                    strokeDasharray={visual.dash}
+                  />
+                </svg>
+                <span className="text-ink-2 text-xs">{label}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
         <Panel position="top-right">
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Button
-              size="small"
-              aria-pressed={showLabels}
-              onClick={() => setShowLabels((v) => !v)}
+          <div className="border-line bg-panel/90 rounded-ctl flex items-center gap-1 border p-1 shadow-xs backdrop-blur">
+            <Toggle
+              variant="outline"
+              size="sm"
+              pressed={showLabels}
+              onPressedChange={setShowLabels}
             >
               标签
-            </Button>
-            <Segmented<Filter>
-              size="small"
+            </Toggle>
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
               value={filter}
-              onChange={(v) => setFilter(v)}
-              options={[
-                { label: '全部', value: 'all' },
-                { label: '仅类', value: 'classes' },
-                { label: '仅属性', value: 'props' },
-              ]}
-            />
+              onValueChange={(v) => {
+                if (v) setFilter(v as Filter)
+              }}
+            >
+              <ToggleGroupItem value="all">全部</ToggleGroupItem>
+              <ToggleGroupItem value="classes">仅类</ToggleGroupItem>
+              <ToggleGroupItem value="props">仅属性</ToggleGroupItem>
+            </ToggleGroup>
           </div>
         </Panel>
       </ReactFlow>
