@@ -89,7 +89,7 @@ export default function Home() {
       </section>
 
       <section className="flex flex-col gap-3" aria-label="本体列表">
-        <h2 className="text-sm font-semibold">本体列表</h2>
+        <h2 className="text-sm font-bold">本体列表</h2>
         {isError ? (
           <div className="border-line flex flex-col items-center gap-3 rounded-card border px-6 py-12 text-center">
             <div className="flex flex-col gap-1">
