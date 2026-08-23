@@ -1,16 +1,13 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Browse from './Browse'
 import { useBrowseStore } from '../stores/browseStore'
-import { useRequestStore } from '../stores/requestStore'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import type { Envelope, EntityIR, NodesEdges, OntologyMeta } from '../api/types'
 
 const EID = 'http://example.org/Dog'
-const PROP = 'http://example.org/hasFur'
 const ANIMAL = 'http://example.org/Animal'
 
 function meta(): OntologyMeta {
@@ -49,25 +46,16 @@ function dog(): EntityIR {
 }
 
 function animal(): EntityIR {
-  return {
-    ...dog(),
-    eid: ANIMAL,
-    curie: 'pizza:Animal',
-    parents: [],
-  }
+  return { ...dog(), eid: ANIMAL, curie: 'pizza:Animal', parents: [] }
 }
 
-function neighbors(): NodesEdges {
+function overview(): NodesEdges {
   return {
     nodes: [
-      { id: EID, curie: 'pizza:Dog', label: {}, kind: 'self' },
+      { id: EID, curie: 'pizza:Dog', label: {}, kind: 'class' },
       { id: ANIMAL, curie: 'pizza:Animal', label: {}, kind: 'class' },
-      { id: PROP, curie: 'pizza:hasFur', label: {}, kind: 'property' },
     ],
-    edges: [
-      { source: EID, target: ANIMAL, kind: 'subClassOf' },
-      { source: EID, target: PROP, kind: 'property' },
-    ],
+    edges: [{ source: EID, target: ANIMAL, kind: 'subClassOf' }],
   }
 }
 
@@ -75,15 +63,19 @@ function stubFetch() {
   return vi.fn(async (url: string | URL) => {
     const u = String(url)
     let data: unknown
-    if (u.includes('/overview')) data = neighbors()
+    if (u.includes('/overview')) data = overview()
     else if (u.includes('/tree')) data = []
-    else if (u.includes('/neighbors')) data = neighbors()
-    else if (u.includes('/raw/')) data = { turtle: 'pizza:Dog a owl:Class .', eid: EID }
     else if (u.includes(encodeURIComponent(ANIMAL))) data = animal()
     else if (u.includes('/entities/')) data = dog()
     else data = meta()
     return new Response(
-      JSON.stringify({ code: 'OK', message: 'ok', data, hint: null, request_id: 'r' } satisfies Envelope<unknown>),
+      JSON.stringify({
+        code: 'OK',
+        message: 'ok',
+        data,
+        hint: null,
+        request_id: 'r',
+      } satisfies Envelope<unknown>),
       { headers: { 'Content-Type': 'application/json' } },
     )
   })
@@ -113,19 +105,8 @@ function renderBrowse(
   }
 }
 
-/** Seg control buttons share the toolbar (mockup); one pressed at a time. */
-async function switchMode(name: '详情' | '分屏' | '图' | '总览') {
-  await userEvent.click(screen.getByRole('button', { name }))
-}
-
 beforeEach(() => {
-  useBrowseStore.setState({
-    selectedEid: null,
-    viewMode: 'detail',
-    revealEid: null,
-    ttlFocusEid: null,
-    ttlNonce: 0,
-  })
+  useBrowseStore.setState({ selectedEid: null, revealEid: null })
 })
 
 afterEach(() => {
@@ -133,195 +114,48 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('Browse four-zone workspace', () => {
-  it('renders all four zones: tree tabs, toolbar, resident inspector, statusbar', async () => {
+describe('Browse workspace (overview-only)', () => {
+  it('renders all four zones: tree tabs, canvas, resident inspector, statusbar', async () => {
     useBrowseStore.setState({ selectedEid: EID })
     renderBrowse(stubFetch())
     expect(await screen.findAllByText('pizza:Dog')).toBeTruthy()
 
-    // Zone 1: class-tree tri-tabs (pill buttons under the mockup).
+    // Zone 1: class-tree pill tabs.
     expect(screen.getByRole('button', { name: '类' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '前缀' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '命名空间' })).toBeTruthy()
+    // Zone 2: whole-ontology canvas nodes (Animal also chips in the inspector).
+    expect(screen.getAllByText('pizza:Animal').length).toBeGreaterThanOrEqual(1)
+    // Zone 3: resident inspector shows the selected entity's URI block.
+    expect(screen.getByText(EID).closest('pre')).toBeTruthy()
+    // Label badge: "value lang" pill (mockup §7.2).
+    expect(screen.getAllByText('Dog en').length).toBeGreaterThanOrEqual(1)
     // Zone 4: statusbar copy (mono filename · counts · green parse status).
     expect(screen.getByText('pizza.ttl')).toBeTruthy()
     expect(screen.getByText('99 类')).toBeTruthy()
-    expect(screen.getByText('8 属性')).toBeTruthy()
-    expect(screen.getByText('300 公理')).toBeTruthy()
     expect(screen.getByText('解析 OK · 1.2s')).toBeTruthy()
-    // Zone 3: resident inspector shows the selected entity's URI block.
-    expect(screen.getByText(EID).closest('pre')).toBeTruthy()
-    // Label badges: "value lang" pill (mockup §7.2).
-    expect(screen.getAllByText('Dog en').length).toBeGreaterThanOrEqual(1)
-    // Detail is the default mode (seg button pressed) and full (TTL tab open).
-    expect(screen.getByRole('button', { name: '详情' }).getAttribute('aria-pressed')).toBe('true')
-    expect(screen.getByRole('tab', { name: '原始 TTL' })).toBeTruthy()
-    // The overview jump appears twice — toolbar right and inspector action —
-    // both switching the workspace to overview mode.
-    const overviewButtons = screen.getAllByRole('button', { name: '在总览中查看' })
-    expect(overviewButtons.length).toBe(2)
-    fireEvent.click(overviewButtons[0])
-    await waitFor(() => expect(useBrowseStore.getState().viewMode).toBe('overview'))
-    // Statusbar right segment: last OK request from the client store,
-    // "METHOD /path Nms" + "request_id …" (mockup §7.4).
-    useRequestStore.getState().set({
-      method: 'GET',
-      path: '/entities/Margherita',
-      ms: 32,
-      requestId: 'a3f9c2d1e2',
-    })
-    await waitFor(() => {
-      expect(screen.getByText('GET /entities/Margherita 32ms')).toBeTruthy()
-      expect(screen.getByText('request_id a3f9c2')).toBeTruthy()
-    })
-  })
-
-  it('graph mode: toolbar carries edge-label switch and type filter over the canvas', async () => {
-    useBrowseStore.setState({ selectedEid: EID, viewMode: 'graph' })
-    renderBrowse(stubFetch())
-    // Canvas settled with all three node kinds visible.
-    expect(await screen.findByText('pizza:hasFur')).toBeTruthy()
-    // Toolbar controls beside the mode switch (mockup §5.4); the in-canvas
-    // overlay variant must be gone so the two cannot drift apart.
-    expect(screen.getByRole('button', { name: '边标签' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '全部类型 ▾' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '标签' })).toBeNull()
-    // Classes-only filter (dropdown) drops the property node from the canvas.
-    await userEvent.click(screen.getByRole('button', { name: '全部类型 ▾' }))
-    fireEvent.click(await screen.findByRole('menuitem', { name: '仅类' }))
-    await waitFor(() => expect(screen.queryByText('pizza:hasFur')).toBeNull())
-    // Dog stays (breadcrumb + canvas node).
-    expect(screen.getAllByText('pizza:Dog').length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('graph mode: neighbors canvas full width, detail gone, inspector stays', async () => {
-    useBrowseStore.setState({ selectedEid: EID })
-    const { fetchMock } = renderBrowse(stubFetch())
-    await screen.findAllByText('pizza:Dog')
-    await switchMode('图')
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        `/api/ontologies/oid-1/entities/${encodeURIComponent(EID)}/neighbors`,
-        expect.anything(),
-      ),
-    )
-    // Neighbor node on the canvas (the breadcrumb lineage repeats the curie).
-    await screen.findAllByText('pizza:Animal')
-    expect(screen.queryByRole('tab', { name: '概览' })).toBeNull() // detail pane gone
-    // Inspector is resident across modes.
-    expect(screen.getByText(EID).closest('pre')).toBeTruthy()
-    // The self node is ring-highlighted (same visual as overview focus).
-    await waitFor(() =>
-      expect(
-        screen.getAllByText('pizza:Dog').some((el) => el.classList.contains('border-primary')),
-      ).toBe(true),
-    )
-  })
-
-  it('split mode: canvas plus compact detail, and compact fetches no raw TTL', async () => {
-    // Enter split directly so no full detail pane ever mounts.
-    useBrowseStore.setState({ selectedEid: EID, viewMode: 'split' })
-    const { fetchMock } = renderBrowse(stubFetch())
-    // Canvas side and compact detail side render together.
-    await screen.findAllByText('pizza:Animal')
-    expect(screen.getByRole('tab', { name: '概览' })).toBeTruthy()
-    expect(screen.queryByRole('tab', { name: '原始 TTL' })).toBeNull() // compact
-    // Compact renders no TTL tab, so Browse never fetches raw TTL for it.
-    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/raw/'))).toBe(false)
-  })
-
-  it('deep link ?eid= selects the entity on entry', async () => {
-    const { fetchMock } = renderBrowse(stubFetch(), {
-      entry: `/browse/oid-1?eid=${encodeURIComponent(EID)}`,
-    })
-    expect(await screen.findAllByText('pizza:Dog')).toBeTruthy()
-    expect(useBrowseStore.getState().selectedEid).toBe(EID)
-    expect(fetchMock).toHaveBeenCalledWith(
-      `/api/ontologies/oid-1/entities/${encodeURIComponent(EID)}`,
-      expect.anything(),
-    )
-  })
-
-  it('no selection: inspector empty state, no entity fetch, statusbar still shows', async () => {
-    const { fetchMock } = renderBrowse(stubFetch())
-    // Zones render once meta loads; the empty states arrive with them.
-    expect(await screen.findByText('在树或图中选择一个实体')).toBeTruthy()
-    expect(screen.getByText('选择左侧实体查看详情')).toBeTruthy()
-    expect(await screen.findByText('pizza.ttl')).toBeTruthy()
-    expect(
-      fetchMock.mock.calls.every(([u]) => !String(u).includes('/entities/')),
-    ).toBe(true)
   })
 
   it('canvas node click selects through reveal and walks the tree', async () => {
-    useBrowseStore.setState({ selectedEid: EID })
-    const { fetchMock } = renderBrowse(stubFetch())
-    await screen.findAllByText('pizza:Dog')
-    await switchMode('图')
-    // The flow node (not the breadcrumb button carrying the same curie).
-    const node = (await screen.findAllByText('pizza:Animal')).find((el) =>
-      el.closest('.react-flow__node'),
-    )
-    expect(node).toBeTruthy()
-    // userEvent's pointer sequence trips React Flow's d3-drag mousedown
-    // handler, which jsdom cannot serve (null event.view); a plain click
-    // reaches React's onNodeClick without it.
-    fireEvent.click(node as HTMLElement)
-    expect(useBrowseStore.getState().selectedEid).toBe(ANIMAL)
-    // reveal() also asks the class tree to materialize the ancestor path.
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        `/api/ontologies/oid-1/tree?parent=${encodeURIComponent(ANIMAL)}`,
-        expect.anything(),
-      ),
-    )
+    renderBrowse(stubFetch())
+    expect(await screen.findByText('pizza:Animal')).toBeTruthy()
+
+    // fireEvent: userEvent's pointer sequence trips React Flow's d3-drag in jsdom.
+    fireEvent.click(screen.getByText('pizza:Animal'))
+
+    // Selection lands in the store; tree walk + inspector follow it (the
+    // reveal→fetch chain is covered end-to-end in graph.test).
+    await waitFor(() => expect(useBrowseStore.getState().selectedEid).toBe(ANIMAL))
   })
 
-  it('breadcrumb lineage links reveal each ancestor level', async () => {
-    useBrowseStore.setState({ selectedEid: EID })
+  it('no selection: inspector empty state, statusbar still shows', async () => {
     renderBrowse(stubFetch())
-    const nav = await screen.findByLabelText('类谱系')
-    // Chain root › selected, the current entity emphasized at the end.
-    expect(within(nav).getByText('pizza:Animal')).toBeTruthy()
-    expect(within(nav).getByText('pizza:Dog').tagName).toBe('STRONG')
-    await userEvent.click(within(nav).getByText('pizza:Animal'))
-    expect(useBrowseStore.getState().selectedEid).toBe(ANIMAL)
+    expect(await screen.findByText('pizza.ttl')).toBeTruthy()
+    expect(screen.getByText('在树或图中选择一个实体')).toBeTruthy()
   })
 
-  it('inspector 原始 TTL action lands on detail mode with the TTL tab open', async () => {
-    useBrowseStore.setState({ selectedEid: EID })
-    renderBrowse(stubFetch())
-    await screen.findAllByText('pizza:Dog')
-    await switchMode('分屏')
-    // Split keeps the inspector button the only 原始 TTL control.
-    await userEvent.click(screen.getByRole('button', { name: '查看原始 TTL' }))
-    expect(useBrowseStore.getState().viewMode).toBe('detail')
-    // The central detail reopens on its TTL tab (store signal consumed).
-    expect((await screen.findByRole('tab', { name: '原始 TTL' })).getAttribute('aria-selected')).toBe(
-      'true',
-    )
-    expect(await screen.findByText(/a owl:Class/)).toBeTruthy()
-    // A repeated ask after manually returning to overview re-opens TTL.
-    await userEvent.click(screen.getByRole('tab', { name: '概览' }))
-    expect(screen.queryByText(/a owl:Class/)).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: '查看原始 TTL' }))
-    expect(await screen.findByText(/a owl:Class/)).toBeTruthy()
-  })
-
-  it('TTL ask then split keeps the compact pane on its overview', async () => {
-    useBrowseStore.setState({ selectedEid: EID })
-    renderBrowse(stubFetch())
-    await screen.findAllByText('pizza:Dog')
-    // Landed on detail with the TTL tab open; the signal stays set.
-    await userEvent.click(screen.getByRole('button', { name: '查看原始 TTL' }))
-    expect(await screen.findByText(/a owl:Class/)).toBeTruthy()
-    await switchMode('分屏')
-    // The compact pane mounts fresh while ttlFocusEid still targets the
-    // entity: overview must win (compact has no TTL tab to select).
-    const tab = screen.getByRole('tab', { name: '概览' })
-    expect(tab.getAttribute('aria-selected')).toBe('true')
-    const content = document.getElementById(tab.getAttribute('aria-controls') ?? '')
-    expect(content?.getAttribute('data-state')).toBe('active')
-    // Overview body (parents section) is actually mounted, not a blank pane.
-    expect(content?.textContent).toContain('pizza:Animal')
+  it('deep link ?eid= selects the entity on entry', async () => {
+    renderBrowse(stubFetch(), { entry: `/browse/oid-1?eid=${encodeURIComponent(EID)}` })
+    expect(await screen.findByText(EID)).toBeTruthy()
+    expect(useBrowseStore.getState().selectedEid).toBe(EID)
   })
 })

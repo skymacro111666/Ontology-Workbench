@@ -6,9 +6,16 @@ import { useBrowseStore } from '../stores/browseStore'
 import GraphView, { type GraphViewNode } from './GraphView'
 import { Button } from '@/components/ui/button'
 
-/** Whole-ontology overview canvas embedded as the workspace's fourth view
- *  mode; degrades to the top 3 levels past 500 entities (spec §7.5). */
-export default function GraphOverview({ oid, focus }: { oid: string; focus?: string | null }) {
+/** Whole-ontology overview canvas — the workspace's single content view;
+ *  degrades to the top 3 levels past 500 entities (spec §7.5). Label switch
+ *  and type filter render as the canvas's in-canvas overlay controls. */
+export default function GraphOverview({
+  oid,
+  focus,
+}: {
+  oid: string
+  focus?: string | null
+}) {
   const reveal = useBrowseStore((s) => s.reveal)
   const { data, isError, error, refetch } = useQuery({
     queryKey: ['overview', oid],
@@ -54,12 +61,7 @@ export default function GraphOverview({ oid, focus }: { oid: string; focus?: str
         </div>
       )}
       <div className="min-h-0 flex-1">
-        <GraphView
-          nodes={nodes}
-          edges={data.edges}
-          focusId={focus ?? undefined}
-          onSelect={reveal}
-        />
+        <GraphView nodes={nodes} edges={data.edges} focusId={focus ?? undefined} onSelect={reveal} />
       </div>
     </div>
   )

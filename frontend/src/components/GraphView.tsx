@@ -1,5 +1,6 @@
 import {
   Controls,
+  MarkerType,
   Panel,
   ReactFlow,
   useReactFlow,
@@ -41,17 +42,23 @@ const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
   { label: '数据属性', visual: EDGE_VISUALS.datatype },
 ]
 
-type EntityNodeData = { curie: string; subCount: number; highlighted?: boolean }
+type EntityNodeData = { curie: string; kind: string; subCount: number; highlighted?: boolean }
 type EntityFlowNodeType = Node<EntityNodeData, 'entity'>
 
-/** Rounded-rect node (mockup): sans label, 2px primary border + ★ when
- *  highlighted, rectangular primary subclass badge — no ring. */
+/** Rounded-rect node (mockup): classes get a solid grey border, property
+ *  nodes a dashed violet one (kind encoded in the border), and the focused
+ *  entity a 2px primary border + ★ — no ring. */
 function EntityFlowNode({ data }: NodeProps<EntityFlowNodeType>) {
+  const isProperty = data.kind === 'property'
   return (
     <div
       className={cn(
-        'border-line bg-panel text-ink relative flex items-center rounded-lg border px-2.5 py-1.5 text-[11.5px] shadow-xs',
-        data.highlighted && 'text-primary border-primary border-2 font-bold',
+        'bg-panel text-ink relative flex items-center rounded-lg border px-2.5 py-1.5 text-[11.5px] shadow-xs',
+        data.highlighted
+          ? 'text-primary border-primary border-2 font-bold'
+          : isProperty
+            ? 'border-edge-sub border-dashed'
+            : 'border-line border',
       )}
     >
       {data.curie}
@@ -131,7 +138,9 @@ function layeredPositions(nodes: GraphViewNode[], edges: GEdge[]): Map<string, {
   return pos
 }
 
-/** Map API edges to React Flow edges: visibility, label, semantic styling. */
+/** Map API edges to React Flow edges: visibility, label, semantic styling.
+ *  Each relation kind keeps its own line style AND a matching arrowhead so
+ *  inheritance vs property links read apart at a glance (mockup §7.3). */
 export function toFlowEdges(edges: GEdge[], visibleIds: Set<string>, showLabels: boolean): Edge[] {
   return edges
     .filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target))
@@ -144,6 +153,12 @@ export function toFlowEdges(edges: GEdge[], visibleIds: Set<string>, showLabels:
         label: showLabels ? e.kind : undefined,
         style: { stroke: visual.stroke, strokeDasharray: visual.dash, strokeWidth: 1.5 },
         labelStyle: { fontFamily: 'var(--font-mono)', fontSize: 10, fill: '#64748B' },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: visual.stroke,
+          width: 14,
+          height: 14,
+        },
       }
     })
 }
@@ -208,7 +223,12 @@ export default function GraphView({
       id: n.id,
       type: 'entity' as const,
       position: pos.get(n.id) ?? { x: 0, y: 0 },
-      data: { curie: n.curie, subCount: subCounts.get(n.id) ?? 0, highlighted: n.highlighted },
+      data: {
+        curie: n.curie,
+        kind: n.kind,
+        subCount: subCounts.get(n.id) ?? 0,
+        highlighted: n.highlighted,
+      },
     }))
   }, [nodes, edges, visible, subCounts])
 

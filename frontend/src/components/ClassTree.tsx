@@ -5,7 +5,7 @@ import { api } from '../api/client'
 import type { EntityIR, OntologyMeta, TreeNode } from '../api/types'
 import { useContainerHeight } from '../hooks/useContainerHeight'
 import { useBrowseStore } from '../stores/browseStore'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
 type ChildMap = Record<string, TreeNode[]>
@@ -226,29 +226,13 @@ export default function ClassTree({ oid }: { oid: string }) {
   const TABS: [Tab, string][] = [
     ['classes', '类'],
     ['props', '属性'],
-    ['prefixes', '前缀'],
+    ['prefixes', '命名空间'],
   ]
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* mockup: pill tabs on top, recessed search box under them */}
-      <div className="border-line flex gap-0.5 border-b px-3 py-1.5">
-        {TABS.map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setTab(value)}
-            className={cn(
-              'rounded-ctl px-2.5 py-1 text-xs',
-              tab === value
-                ? 'bg-primary-soft text-primary font-semibold'
-                : 'text-ink-2 cursor-pointer',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+
       <div className="px-3 pt-2.5 pb-1.5">
         <div className="relative">
           <svg
@@ -272,6 +256,23 @@ export default function ClassTree({ oid }: { oid: string }) {
           />
         </div>
       </div>
+      <div className="border-line flex gap-0.5 border-b px-3 py-1.5">
+        {TABS.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setTab(value)}
+            className={cn(
+              'rounded-ctl px-2.5 py-1 text-xs',
+              tab === value
+                ? 'bg-primary-soft text-primary font-semibold'
+                : 'text-ink-2 cursor-pointer',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <div ref={ref} className="min-h-0 flex-1 overflow-hidden px-2 pb-2">
         {/* The class tree stays mounted (reveal-expandable) even while the
             property or prefix tab is showing. */}
@@ -287,12 +288,6 @@ export default function ClassTree({ oid }: { oid: string }) {
         )}
         {tab === 'prefixes' && (
           <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-20">前缀</TableHead>
-                <TableHead>IRI</TableHead>
-              </TableRow>
-            </TableHeader>
             <TableBody>
               {Object.entries(meta?.prefixes ?? {}).map(([prefix, iri]) => (
                 <TableRow key={prefix}>

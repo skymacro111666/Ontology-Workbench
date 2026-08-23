@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
@@ -89,13 +89,7 @@ function renderPanel(
 }
 
 beforeEach(() => {
-  useBrowseStore.setState({
-    selectedEid: null,
-    viewMode: 'detail',
-    revealEid: null,
-    ttlFocusEid: null,
-    ttlNonce: 0,
-  })
+  useBrowseStore.setState({ selectedEid: null, revealEid: null })
 })
 
 afterEach(() => {
@@ -136,24 +130,6 @@ describe('InspectorPanel', () => {
     expect(useBrowseStore.getState().selectedEid).toBe(PARENT)
     await userEvent.click(screen.getByText('pizza:Kennel'))
     expect(useBrowseStore.getState().selectedEid).toBe('http://example.org/Kennel')
-  })
-
-  it('raw TTL action switches to detail and signals the TTL tab', async () => {
-    useBrowseStore.setState({ viewMode: 'graph' })
-    renderPanel()
-    await screen.findByText('pizza:Dog')
-    await userEvent.click(screen.getByRole('button', { name: '查看原始 TTL' }))
-    expect(useBrowseStore.getState().viewMode).toBe('detail')
-    // The store signal the central EntityDetail consumes to open its TTL tab.
-    expect(useBrowseStore.getState().ttlFocusEid).toBe(EID)
-  })
-
-  it('overview action switches the workspace to overview mode', async () => {
-    useBrowseStore.setState({ viewMode: 'detail' })
-    renderPanel()
-    await screen.findByText('pizza:Dog')
-    fireEvent.click(screen.getByRole('button', { name: '在总览中查看' }))
-    expect(useBrowseStore.getState().viewMode).toBe('overview')
   })
 
   it('shows the empty state and fetches nothing when no entity is selected', () => {

@@ -76,7 +76,7 @@ function renderOverview(
   fetchMock: (url: string | URL) => Promise<Response>,
   entry = '/browse/oid-1',
 ) {
-  useBrowseStore.setState({ viewMode: 'overview', selectedEid: null })
+  useBrowseStore.setState({ selectedEid: null })
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
@@ -96,7 +96,7 @@ function renderOverview(
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
-  useBrowseStore.setState({ viewMode: 'detail', selectedEid: null, revealEid: null })
+  useBrowseStore.setState({ selectedEid: null, revealEid: null })
 })
 
 describe('workspace overview mode', () => {

@@ -23,12 +23,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 
-const SAMPLES: { name: string; description: string }[] = [
-  { name: 'pizza', description: '经典 Pizza 本体（类/属性/公理齐全）' },
-  { name: 'wine', description: 'W3C Wine 本体（关系丰富）' },
-  { name: 'foaf', description: 'FOAF 朋友的朋友（轻量词表）' },
-]
-
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
   return `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -86,34 +80,14 @@ export default function Home() {
   return (
     <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
       <h1 className="text-lg font-semibold">我的本体</h1>
-
-      <StatTiles
-        ontologies={items.length}
-        classes={totalClasses}
-        properties={totalProperties}
-        axioms={totalAxioms}
-      />
-
-      <section className="flex flex-col gap-3" aria-label="内置示例">
-        <h2 className="text-sm font-semibold">内置示例</h2>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {SAMPLES.map((s) => (
-            <button
-              key={s.name}
-              type="button"
-              onClick={() => sample.mutate(s.name)}
-              disabled={sample.isPending && sample.variables === s.name}
-              className="rounded-card outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:opacity-60"
-            >
-              <Card className="rounded-card gap-2 py-4 transition-colors hover:border-primary">
-                <CardContent className="flex flex-col gap-1 px-4">
-                  <span className="text-sm font-semibold">{s.name}</span>
-                  <span className="text-ink-2 text-sm">{s.description}</span>
-                </CardContent>
-              </Card>
-            </button>
-          ))}
-        </div>
+      <section className="flex flex-col gap-3" aria-label="本体列表">
+        <h2 className="text-sm font-semibold">本体概览</h2>
+          <StatTiles
+            ontologies={items.length}
+            classes={totalClasses}
+            properties={totalProperties}
+            axioms={totalAxioms}
+          />
       </section>
 
       <section className="flex flex-col gap-3" aria-label="本体列表">

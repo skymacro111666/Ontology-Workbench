@@ -91,25 +91,8 @@ describe('Home', () => {
     expect(screen.getByText('200').className).toContain('tabular-nums')
   })
 
-  it('loads the pizza sample: POST /api/samples/pizza then open', async () => {
-    const fetchMock = vi.fn(async (url: string | URL) => {
-      if (String(url) === '/api/samples/pizza')
-        return ok(summary('oid-pizza', { title: 'pizza' }))
-      return ok({ items: [], total: 0 })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    renderHome()
-
-    await userEvent.click(await screen.findByRole('button', { name: /^pizza/ }))
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/samples/pizza',
-        expect.objectContaining({ method: 'POST' }),
-      ),
-    )
-    expect(localStorage.getItem(LAST_OID_KEY)).toBe('oid-pizza')
-    expect(await screen.findByText('browse:oid-pizza')).toBeTruthy()
-  })
+  // The inline sample cards were removed from the page (user direction);
+  // the empty-state "载入示例" entry keeps the same POST /samples flow.
 
   it('deletes only after the AlertDialog confirmation', async () => {
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {

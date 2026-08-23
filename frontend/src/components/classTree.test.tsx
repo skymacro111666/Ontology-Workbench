@@ -66,7 +66,7 @@ function renderTree(fetchMock: ReturnType<typeof stubFetch>) {
 }
 
 beforeEach(() => {
-  useBrowseStore.setState({ selectedEid: null, viewMode: 'detail', revealEid: null })
+  useBrowseStore.setState({ selectedEid: null, revealEid: null })
 })
 
 afterEach(() => {
@@ -144,7 +144,7 @@ describe('ClassTree', () => {
     renderTree(fetchMock)
     expect(await screen.findByText('ex:Thing')).toBeTruthy()
 
-    await userEvent.click(screen.getByRole('button', { name: '前缀' }))
+    await userEvent.click(screen.getByRole('button', { name: '命名空间' }))
 
     expect(await screen.findByText('owl')).toBeTruthy()
     expect(screen.getByText('http://www.w3.org/2002/07/owl#')).toBeTruthy()

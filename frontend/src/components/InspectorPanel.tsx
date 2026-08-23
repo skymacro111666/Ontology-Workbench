@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 import { api } from '../api/client'
 import type { EntityIR, PropRef, Ref, ReferencedRef } from '../api/types'
 import { useBrowseStore } from '../stores/browseStore'
-import { Button } from '@/components/ui/button'
 
 /** Clickable entity chip (mockup linklist): soft primary pill, mono curie;
  *  selecting navigates the whole workspace along. */
@@ -79,12 +78,9 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
 }
 
 /** Resident right-column summary of the selected entity: identity header,
- *  relation chips, property mini table, and two navigation actions.
- *  Compact by design — the full content lives in the central detail view. */
+ *  relation chips, property mini table — the workspace's detail surface
+ *  (the content column is permanently the overview canvas). */
 export default function InspectorPanel({ oid, eid }: { oid: string; eid: string | null }) {
-  const setViewMode = useBrowseStore((s) => s.setViewMode)
-  const openTtl = useBrowseStore((s) => s.openTtl)
-
   const { data: ent, isError } = useQuery({
     enabled: eid !== null,
     queryKey: ['entity', oid, eid],
@@ -160,30 +156,6 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
       <Section label="被引用">
         <BackRefChips refs={ent.referencedBy} />
       </Section>
-
-      <div className="border-line mt-auto flex gap-2 border-t pt-3.5">
-        {/* Switches to detail AND opens the central TTL tab via the store
-            signal EntityDetail consumes (T11 assembly wiring). */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1"
-          onClick={() => {
-            setViewMode('detail')
-            openTtl(ent.eid)
-          }}
-        >
-          查看原始 TTL
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1"
-          onClick={() => setViewMode('overview')}
-        >
-          在总览中查看
-        </Button>
-      </div>
     </div>
   )
 }
