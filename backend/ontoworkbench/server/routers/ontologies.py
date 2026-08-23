@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir
-from ontoworkbench.core.parsing import parse_graph, sniff_format
+from ontoworkbench.core.parsing import sniff_format, timed_parse
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import OntologyRepository
@@ -47,6 +47,7 @@ class OntologyMeta(CamelModel):
     file_size_bytes: int
     file_hash: str
     prefixes: dict[str, str] = Field(default_factory=dict)
+    parse_ms: float | None = None
     created_at: str
 
 
@@ -76,6 +77,7 @@ def _title_of(graph, filename: str) -> str:
 def _meta(row: Ontology) -> dict[str, Any]:
     """Assemble the camelCase OntologyMeta payload for a row."""
     prefixes = (row.stats_json or {}).get("prefixes", {})
+    parse_ms = (row.stats_json or {}).get("parse_ms")
     return OntologyMeta(
         id=str(row.id),
         title=row.title or row.filename,
@@ -87,6 +89,7 @@ def _meta(row: Ontology) -> dict[str, Any]:
         file_size_bytes=row.file_size_bytes,
         file_hash=row.file_hash,
         prefixes=prefixes,
+        parse_ms=parse_ms,
         created_at=row.created_at.isoformat(),
     ).model_dump(by_alias=True)
 
@@ -125,7 +128,7 @@ def _import_bytes(
         )
     fmt = sniff_format(filename, data[:2048])
     with ow_parse_seconds.labels(fmt).time():
-        graph = parse_graph(data, fmt)
+        graph, parse_ms = timed_parse(data, fmt)
     ir = build_ir(graph)
 
     oid = uuid4()
@@ -140,7 +143,7 @@ def _import_bytes(
         class_count=ir.counts.class_count,
         property_count=ir.counts.property_count,
         axiom_count=ir.counts.axiom_count,
-        stats_json={"prefixes": ir.prefixes},
+        stats_json={"prefixes": ir.prefixes, "parse_ms": round(parse_ms, 1)},
         file_size_bytes=len(data),
         file_hash=LocalUserDirStore.file_hash(data),
     )

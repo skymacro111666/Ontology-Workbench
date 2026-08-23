@@ -143,7 +143,7 @@ def import_ontology(
 
     from ontoworkbench.core.indexes import build_indexes
     from ontoworkbench.core.ir import build_ir
-    from ontoworkbench.core.parsing import parse_graph, sniff_format
+    from ontoworkbench.core.parsing import sniff_format, timed_parse
     from ontoworkbench.core.store import LocalUserDirStore
     from ontoworkbench.db.repositories import OntologyRepository, UserRepository
     from ontoworkbench.db.session import init_engine, sessionmaker_or_fail
@@ -173,7 +173,8 @@ def import_ontology(
             typer.echo(f"'{filename}' already imported — id kept", err=True)
             raise typer.Exit(code=0)
         fmt = sniff_format(filename, data[:2048])
-        ir = build_ir(parse_graph(data, fmt))
+        graph, parse_ms = timed_parse(data, fmt)
+        ir = build_ir(graph)
         store = LocalUserDirStore(settings.data_dir)
         oid = uuid4()
         store.save(admin.id, oid, filename, data)
@@ -189,7 +190,7 @@ def import_ontology(
             class_count=ir.counts.class_count,
             property_count=ir.counts.property_count,
             axiom_count=ir.counts.axiom_count,
-            stats_json={"prefixes": ir.prefixes},
+            stats_json={"prefixes": ir.prefixes, "parse_ms": round(parse_ms, 1)},
             file_size_bytes=len(data),
             file_hash=LocalUserDirStore.file_hash(data),
         )

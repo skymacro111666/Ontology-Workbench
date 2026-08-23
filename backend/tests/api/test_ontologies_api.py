@@ -103,3 +103,14 @@ def test_samples_idempotent(client: TestClient) -> None:
     """Importing a sample twice returns the SAME record (no duplicate)."""
     r1 = client.post("/api/samples/does-not-exist")
     assert r1.json()["code"] == "NOT_FOUND"
+
+
+def test_meta_carries_parse_ms(client: TestClient) -> None:
+    """Upload meta and GET /meta expose parseMs (positive float, ms)."""
+    up = client.post(
+        "/api/ontologies", files={"file": ("mini.ttl", io.BytesIO(TTL), "text/turtle")}
+    )
+    oid = up.json()["data"]["id"]
+    assert up.json()["data"]["parseMs"] > 0
+    meta = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    assert meta["parseMs"] > 0

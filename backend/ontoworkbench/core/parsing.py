@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import rdflib
 
 from ontoworkbench.core.errors import CoreError
@@ -52,3 +54,10 @@ def parse_graph(data: bytes, fmt: str) -> rdflib.Graph:
     except Exception as exc:  # rdflib raises many parser-specific types
         raise ParseError("PARSE_FAILED", f"Syntax error: {exc}") from exc
     return g
+
+
+def timed_parse(data: bytes, fmt: str) -> tuple[rdflib.Graph, float]:
+    """parse_graph plus wall-clock duration in milliseconds (for meta)."""
+    start = time.perf_counter()
+    graph = parse_graph(data, fmt)
+    return graph, (time.perf_counter() - start) * 1000.0
