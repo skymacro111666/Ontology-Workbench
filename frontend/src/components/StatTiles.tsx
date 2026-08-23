@@ -19,7 +19,7 @@ export default function StatTiles({ ontologies, classes, properties, axioms }: S
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {tiles.map(({ label, value, icon: Icon }) => (
-        <Card key={label} className="rounded-card py-4">
+        <Card key={label} className="border-line rounded-card py-4">
           <CardContent className="flex items-center gap-3 px-4">
             <div
               aria-hidden

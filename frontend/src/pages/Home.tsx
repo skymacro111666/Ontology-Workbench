@@ -126,7 +126,7 @@ export default function Home() {
                   <span className="bg-primary-soft border-primary-border text-primary shrink-0 rounded-full border px-2 py-px font-mono text-[11px]">
                     {o.format}
                   </span>
-                  <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                  <span className="border-line ml-auto flex shrink-0 items-center gap-1.5">
                     <Button
                       size="sm"
                       variant="outline"
