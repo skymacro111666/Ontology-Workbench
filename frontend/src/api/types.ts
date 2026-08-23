@@ -115,6 +115,8 @@ export interface OntologySummary {
 export interface OntologyMeta extends OntologySummary {
   fileHash: string
   prefixes: Record<string, string>
+  /** Parse wall-clock duration in ms (absent for records imported before this field). */
+  parseMs?: number | null
 }
 
 /** Docs-site export result (POST /api/ontologies/{id}/export/site). */

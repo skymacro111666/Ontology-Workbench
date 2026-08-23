@@ -1,4 +1,5 @@
 import type { Envelope } from './types'
+import { useRequestStore } from '../stores/requestStore'
 
 const TOKEN_KEY = 'ow_token'
 
@@ -24,6 +25,7 @@ export function unwrap<T>(env: Envelope<T>): T {
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const token = localStorage.getItem(TOKEN_KEY)
+  const startedAt = performance.now()
   const res = await fetch(url, {
     ...init,
     headers: { ...init?.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
@@ -33,7 +35,14 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     localStorage.removeItem(TOKEN_KEY)
     window.location.href = '/login'
   }
-  return unwrap(env)
+  const data = unwrap(env)
+  useRequestStore.getState().set({
+    method: init?.method ?? 'GET',
+    path: url.replace(/^\/api/, ''),
+    ms: performance.now() - startedAt,
+    requestId: env.request_id,
+  })
+  return data
 }
 
 export const api = {

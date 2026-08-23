@@ -5,10 +5,12 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Browse from './Browse'
 import { useBrowseStore } from '../stores/browseStore'
+import { useRequestStore } from '../stores/requestStore'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import type { Envelope, EntityIR, NodesEdges, OntologyMeta } from '../api/types'
 
 const EID = 'http://example.org/Dog'
+const PROP = 'http://example.org/hasFur'
 const ANIMAL = 'http://example.org/Animal'
 
 function meta(): OntologyMeta {
@@ -24,6 +26,7 @@ function meta(): OntologyMeta {
     createdAt: '2026-08-21T00:00:00',
     fileHash: 'h',
     prefixes: { pizza: 'http://example.org/' },
+    parseMs: 1200,
   }
 }
 
@@ -59,8 +62,12 @@ function neighbors(): NodesEdges {
     nodes: [
       { id: EID, curie: 'pizza:Dog', label: {}, kind: 'self' },
       { id: ANIMAL, curie: 'pizza:Animal', label: {}, kind: 'class' },
+      { id: PROP, curie: 'pizza:hasFur', label: {}, kind: 'property' },
     ],
-    edges: [{ source: EID, target: ANIMAL, kind: 'subClassOf' }],
+    edges: [
+      { source: EID, target: ANIMAL, kind: 'subClassOf' },
+      { source: EID, target: PROP, kind: 'property' },
+    ],
   }
 }
 
@@ -140,8 +147,13 @@ describe('Browse four-zone workspace', () => {
     expect(screen.getByText('8 属性')).toBeTruthy()
     expect(screen.getByText('300 公理')).toBeTruthy()
     expect(screen.getByText('解析 OK')).toBeTruthy()
+    // Parse duration from meta, formatted seconds over 1s (mockup §7.4).
+    expect(screen.getByText('1.2s')).toBeTruthy()
     // Zone 3: resident inspector shows the selected entity's URI block.
     expect(screen.getByText(EID).closest('pre')).toBeTruthy()
+    // Label badges: text first, muted language marker after (mockup §7.2).
+    expect(screen.getAllByText('Dog').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('en').length).toBeGreaterThanOrEqual(1)
     // Detail is the default mode and full (TTL tab present, not compact).
     expect(screen.getByRole('radio', { name: '详情' }).getAttribute('data-state')).toBe('on')
     expect(screen.getByRole('tab', { name: '原始 TTL' })).toBeTruthy()
@@ -151,6 +163,36 @@ describe('Browse four-zone workspace', () => {
     expect(overviewLinks.map((a) => a.getAttribute('href'))).toEqual(
       overviewLinks.map(() => `/graph/oid-1?focus=${encodeURIComponent(EID)}`),
     )
+    // Statusbar right segment: last OK request from the client store,
+    // method/path · duration · request_id prefix (mockup §7.4).
+    useRequestStore.getState().set({
+      method: 'GET',
+      path: '/entities/Margherita',
+      ms: 32,
+      requestId: 'a3f9c2d1e2',
+    })
+    await waitFor(() => {
+      expect(screen.getByText('GET /entities/Margherita')).toBeTruthy()
+      expect(screen.getByText('32ms')).toBeTruthy()
+      expect(screen.getByText('a3f9c2')).toBeTruthy()
+    })
+  })
+
+  it('graph mode: toolbar carries edge-label switch and type filter over the canvas', async () => {
+    useBrowseStore.setState({ selectedEid: EID, viewMode: 'graph' })
+    renderBrowse(stubFetch())
+    // Canvas settled with all three node kinds visible.
+    expect(await screen.findByText('pizza:hasFur')).toBeTruthy()
+    // Toolbar controls beside the mode switch (mockup §5.4); the in-canvas
+    // overlay variant must be gone so the two cannot drift apart.
+    expect(screen.getByRole('button', { name: '边标签' })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: '全部类型' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '标签' })).toBeNull()
+    // Classes-only filter drops the property node from the canvas.
+    fireEvent.click(screen.getByRole('radio', { name: '仅类' }))
+    await waitFor(() => expect(screen.queryByText('pizza:hasFur')).toBeNull())
+    // Dog stays (breadcrumb + canvas node).
+    expect(screen.getAllByText('pizza:Dog').length).toBeGreaterThanOrEqual(1)
   })
 
   it('graph mode: neighbors canvas full width, detail gone, inspector stays', async () => {

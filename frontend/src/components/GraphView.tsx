@@ -20,7 +20,8 @@ export type GraphViewNode = GNode & {
   highlighted?: boolean
 }
 
-type Filter = 'all' | 'classes' | 'props'
+export type GraphViewFilter = 'all' | 'classes' | 'props'
+type Filter = GraphViewFilter
 
 /**
  * Edge semantics (spec §7.3), expressed through palette tokens so dark mode
@@ -142,7 +143,9 @@ export function toFlowEdges(edges: GEdge[], visibleIds: Set<string>, showLabels:
     })
 }
 
-/** Shared graph canvas: edge semantics, label toggle, type filter (spec §7.3). */
+/** Shared graph canvas: edge semantics, label toggle, type filter (spec §7.3).
+ *  Label/filter controls render as an in-canvas overlay by default; passing
+ *  the controlled props (in pairs) moves them to the caller's toolbar. */
 export default function GraphView({
   nodes,
   edges,
@@ -150,6 +153,10 @@ export default function GraphView({
   height = '100%',
   focusId,
   showControls = true,
+  showLabels: showLabelsProp,
+  onShowLabelsChange,
+  typeFilter: typeFilterProp,
+  onTypeFilterChange,
 }: {
   nodes: GraphViewNode[]
   edges: GEdge[]
@@ -159,10 +166,21 @@ export default function GraphView({
   focusId?: string
   /** Whether the zoom/fit control cluster is rendered (default true). */
   showControls?: boolean
+  /** Controlled edge-label switch; pass with onShowLabelsChange. */
+  showLabels?: boolean
+  onShowLabelsChange?: (v: boolean) => void
+  /** Controlled node-kind filter; pass with onTypeFilterChange. */
+  typeFilter?: Filter
+  onTypeFilterChange?: (f: Filter) => void
 }) {
   const resolved = useTheme().resolved
-  const [showLabels, setShowLabels] = useState(true)
-  const [filter, setFilter] = useState<Filter>('all')
+  const [labelsFallback, setLabelsFallback] = useState(true)
+  const [filterFallback, setFilterFallback] = useState<Filter>('all')
+  const external = onShowLabelsChange !== undefined || onTypeFilterChange !== undefined
+  const showLabels = showLabelsProp ?? labelsFallback
+  const setShowLabels = onShowLabelsChange ?? setLabelsFallback
+  const filter = typeFilterProp ?? filterFallback
+  const setFilter = onTypeFilterChange ?? setFilterFallback
 
   const visible = useMemo(() => {
     if (filter === 'all') return nodes
@@ -231,7 +249,8 @@ export default function GraphView({
             ))}
           </div>
         </Panel>
-        <Panel position="top-right">
+        {!external && (
+          <Panel position="top-right">
           <div className="border-line bg-panel/90 rounded-ctl flex items-center gap-1 border p-1 shadow-xs backdrop-blur">
             <Toggle
               variant="outline"
@@ -256,6 +275,7 @@ export default function GraphView({
             </ToggleGroup>
           </div>
         </Panel>
+        )}
       </ReactFlow>
     </div>
   )

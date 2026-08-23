@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiErr, api, unwrap } from './client'
+import { useRequestStore } from '../stores/requestStore'
 import type { Envelope } from './types'
 
 describe('unwrap', () => {
@@ -84,5 +85,62 @@ describe('api request auth redirect', () => {
     await expect(api.get('/api/ontologies')).rejects.toThrow(ApiErr)
     expect(store['ow_token']).toBeUndefined()
     expect(fakeWindow.location.href).toBe('/login')
+  })
+})
+
+describe('last request tracking', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    useRequestStore.getState().clear()
+  })
+
+  it('records method/path/ms/requestId of the latest OK request', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              code: 'OK',
+              message: 'm',
+              data: {},
+              hint: null,
+              request_id: 'rid-9',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+      ),
+    )
+
+    await api.post('/api/ping', {})
+
+    const last = useRequestStore.getState().lastRequest
+    expect(last?.method).toBe('POST')
+    expect(last?.path).toBe('/ping')
+    expect(last?.requestId).toBe('rid-9')
+    expect(Number.isFinite(last?.ms)).toBe(true)
+    expect((last?.ms ?? -1) as number).toBeGreaterThan(0)
+  })
+
+  it('does not record failed requests', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              code: 'NOT_FOUND',
+              message: 'nope',
+              data: null,
+              hint: null,
+              request_id: 'rid-10',
+            }),
+            { status: 404, headers: { 'Content-Type': 'application/json' } },
+          ),
+      ),
+    )
+
+    await expect(api.get('/api/none')).rejects.toThrow(ApiErr)
+    expect(useRequestStore.getState().lastRequest).toBeNull()
   })
 })

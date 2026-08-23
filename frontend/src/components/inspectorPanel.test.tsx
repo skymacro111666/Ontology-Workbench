@@ -111,7 +111,9 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('Class').className).toContain('microlabel')
     // URI renders as a code block.
     expect(screen.getByText(EID).closest('pre')).toBeTruthy()
-    expect(screen.getByText('en: Dog')).toBeTruthy()
+    // Label badge: text first, muted language marker after (mockup §7.2).
+    expect(screen.getByText('Dog')).toBeTruthy()
+    expect(screen.getByText('en')).toBeTruthy()
     expect(screen.getByText('Dogs bark.')).toBeTruthy()
     // Parents/children/backrefs render as chips; props mini table carries curie + ptype.
     expect(screen.getByText('pizza:Animal')).toBeTruthy()

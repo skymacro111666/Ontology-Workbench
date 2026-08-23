@@ -88,7 +88,8 @@ function Overview({ ent, compact }: { ent: EntityIR; compact: boolean }) {
         </Badge>
         {Object.entries(ent.label).map(([lang, value]) => (
           <Badge key={lang} variant="outline">
-            {lang}: {value}
+            {value}
+            <span className="text-ink-3 ml-1 font-mono text-[10px] lowercase">{lang}</span>
           </Badge>
         ))}
         {ent.deprecated && <Badge variant="destructive">deprecated</Badge>}

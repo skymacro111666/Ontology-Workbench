@@ -84,7 +84,9 @@ describe('EntityDetail', () => {
   it('renders the overview: labels, parent/child links, properties, backrefs, stats', async () => {
     renderDetail(stubFetch())
     expect(await screen.findByText('pizza:Dog')).toBeTruthy()
-    expect(screen.getByText('en: Dog')).toBeTruthy()
+    // Label badge: text first, muted language marker after (mockup §7.2).
+    expect(screen.getByText('Dog')).toBeTruthy()
+    expect(screen.getByText('en')).toBeTruthy()
     // Parents and children render as navigation links.
     expect(screen.getByText('pizza:Animal')).toBeTruthy()
     expect(screen.getByText('pizza:Corgi')).toBeTruthy()

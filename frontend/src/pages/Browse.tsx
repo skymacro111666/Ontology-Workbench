@@ -1,17 +1,24 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { ApiErr, api } from '../api/client'
 import type { EntityIR, NodesEdges, OntologyMeta, Ref } from '../api/types'
 import ClassTree from '../components/ClassTree'
 import EntityDetail from '../components/EntityDetail'
-import GraphView, { type GraphViewNode } from '../components/GraphView'
+import GraphView, { type GraphViewFilter, type GraphViewNode } from '../components/GraphView'
 import InspectorPanel from '../components/InspectorPanel'
 import { useBrowseStore, type ViewMode } from '../stores/browseStore'
+import { useRequestStore } from '../stores/requestStore'
 import { Button } from '@/components/ui/button'
+import { Toggle } from '@/components/ui/toggle'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 
 const MAX_DEPTH = 32
+
+/** Parse duration for the status bar: "870ms" under a second, "1.2s" above. */
+function formatParseMs(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`
+}
 
 /** One lineage level: renders its own ancestor chain first, then itself.
  *  An external (undeclared) ancestor renders as plain text and ends the chain.
@@ -83,7 +90,21 @@ function EntityBreadcrumb({ oid }: { oid: string }) {
 
 /** Neighbors canvas for split/graph modes: /neighbors around the selection
  *  (ported from the deleted LocalGraph; the overview link moved to the toolbar). */
-function NeighborsCanvas({ oid, eid }: { oid: string; eid: string | null }) {
+function NeighborsCanvas({
+  oid,
+  eid,
+  showLabels,
+  onShowLabelsChange,
+  typeFilter,
+  onTypeFilterChange,
+}: {
+  oid: string
+  eid: string | null
+  showLabels: boolean
+  onShowLabelsChange: (v: boolean) => void
+  typeFilter: GraphViewFilter
+  onTypeFilterChange: (f: GraphViewFilter) => void
+}) {
   const reveal = useBrowseStore((s) => s.reveal)
   const { data: nb, isError } = useQuery({
     enabled: eid !== null,
@@ -136,7 +157,17 @@ function NeighborsCanvas({ oid, eid }: { oid: string; eid: string | null }) {
     }
   })
 
-  return <GraphView nodes={nodes} edges={nb.edges} onSelect={reveal} />
+  return (
+    <GraphView
+      nodes={nodes}
+      edges={nb.edges}
+      onSelect={reveal}
+      showLabels={showLabels}
+      onShowLabelsChange={onShowLabelsChange}
+      typeFilter={typeFilter}
+      onTypeFilterChange={onTypeFilterChange}
+    />
+  )
 }
 
 /** Main workspace: four-zone grid — class tree, content (three view modes),
@@ -151,6 +182,11 @@ export default function Browse() {
   const setSelected = useBrowseStore((s) => s.setSelected)
   const ttlFocusEid = useBrowseStore((s) => s.ttlFocusEid)
   const ttlNonce = useBrowseStore((s) => s.ttlNonce)
+  // Canvas controls shared by split/graph modes, kept across mode switches.
+  const [showLabels, setShowLabels] = useState(true)
+  const [typeFilter, setTypeFilter] = useState<GraphViewFilter>('all')
+  // Last completed OK request, recorded by the api client (status bar).
+  const lastRequest = useRequestStore((s) => s.lastRequest)
   // Deep link from the overview page (?eid=...) preselects the entity.
   useEffect(() => {
     if (eidParam) setSelected(eidParam)
@@ -213,6 +249,31 @@ export default function Browse() {
           <div className="text-ink-2 min-w-0 flex-1 font-mono text-xs">
             <EntityBreadcrumb oid={oid} />
           </div>
+          {viewMode !== 'detail' && (
+            <>
+              <Toggle
+                variant="outline"
+                size="sm"
+                pressed={showLabels}
+                onPressedChange={setShowLabels}
+              >
+                边标签
+              </Toggle>
+              <ToggleGroup
+                type="single"
+                variant="outline"
+                size="sm"
+                value={typeFilter}
+                onValueChange={(v) => {
+                  if (v) setTypeFilter(v as GraphViewFilter)
+                }}
+              >
+                <ToggleGroupItem value="all">全部类型</ToggleGroupItem>
+                <ToggleGroupItem value="classes">仅类</ToggleGroupItem>
+                <ToggleGroupItem value="props">仅属性</ToggleGroupItem>
+              </ToggleGroup>
+            </>
+          )}
           {selectedEid !== null && (
             <Button variant="outline" size="sm" className="shrink-0" asChild>
               <Link to={`/graph/${oid}?focus=${encodeURIComponent(selectedEid)}`}>
@@ -234,14 +295,30 @@ export default function Browse() {
           {viewMode === 'split' && (
             <div className="flex h-full min-h-0 gap-4">
               <div className="min-w-0 flex-1">
-                <NeighborsCanvas oid={oid} eid={selectedEid} />
+                <NeighborsCanvas
+                  oid={oid}
+                  eid={selectedEid}
+                  showLabels={showLabels}
+                  onShowLabelsChange={setShowLabels}
+                  typeFilter={typeFilter}
+                  onTypeFilterChange={setTypeFilter}
+                />
               </div>
               <div className="w-[400px] shrink-0 overflow-y-auto">
                 <EntityDetail oid={oid} eid={selectedEid} compact />
               </div>
             </div>
           )}
-          {viewMode === 'graph' && <NeighborsCanvas oid={oid} eid={selectedEid} />}
+          {viewMode === 'graph' && (
+            <NeighborsCanvas
+              oid={oid}
+              eid={selectedEid}
+              showLabels={showLabels}
+              onShowLabelsChange={setShowLabels}
+              typeFilter={typeFilter}
+              onTypeFilterChange={setTypeFilter}
+            />
+          )}
         </div>
       </section>
 
@@ -269,6 +346,21 @@ export default function Browse() {
           ·
         </span>
         <span>解析 OK</span>
+        {meta.parseMs != null && (
+          <>
+            <span className="text-ink-3" aria-hidden="true">
+              ·
+            </span>
+            <span>{formatParseMs(meta.parseMs)}</span>
+          </>
+        )}
+        {lastRequest && (
+          <span className="text-ink-3 ml-auto flex shrink-0 items-center gap-1.5 font-mono">
+            <span>{`${lastRequest.method} ${lastRequest.path}`}</span>
+            <span>{Math.round(lastRequest.ms)}ms</span>
+            <span>{lastRequest.requestId.slice(0, 6)}</span>
+          </span>
+        )}
       </footer>
     </div>
   )

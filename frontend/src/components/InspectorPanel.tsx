@@ -117,8 +117,9 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
         </pre>
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(ent.label).map(([lang, value]) => (
-            <Badge key={lang} variant="secondary" className="font-mono text-xs">
-              {lang}: {value}
+            <Badge key={lang} variant="secondary" className="text-xs">
+              {value}
+              <span className="text-ink-3 ml-1 font-mono text-[10px] lowercase">{lang}</span>
             </Badge>
           ))}
         </div>
