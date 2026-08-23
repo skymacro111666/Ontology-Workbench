@@ -83,14 +83,14 @@ function Overview({ ent, compact }: { ent: EntityIR; compact: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="secondary" className="font-mono">
-          {ent.type}
-        </Badge>
+        <span className="bg-primary-soft border-primary-border text-primary rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide">
+          {ent.type.toUpperCase()}
+        </span>
         {Object.entries(ent.label).map(([lang, value]) => (
-          <Badge key={lang} variant="outline">
-            {value}
-            <span className="text-ink-3 ml-1 font-mono text-[10px] lowercase">{lang}</span>
-          </Badge>
+          <span
+            key={lang}
+            className="border-line text-ink-2 rounded-full border px-2 py-px text-[11px]"
+          >{`${value} ${lang}`}</span>
         ))}
         {ent.deprecated && <Badge variant="destructive">deprecated</Badge>}
       </div>

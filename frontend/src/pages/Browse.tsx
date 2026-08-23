@@ -5,15 +5,26 @@ import { ApiErr, api } from '../api/client'
 import type { EntityIR, NodesEdges, OntologyMeta, Ref } from '../api/types'
 import ClassTree from '../components/ClassTree'
 import EntityDetail from '../components/EntityDetail'
+import GraphOverview from '../components/GraphOverview'
 import GraphView, { type GraphViewFilter, type GraphViewNode } from '../components/GraphView'
 import InspectorPanel from '../components/InspectorPanel'
 import { useBrowseStore, type ViewMode } from '../stores/browseStore'
 import { useRequestStore } from '../stores/requestStore'
 import { Button } from '@/components/ui/button'
-import { Toggle } from '@/components/ui/toggle'
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 const MAX_DEPTH = 32
+
+const TYPE_FILTER_LABEL: Record<GraphViewFilter, string> = {
+  all: '全部类型',
+  classes: '仅类',
+  props: '仅属性',
+}
 
 /** Parse duration for the status bar: "870ms" under a second, "1.2s" above. */
 function formatParseMs(ms: number): string {
@@ -41,8 +52,8 @@ function Lineage({ oid, ancestor, depth }: { oid: string; ancestor: Ref; depth: 
       {ent && parent && (
         <>
           <Lineage oid={oid} ancestor={parent} depth={depth + 1} />
-          <span className="text-ink-3 mx-1.5" aria-hidden="true">
-            ›
+          <span className="text-ink-3 mx-1" aria-hidden="true">
+            /
           </span>
         </>
       )}
@@ -78,12 +89,12 @@ function EntityBreadcrumb({ oid }: { oid: string }) {
       {parent && (
         <>
           <Lineage oid={oid} ancestor={parent} depth={0} />
-          <span className="text-ink-3 mx-1.5" aria-hidden="true">
-            ›
+          <span className="text-ink-3 mx-1" aria-hidden="true">
+            /
           </span>
         </>
       )}
-      <strong className="truncate">{ent.curie}</strong>
+      <strong className="text-ink truncate">{ent.curie}</strong>
     </nav>
   )
 }
@@ -176,6 +187,9 @@ export default function Browse() {
   const { oid = '' } = useParams()
   const [sp] = useSearchParams()
   const eidParam = sp.get('eid')
+  // Legacy /graph deep link lands here: ?view=overview (+optional focus).
+  const viewParam = sp.get('view')
+  const focusParam = sp.get('focus')
   const viewMode = useBrowseStore((s) => s.viewMode)
   const setViewMode = useBrowseStore((s) => s.setViewMode)
   const selectedEid = useBrowseStore((s) => s.selectedEid)
@@ -191,6 +205,13 @@ export default function Browse() {
   useEffect(() => {
     if (eidParam) setSelected(eidParam)
   }, [eidParam, setSelected])
+  // Overview deep links (redirected /graph/:oid?focus=…) select + switch mode.
+  useEffect(() => {
+    if (viewParam === 'overview') {
+      if (focusParam) setSelected(focusParam)
+      setViewMode('overview')
+    }
+  }, [viewParam, focusParam, setSelected, setViewMode])
   const { data: meta, isError, error, refetch } = useQuery({
     queryKey: ['ontology', oid],
     queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
@@ -232,54 +253,82 @@ export default function Browse() {
 
       {/* Zone 2: content — toolbar over the three view modes */}
       <section aria-label="内容区" className="border-line flex min-h-0 flex-col border-r">
-        <div className="border-line flex shrink-0 items-center gap-3 border-b px-3 py-2">
-          <ToggleGroup
-            type="single"
-            variant="outline"
-            size="sm"
-            value={viewMode}
-            onValueChange={(v) => {
-              if (v) setViewMode(v as ViewMode)
-            }}
-          >
-            <ToggleGroupItem value="detail">详情</ToggleGroupItem>
-            <ToggleGroupItem value="split">分屏</ToggleGroupItem>
-            <ToggleGroupItem value="graph">图</ToggleGroupItem>
-          </ToggleGroup>
-          <div className="text-ink-2 min-w-0 flex-1 font-mono text-xs">
+        <div className="border-line flex h-[42px] shrink-0 items-center gap-2.5 border-b px-3.5">
+          {/* seg control (mockup): recessed tray, active chip lifts white */}
+          <div className="bg-panel-2 border-line rounded-ctl flex border p-0.5">
+            {(
+              [
+                ['detail', '详情'],
+                ['split', '分屏'],
+                ['graph', '图'],
+                ['overview', '总览'],
+              ] as [ViewMode, string][]
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={viewMode === mode}
+                onClick={() => setViewMode(mode)}
+                className={
+                  viewMode === mode
+                    ? 'bg-panel text-primary rounded-[4px] px-3 py-0.5 text-xs font-semibold shadow-xs'
+                    : 'text-ink-2 rounded-[4px] px-3 py-0.5 text-xs'
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="text-ink-2 min-w-0 flex-1 text-[12.5px]">
             <EntityBreadcrumb oid={oid} />
           </div>
-          {viewMode !== 'detail' && (
+          {(viewMode === 'split' || viewMode === 'graph') && (
             <>
-              <Toggle
-                variant="outline"
-                size="sm"
-                pressed={showLabels}
-                onPressedChange={setShowLabels}
+              <button
+                type="button"
+                aria-pressed={showLabels}
+                onClick={() => setShowLabels(!showLabels)}
+                className={
+                  showLabels
+                    ? 'bg-primary-soft border-primary-border text-primary rounded-ctl border px-3 py-1 text-[13px] font-medium'
+                    : 'border-line text-ink-2 bg-panel hover:border-primary-border hover:text-primary rounded-ctl border px-3 py-1 text-[13px] font-medium'
+                }
               >
                 边标签
-              </Toggle>
-              <ToggleGroup
-                type="single"
-                variant="outline"
-                size="sm"
-                value={typeFilter}
-                onValueChange={(v) => {
-                  if (v) setTypeFilter(v as GraphViewFilter)
-                }}
-              >
-                <ToggleGroupItem value="all">全部类型</ToggleGroupItem>
-                <ToggleGroupItem value="classes">仅类</ToggleGroupItem>
-                <ToggleGroupItem value="props">仅属性</ToggleGroupItem>
-              </ToggleGroup>
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="border-line text-ink-2 bg-panel hover:border-primary-border hover:text-primary rounded-ctl border px-3 py-1 text-[13px] font-medium"
+                  >
+                    {TYPE_FILTER_LABEL[typeFilter]} ▾
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {(
+                    [
+                      ['all', '全部类型'],
+                      ['classes', '仅类'],
+                      ['props', '仅属性'],
+                    ] as [GraphViewFilter, string][]
+                  ).map(([value, label]) => (
+                    <DropdownMenuItem key={value} onSelect={() => setTypeFilter(value)}>
+                      {label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           )}
-          {selectedEid !== null && (
-            <Button variant="outline" size="sm" className="shrink-0" asChild>
-              <Link to={`/graph/${oid}?focus=${encodeURIComponent(selectedEid)}`}>
-                在总览中查看
-              </Link>
-            </Button>
+          {selectedEid !== null && viewMode !== 'overview' && (
+            <button
+              type="button"
+              onClick={() => setViewMode('overview')}
+              className="border-line text-ink-2 bg-panel hover:border-primary-border hover:text-primary rounded-ctl shrink-0 border px-3 py-1 text-[13px] font-medium"
+            >
+              在总览中查看
+            </button>
           )}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -319,6 +368,7 @@ export default function Browse() {
               onTypeFilterChange={setTypeFilter}
             />
           )}
+          {viewMode === 'overview' && <GraphOverview oid={oid} focus={selectedEid} />}
         </div>
       </section>
 
@@ -327,38 +377,20 @@ export default function Browse() {
         <InspectorPanel oid={oid} eid={selectedEid} />
       </aside>
 
-      {/* Zone 4: status bar */}
-      <footer className="border-line bg-panel text-ink-2 row-start-2 col-span-full flex items-center gap-2 border-t px-3 text-xs">
+      {/* Zone 4: status bar (mockup: breathing gaps, no dot separators) */}
+      <footer className="border-line bg-panel text-ink-3 row-start-2 col-span-full flex items-center gap-3.5 border-t px-3.5 text-[11.5px]">
         <span className="font-mono">{meta.filename}</span>
-        <span className="text-ink-3" aria-hidden="true">
-          ·
-        </span>
         <span>{meta.classCount} 类</span>
-        <span className="text-ink-3" aria-hidden="true">
-          ·
-        </span>
         <span>{meta.propertyCount} 属性</span>
-        <span className="text-ink-3" aria-hidden="true">
-          ·
-        </span>
         <span>{meta.axiomCount} 公理</span>
-        <span className="text-ink-3" aria-hidden="true">
-          ·
+        <span className="text-success flex items-center gap-1">
+          <span aria-hidden="true">●</span>
+          {meta.parseMs != null ? `解析 OK · ${formatParseMs(meta.parseMs)}` : '解析 OK'}
         </span>
-        <span>解析 OK</span>
-        {meta.parseMs != null && (
-          <>
-            <span className="text-ink-3" aria-hidden="true">
-              ·
-            </span>
-            <span>{formatParseMs(meta.parseMs)}</span>
-          </>
-        )}
         {lastRequest && (
-          <span className="text-ink-3 ml-auto flex shrink-0 items-center gap-1.5 font-mono">
-            <span>{`${lastRequest.method} ${lastRequest.path}`}</span>
-            <span>{Math.round(lastRequest.ms)}ms</span>
-            <span>{lastRequest.requestId.slice(0, 6)}</span>
+          <span className="ml-auto flex shrink-0 items-center gap-3 font-mono">
+            <span>{`${lastRequest.method} ${lastRequest.path} ${Math.round(lastRequest.ms)}ms`}</span>
+            <span>request_id {lastRequest.requestId.slice(0, 6)}</span>
           </span>
         )}
       </footer>

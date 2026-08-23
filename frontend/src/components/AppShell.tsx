@@ -1,10 +1,11 @@
-import { DownloadIcon, LogOutIcon, MonitorIcon, MoonIcon, SunIcon, UploadIcon, UserIcon } from 'lucide-react'
+import { LogOutIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { Outlet, useNavigate } from 'react-router'
+import { Outlet, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { LAST_OID_KEY, useAuth } from '../auth/AuthContext'
 import { useUiStore } from '../stores/uiStore'
 import { useTheme } from '../theme/ThemeProvider'
+import { cn } from '@/lib/utils'
 import CommandPalette from './CommandPalette'
 import ImportDialog from './ImportDialog'
 import OntologySwitcher from './OntologySwitcher'
@@ -17,12 +18,13 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 const NEXT_THEME = { light: 'dark', dark: 'system', system: 'light' } as const
-const THEME_ICON = { light: SunIcon, dark: MoonIcon, system: MonitorIcon } as const
 const THEME_LABEL = { light: '浅色', dark: '深色', system: '跟随系统' } as const
 
-/** App frame: 48px persistent topbar (logo, nav, switcher, actions) + content area. */
+/** App frame: 48px persistent topbar (logo, nav, switcher, actions) + content.
+ *  Nav (mockup): 概览 = home; 工作区 merges browse + the overview canvas. */
 export default function AppShell({ children }: { children?: ReactNode }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const { user, logout } = useAuth()
   const { theme, setTheme } = useTheme()
   const setImportOpen = useUiStore((s) => s.setImportOpen)
@@ -37,46 +39,59 @@ export default function AppShell({ children }: { children?: ReactNode }) {
     navigate(`${prefix}/${last}`)
   }
 
-  const ThemeIcon = THEME_ICON[theme]
+  const isWorkspace = location.pathname.startsWith('/browse') || location.pathname.startsWith('/graph')
+  const themeCycle = ['浅色', '深色', '跟随系统'] as const
+  const themeLabel = THEME_LABEL[theme]
 
   return (
     <div className="bg-background text-foreground flex h-dvh flex-col">
-      <header className="bg-card border-border flex h-12 shrink-0 items-center gap-1 border-b px-3">
-        <div className="mr-2 flex items-center gap-2">
+      <header className="bg-panel border-line flex h-12 shrink-0 items-center gap-5 border-b px-4">
+        <div className="flex items-center gap-2">
           <span
-            className="from-primary to-edge-sub text-primary-foreground flex size-7 items-center justify-center rounded-md bg-gradient-to-br text-sm font-semibold"
+            className="from-primary to-edge-sub text-primary-foreground flex size-6 items-center justify-center rounded-md bg-gradient-to-br text-xs font-semibold"
             aria-hidden
           >
             ◈
           </span>
-          <span className="text-sm font-semibold">Ontology Workbench</span>
+          <span className="text-sm font-bold">Ontology Workbench</span>
         </div>
 
-        <nav className="flex items-center gap-1" aria-label="主导航">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-            工作台
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => openLast('/browse')}>
-            浏览
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => openLast('/graph')}>
-            总览图
-          </Button>
+        <nav className="flex items-center gap-0.5" aria-label="主导航">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className={cn(
+              'rounded-ctl px-3 py-1 text-[13px] font-medium',
+              location.pathname === '/'
+                ? 'bg-primary-soft text-primary'
+                : 'text-ink-2 hover:text-primary',
+            )}
+          >
+            概览
+          </button>
+          <button
+            type="button"
+            onClick={() => openLast('/browse')}
+            className={cn(
+              'rounded-ctl px-3 py-1 text-[13px] font-medium',
+              isWorkspace ? 'bg-primary-soft text-primary' : 'text-ink-2 hover:text-primary',
+            )}
+          >
+            工作区
+          </button>
         </nav>
 
         <OntologySwitcher />
 
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex items-center gap-2">
           <Button size="sm" onClick={() => setImportOpen(true)}>
-            <UploadIcon />
-            导入本体
+            ＋ 导入本体
           </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
-                <DownloadIcon />
-                导出
+                导出 ▾
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -84,23 +99,27 @@ export default function AppShell({ children }: { children?: ReactNode }) {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`切换主题，当前：${THEME_LABEL[theme]}`}
+          <button
+            type="button"
+            aria-label={`切换主题，当前：${themeLabel}（依次切换${themeCycle.join(' / ')}）`}
             onClick={() => setTheme(NEXT_THEME[theme])}
+            className="text-ink-2 hover:bg-panel-2 hover:text-primary rounded-ctl size-8 cursor-pointer"
           >
-            <ThemeIcon />
-          </Button>
+            ◐
+          </button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm">
-                <UserIcon />
-                {user?.username ?? '用户'}
-              </Button>
+              <button
+                type="button"
+                aria-label={`${user?.username ?? '用户'} 菜单`}
+                className="bg-primary-soft text-primary grid size-7 cursor-pointer place-items-center rounded-full text-xs font-semibold"
+              >
+                {(user?.username ?? '用')[0].toUpperCase()}
+              </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <div className="text-ink-2 px-2 py-1 text-xs">{user?.username ?? '用户'}</div>
               <DropdownMenuItem
                 onSelect={() => {
                   logout()

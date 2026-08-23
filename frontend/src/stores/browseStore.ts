@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
-/** Content-area view mode; 'split'/'graph' arrive with the M3 graph work. */
-export type ViewMode = 'detail' | 'split' | 'graph'
+/** Content-area view mode; 'overview' embeds the whole-ontology canvas. */
+export type ViewMode = 'detail' | 'split' | 'graph' | 'overview'
 
 interface BrowseState {
   selectedEid: string | null

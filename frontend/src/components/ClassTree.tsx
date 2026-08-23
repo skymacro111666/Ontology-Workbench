@@ -5,9 +5,7 @@ import { api } from '../api/client'
 import type { EntityIR, OntologyMeta, TreeNode } from '../api/types'
 import { useContainerHeight } from '../hooks/useContainerHeight'
 import { useBrowseStore } from '../stores/browseStore'
-import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 
 type ChildMap = Record<string, TreeNode[]>
@@ -32,14 +30,17 @@ function matchesTerm(n: TreeRow, term: string): boolean {
   return Object.values(n.label ?? {}).some((v) => v.toLowerCase().includes(t))
 }
 
-/** One row: chevron + mono curie + direct-subclass badge (spec §7.2). */
+/** One row: chevron + curie + direct-subclass badge (mockup: grey pill,
+ *  white with primary border when the row is selected). */
 function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
   return (
     <div
       style={style}
       className={cn(
-        'flex h-7 shrink-0 items-center gap-1.5 rounded-md pr-2 font-mono text-xs',
-        node.isSelected ? 'bg-primary-soft text-primary' : 'text-ink-2 hover:bg-muted/60',
+        'flex h-7 shrink-0 items-center gap-1.5 rounded-ctl pr-2 text-[12.5px]',
+        node.isSelected
+          ? 'bg-primary-soft text-primary font-semibold'
+          : 'text-ink-2 hover:bg-panel-2',
       )}
     >
       {node.isInternal ? (
@@ -50,7 +51,7 @@ function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
             e.stopPropagation()
             node.toggle()
           }}
-          className="text-ink-3 flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center"
+          className="text-ink-3 flex h-3 w-3 shrink-0 cursor-pointer items-center justify-center"
         >
           <svg
             viewBox="0 0 16 16"
@@ -63,13 +64,18 @@ function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
           </svg>
         </button>
       ) : (
-        <span className="h-4 w-4 shrink-0" />
+        <span className="h-3 w-3 shrink-0" />
       )}
-      <span className="truncate">{node.data.curie}</span>
+      <span className={cn('truncate', node.isSelected && 'font-mono')}>{node.data.curie}</span>
       {node.data.childrenCount > 0 && (
         <span
           title="直接子类数"
-          className="bg-primary text-primary-foreground ml-auto flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+          className={cn(
+            'ml-auto flex h-[17px] min-w-[17px] items-center justify-center rounded-full px-[5px] text-[10px]',
+            node.isSelected
+              ? 'bg-panel border-primary-border text-primary border'
+              : 'bg-panel-2 border-line text-ink-2 border',
+          )}
         >
           {node.data.childrenCount}
         </span>
@@ -217,55 +223,89 @@ export default function ClassTree({ oid }: { oid: string }) {
     searchMatch: (n: NodeApi<TreeRow>, term: string) => matchesTerm(n.data, term),
   }
 
+  const TABS: [Tab, string][] = [
+    ['classes', '类'],
+    ['props', '属性'],
+    ['prefixes', '前缀'],
+  ]
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <Input
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        placeholder="过滤已加载节点"
-        className="h-8"
-      />
-      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)} className="flex min-h-0 flex-1 flex-col">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="classes">类</TabsTrigger>
-          <TabsTrigger value="props">属性</TabsTrigger>
-          <TabsTrigger value="prefixes">前缀</TabsTrigger>
-        </TabsList>
-        <div ref={ref} className="min-h-0 flex-1 overflow-hidden">
-          {/* forceMount keeps the class tree mounted (and reveal-expandable)
-              while the property or prefix tab is showing. */}
-          <TabsContent value="classes" forceMount className="h-full data-[state=inactive]:hidden">
-            <Tree ref={treeRef} data={classRows} onToggle={handleToggle} aria-label="类树" {...shared}>
-              {ClassRow}
-            </Tree>
-          </TabsContent>
-          <TabsContent value="props" className="h-full data-[state=inactive]:hidden">
-            <Tree ref={propTreeRef} data={propRows} aria-label="属性列表" {...shared}>
-              {ClassRow}
-            </Tree>
-          </TabsContent>
-          <TabsContent value="prefixes" className="data-[state=inactive]:hidden overflow-y-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-20">前缀</TableHead>
-                  <TableHead>IRI</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {Object.entries(meta?.prefixes ?? {}).map(([prefix, iri]) => (
-                  <TableRow key={prefix}>
-                    <TableCell className="font-mono text-xs">{prefix}</TableCell>
-                    <TableCell className="text-ink-2 font-mono text-xs break-all whitespace-normal">
-                      {iri}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TabsContent>
+    <div className="flex h-full min-h-0 flex-col">
+      {/* mockup: pill tabs on top, recessed search box under them */}
+      <div className="border-line flex gap-0.5 border-b px-3 py-1.5">
+        {TABS.map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setTab(value)}
+            className={cn(
+              'rounded-ctl px-2.5 py-1 text-xs',
+              tab === value
+                ? 'bg-primary-soft text-primary font-semibold'
+                : 'text-ink-2 cursor-pointer',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="px-3 pt-2.5 pb-1.5">
+        <div className="relative">
+          <svg
+            viewBox="0 0 24 24"
+            width="13"
+            height="13"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+            className="text-ink-3 pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="m21 21-4-4" />
+          </svg>
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="搜索类 / 属性 / 注释…"
+            className="bg-panel-2 border-line text-ink focus:border-primary rounded-ctl w-full border py-1.5 pr-2.5 pl-8 text-xs outline-none"
+          />
         </div>
-      </Tabs>
+      </div>
+      <div ref={ref} className="min-h-0 flex-1 overflow-hidden px-2 pb-2">
+        {/* The class tree stays mounted (reveal-expandable) even while the
+            property or prefix tab is showing. */}
+        <div className={tab === 'classes' ? 'h-full' : 'hidden'}>
+          <Tree ref={treeRef} data={classRows} onToggle={handleToggle} aria-label="类树" {...shared}>
+            {ClassRow}
+          </Tree>
+        </div>
+        {tab === 'props' && (
+          <Tree ref={propTreeRef} data={propRows} aria-label="属性列表" {...shared}>
+            {ClassRow}
+          </Tree>
+        )}
+        {tab === 'prefixes' && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-20">前缀</TableHead>
+                <TableHead>IRI</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Object.entries(meta?.prefixes ?? {}).map(([prefix, iri]) => (
+                <TableRow key={prefix}>
+                  <TableCell className="font-mono text-xs">{prefix}</TableCell>
+                  <TableCell className="text-ink-2 font-mono text-xs break-all whitespace-normal">
+                    {iri}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
     </div>
   )
 }

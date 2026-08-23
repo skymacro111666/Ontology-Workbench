@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
@@ -107,13 +107,12 @@ describe('InspectorPanel', () => {
   it('renders the compact summary: type badge, curie, URI, labels, chips, props, backrefs', async () => {
     renderPanel()
     expect(await screen.findByText('pizza:Dog')).toBeTruthy()
-    // Type badge is an "OWL CLASS"-style microlabel badge (uppercase via CSS).
-    expect(screen.getByText('Class').className).toContain('microlabel')
+    // Type renders as an "OWL CLASS"-style uppercase pill (mockup).
+    expect(screen.getByText('CLASS').className).toContain('rounded-full')
     // URI renders as a code block.
     expect(screen.getByText(EID).closest('pre')).toBeTruthy()
-    // Label badge: text first, muted language marker after (mockup §7.2).
-    expect(screen.getByText('Dog')).toBeTruthy()
-    expect(screen.getByText('en')).toBeTruthy()
+    // Label badge: "value lang" pill (mockup §7.2).
+    expect(screen.getByText('Dog en')).toBeTruthy()
     expect(screen.getByText('Dogs bark.')).toBeTruthy()
     // Parents/children/backrefs render as chips; props mini table carries curie + ptype.
     expect(screen.getByText('pizza:Animal')).toBeTruthy()
@@ -143,17 +142,18 @@ describe('InspectorPanel', () => {
     useBrowseStore.setState({ viewMode: 'graph' })
     renderPanel()
     await screen.findByText('pizza:Dog')
-    await userEvent.click(screen.getByRole('button', { name: '原始 TTL' }))
+    await userEvent.click(screen.getByRole('button', { name: '查看原始 TTL' }))
     expect(useBrowseStore.getState().viewMode).toBe('detail')
     // The store signal the central EntityDetail consumes to open its TTL tab.
     expect(useBrowseStore.getState().ttlFocusEid).toBe(EID)
   })
 
-  it('overview action links to the graph page with the focus param', async () => {
+  it('overview action switches the workspace to overview mode', async () => {
+    useBrowseStore.setState({ viewMode: 'detail' })
     renderPanel()
     await screen.findByText('pizza:Dog')
-    const link = screen.getByRole('link', { name: '在总览中查看' })
-    expect(link.getAttribute('href')).toBe(`/graph/oid-1?focus=${encodeURIComponent(EID)}`)
+    fireEvent.click(screen.getByRole('button', { name: '在总览中查看' }))
+    expect(useBrowseStore.getState().viewMode).toBe('overview')
   })
 
   it('shows the empty state and fetches nothing when no entity is selected', () => {

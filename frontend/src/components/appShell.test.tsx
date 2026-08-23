@@ -36,7 +36,8 @@ it('renders nav, opens import dialog, logs out', async () => {
   // Nav asserted before opening the dialog: Radix modal dialogs aria-hide all
   // outside content, so the topbar buttons leave the accessibility tree while
   // the import dialog is open.
-  expect(screen.getByRole('button', { name: /工作台/ })).toBeTruthy()
+  expect(screen.getByRole('button', { name: '概览' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: '工作区' })).toBeTruthy()
   await userEvent.click(screen.getByRole('button', { name: /导入本体/ }))
   expect(await screen.findByRole('dialog')).toBeTruthy()
 })

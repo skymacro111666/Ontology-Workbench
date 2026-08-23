@@ -13,6 +13,8 @@
   --color-primary-border: #c7d2fe;
   --color-canvas: #f8fafc;
   --color-panel: #ffffff;
+  --color-panel-2: #f8fafc;
+  --color-success: #10b981;
   --color-line: #e2e8f0;
   --color-ink: #0f172a;
   --color-ink-2: #475569;
@@ -52,6 +54,8 @@
   --color-primary-border: #6366f155;
   --color-canvas: #0f172a;
   --color-panel: #1e293b;
+  --color-panel-2: #334155;
+  --color-success: #34d399;
   --color-line: #334155;
   --color-ink: #e2e8f0;
   --color-ink-2: #94a3b8;

@@ -75,7 +75,8 @@ function stubFetch() {
   return vi.fn(async (url: string | URL) => {
     const u = String(url)
     let data: unknown
-    if (u.includes('/tree')) data = []
+    if (u.includes('/overview')) data = neighbors()
+    else if (u.includes('/tree')) data = []
     else if (u.includes('/neighbors')) data = neighbors()
     else if (u.includes('/raw/')) data = { turtle: 'pizza:Dog a owl:Class .', eid: EID }
     else if (u.includes(encodeURIComponent(ANIMAL))) data = animal()
@@ -112,9 +113,9 @@ function renderBrowse(
   }
 }
 
-/** ToggleGroup items are radios (single type); view modes share one group. */
-async function switchMode(name: '详情' | '分屏' | '图') {
-  await userEvent.click(screen.getByRole('radio', { name }))
+/** Seg control buttons share the toolbar (mockup); one pressed at a time. */
+async function switchMode(name: '详情' | '分屏' | '图' | '总览') {
+  await userEvent.click(screen.getByRole('button', { name }))
 }
 
 beforeEach(() => {
@@ -138,33 +139,30 @@ describe('Browse four-zone workspace', () => {
     renderBrowse(stubFetch())
     expect(await screen.findAllByText('pizza:Dog')).toBeTruthy()
 
-    // Zone 1: class-tree tri-tabs.
-    expect(screen.getByRole('tab', { name: '类' })).toBeTruthy()
-    expect(screen.getByRole('tab', { name: '前缀' })).toBeTruthy()
-    // Zone 4: statusbar copy (mono filename · counts · parse status).
+    // Zone 1: class-tree tri-tabs (pill buttons under the mockup).
+    expect(screen.getByRole('button', { name: '类' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '前缀' })).toBeTruthy()
+    // Zone 4: statusbar copy (mono filename · counts · green parse status).
     expect(screen.getByText('pizza.ttl')).toBeTruthy()
     expect(screen.getByText('99 类')).toBeTruthy()
     expect(screen.getByText('8 属性')).toBeTruthy()
     expect(screen.getByText('300 公理')).toBeTruthy()
-    expect(screen.getByText('解析 OK')).toBeTruthy()
-    // Parse duration from meta, formatted seconds over 1s (mockup §7.4).
-    expect(screen.getByText('1.2s')).toBeTruthy()
+    expect(screen.getByText('解析 OK · 1.2s')).toBeTruthy()
     // Zone 3: resident inspector shows the selected entity's URI block.
     expect(screen.getByText(EID).closest('pre')).toBeTruthy()
-    // Label badges: text first, muted language marker after (mockup §7.2).
-    expect(screen.getAllByText('Dog').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getAllByText('en').length).toBeGreaterThanOrEqual(1)
-    // Detail is the default mode and full (TTL tab present, not compact).
-    expect(screen.getByRole('radio', { name: '详情' }).getAttribute('data-state')).toBe('on')
+    // Label badges: "value lang" pill (mockup §7.2).
+    expect(screen.getAllByText('Dog en').length).toBeGreaterThanOrEqual(1)
+    // Detail is the default mode (seg button pressed) and full (TTL tab open).
+    expect(screen.getByRole('button', { name: '详情' }).getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByRole('tab', { name: '原始 TTL' })).toBeTruthy()
     // The overview jump appears twice — toolbar right and inspector action —
-    // both targeting the selected entity.
-    const overviewLinks = screen.getAllByRole('link', { name: '在总览中查看' })
-    expect(overviewLinks.map((a) => a.getAttribute('href'))).toEqual(
-      overviewLinks.map(() => `/graph/oid-1?focus=${encodeURIComponent(EID)}`),
-    )
+    // both switching the workspace to overview mode.
+    const overviewButtons = screen.getAllByRole('button', { name: '在总览中查看' })
+    expect(overviewButtons.length).toBe(2)
+    fireEvent.click(overviewButtons[0])
+    await waitFor(() => expect(useBrowseStore.getState().viewMode).toBe('overview'))
     // Statusbar right segment: last OK request from the client store,
-    // method/path · duration · request_id prefix (mockup §7.4).
+    // "METHOD /path Nms" + "request_id …" (mockup §7.4).
     useRequestStore.getState().set({
       method: 'GET',
       path: '/entities/Margherita',
@@ -172,9 +170,8 @@ describe('Browse four-zone workspace', () => {
       requestId: 'a3f9c2d1e2',
     })
     await waitFor(() => {
-      expect(screen.getByText('GET /entities/Margherita')).toBeTruthy()
-      expect(screen.getByText('32ms')).toBeTruthy()
-      expect(screen.getByText('a3f9c2')).toBeTruthy()
+      expect(screen.getByText('GET /entities/Margherita 32ms')).toBeTruthy()
+      expect(screen.getByText('request_id a3f9c2')).toBeTruthy()
     })
   })
 
@@ -186,10 +183,11 @@ describe('Browse four-zone workspace', () => {
     // Toolbar controls beside the mode switch (mockup §5.4); the in-canvas
     // overlay variant must be gone so the two cannot drift apart.
     expect(screen.getByRole('button', { name: '边标签' })).toBeTruthy()
-    expect(screen.getByRole('radio', { name: '全部类型' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '全部类型 ▾' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '标签' })).toBeNull()
-    // Classes-only filter drops the property node from the canvas.
-    fireEvent.click(screen.getByRole('radio', { name: '仅类' }))
+    // Classes-only filter (dropdown) drops the property node from the canvas.
+    await userEvent.click(screen.getByRole('button', { name: '全部类型 ▾' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: '仅类' }))
     await waitFor(() => expect(screen.queryByText('pizza:hasFur')).toBeNull())
     // Dog stays (breadcrumb + canvas node).
     expect(screen.getAllByText('pizza:Dog').length).toBeGreaterThanOrEqual(1)
@@ -295,7 +293,7 @@ describe('Browse four-zone workspace', () => {
     await screen.findAllByText('pizza:Dog')
     await switchMode('分屏')
     // Split keeps the inspector button the only 原始 TTL control.
-    await userEvent.click(screen.getByRole('button', { name: '原始 TTL' }))
+    await userEvent.click(screen.getByRole('button', { name: '查看原始 TTL' }))
     expect(useBrowseStore.getState().viewMode).toBe('detail')
     // The central detail reopens on its TTL tab (store signal consumed).
     expect((await screen.findByRole('tab', { name: '原始 TTL' })).getAttribute('aria-selected')).toBe(
@@ -305,7 +303,7 @@ describe('Browse four-zone workspace', () => {
     // A repeated ask after manually returning to overview re-opens TTL.
     await userEvent.click(screen.getByRole('tab', { name: '概览' }))
     expect(screen.queryByText(/a owl:Class/)).toBeNull()
-    await userEvent.click(screen.getByRole('button', { name: '原始 TTL' }))
+    await userEvent.click(screen.getByRole('button', { name: '查看原始 TTL' }))
     expect(await screen.findByText(/a owl:Class/)).toBeTruthy()
   })
 
@@ -314,7 +312,7 @@ describe('Browse four-zone workspace', () => {
     renderBrowse(stubFetch())
     await screen.findAllByText('pizza:Dog')
     // Landed on detail with the TTL tab open; the signal stays set.
-    await userEvent.click(screen.getByRole('button', { name: '原始 TTL' }))
+    await userEvent.click(screen.getByRole('button', { name: '查看原始 TTL' }))
     expect(await screen.findByText(/a owl:Class/)).toBeTruthy()
     await switchMode('分屏')
     // The compact pane mounts fresh while ttlFocusEid still targets the

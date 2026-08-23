@@ -1,30 +1,28 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
-import { Link } from 'react-router'
 import { api } from '../api/client'
 import type { EntityIR, PropRef, Ref, ReferencedRef } from '../api/types'
 import { useBrowseStore } from '../stores/browseStore'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
-/** Clickable entity chip (parents/children/backrefs); selecting navigates
- *  the whole workspace — tree, content area, and inspector follow along. */
+/** Clickable entity chip (mockup linklist): soft primary pill, mono curie;
+ *  selecting navigates the whole workspace along. */
 function Chip({ eid, curie }: Ref) {
   const setSelected = useBrowseStore((s) => s.setSelected)
   return (
     <button
       type="button"
       onClick={() => setSelected(eid)}
-      className="border-line bg-panel text-primary rounded-ctl hover:border-primary-border hover:bg-primary-soft font-mono text-xs border px-2 py-0.5 transition-colors break-all"
+      className="bg-primary-soft border-primary-border text-primary hover:bg-panel rounded-ctl font-mono text-xs border px-2 py-0.5 transition-colors break-all"
     >
       {curie}
     </button>
   )
 }
 
-/** Chip list with the shared "nothing here" dash. */
+/** Chip list with the mockup's muted 无 placeholder. */
 function ChipList({ refs }: { refs: Ref[] }) {
-  if (refs.length === 0) return <span className="text-ink-3 text-xs">—</span>
+  if (refs.length === 0) return <span className="text-ink-3 text-xs">无</span>
   return (
     <div className="flex flex-wrap gap-1.5">
       {refs.map((r) => (
@@ -34,24 +32,32 @@ function ChipList({ refs }: { refs: Ref[] }) {
   )
 }
 
-/** Compact property listing: one bordered row per curie → type. */
+/** Compact property table (mockup mini): curie | 类型. */
 function MiniProps({ rows }: { rows: PropRef[] }) {
-  if (rows.length === 0) return <span className="text-ink-3 text-xs">—</span>
+  if (rows.length === 0) return <span className="text-ink-3 text-xs">无</span>
   return (
-    <div className="border-line rounded-ctl divide-line border divide-y">
-      {rows.map((r) => (
-        <div key={r.eid} className="flex items-baseline justify-between gap-2 px-2 py-1">
-          <span className="font-mono text-xs break-all">{r.curie}</span>
-          <span className="text-ink-3 font-mono text-xs shrink-0">{r.ptype}</span>
-        </div>
-      ))}
-    </div>
+    <table className="w-full text-xs">
+      <thead>
+        <tr className="border-line border-b">
+          <th className="text-ink-3 px-1.5 py-1 text-left font-semibold">curie</th>
+          <th className="text-ink-3 px-1.5 py-1 text-left font-semibold">类型</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.eid} className="border-line border-b">
+            <td className="text-ink px-1.5 py-1 font-mono break-all">{r.curie}</td>
+            <td className="text-ink-2 px-1.5 py-1">{r.ptype}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 
 /** Backref chips: who mentions this entity (relation kept as the title). */
 function BackRefChips({ refs }: { refs: ReferencedRef[] }) {
-  if (refs.length === 0) return <span className="text-ink-3 text-xs">暂无反向引用</span>
+  if (refs.length === 0) return <span className="text-ink-3 text-xs">无</span>
   return (
     <div className="flex flex-wrap gap-1.5">
       {refs.map((r) => (
@@ -106,34 +112,46 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-1 pb-2">
-      <div className="flex flex-col gap-2">
-        <Badge variant="outline" className="microlabel border-line rounded-ctl">
-          {ent.type}
-        </Badge>
-        <h3 className="text-primary font-mono text-sm font-semibold break-all">{ent.curie}</h3>
-        <pre className="text-ink-2 bg-canvas border-line rounded-ctl border p-2 font-mono text-xs break-all whitespace-pre-wrap">
-          {ent.eid}
-        </pre>
-        <div className="flex flex-wrap gap-1.5">
-          {Object.entries(ent.label).map(([lang, value]) => (
-            <Badge key={lang} variant="secondary" className="text-xs">
-              {value}
-              <span className="text-ink-3 ml-1 font-mono text-[10px] lowercase">{lang}</span>
-            </Badge>
-          ))}
+    <div className="flex h-full flex-col gap-3 overflow-y-auto px-4 pt-3.5 pb-3">
+      <div className="flex flex-col gap-3">
+        {/* mockup head: Inspector microlabel + type pill */}
+        <div className="flex items-center justify-between">
+          <span className="microlabel">Inspector</span>
+          <span className="bg-primary-soft border-primary-border text-primary rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide">
+            {ent.type.toUpperCase()}
+          </span>
         </div>
+        <h3 className="text-primary font-mono text-sm font-bold break-all">{ent.curie}</h3>
+        <Section label="URI">
+          <pre className="text-ink bg-panel-2 border-line rounded-ctl inline-block max-w-full border p-1.5 px-2 font-mono text-xs break-all whitespace-pre-wrap">
+            {ent.eid}
+          </pre>
+        </Section>
+        {Object.keys(ent.label).length > 0 && (
+          <Section label="标签">
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(ent.label).map(([lang, value]) => (
+                <span
+                  key={lang}
+                  className="border-line text-ink-2 rounded-full border px-2 py-px text-[11px]"
+                >{`${value} ${lang}`}</span>
+              ))}
+            </div>
+          </Section>
+        )}
         {ent.comment && (
-          <p className="text-ink-2 line-clamp-2 text-xs" title={ent.comment}>
-            {ent.comment}
-          </p>
+          <Section label="描述">
+            <p className="text-ink-2 line-clamp-2 text-xs" title={ent.comment}>
+              {ent.comment}
+            </p>
+          </Section>
         )}
       </div>
 
       <Section label="父类">
         <ChipList refs={ent.parents} />
       </Section>
-      <Section label="子类">
+      <Section label="直接子类">
         <ChipList refs={ent.children} />
       </Section>
       <Section label="属性">
@@ -143,22 +161,27 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
         <BackRefChips refs={ent.referencedBy} />
       </Section>
 
-      <div className="border-line mt-auto flex flex-col gap-2 border-t pt-3">
+      <div className="border-line mt-auto flex gap-2 border-t pt-3.5">
         {/* Switches to detail AND opens the central TTL tab via the store
             signal EntityDetail consumes (T11 assembly wiring). */}
         <Button
           variant="outline"
           size="sm"
-          className="w-full"
+          className="flex-1"
           onClick={() => {
             setViewMode('detail')
             openTtl(ent.eid)
           }}
         >
-          原始 TTL
+          查看原始 TTL
         </Button>
-        <Button variant="secondary" size="sm" className="w-full" asChild>
-          <Link to={`/graph/${oid}?focus=${encodeURIComponent(ent.eid)}`}>在总览中查看</Link>
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1"
+          onClick={() => setViewMode('overview')}
+        >
+          在总览中查看
         </Button>
       </div>
     </div>

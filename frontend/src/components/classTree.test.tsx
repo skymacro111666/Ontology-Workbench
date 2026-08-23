@@ -118,7 +118,7 @@ describe('ClassTree', () => {
     expect(await screen.findByText('ex:Thing')).toBeTruthy()
     expect(screen.getByText('ex:Solo')).toBeTruthy()
 
-    await userEvent.type(screen.getByPlaceholderText('过滤已加载节点'), 'THING')
+    await userEvent.type(screen.getByPlaceholderText('搜索类 / 属性 / 注释…'), 'THING')
 
     await waitFor(() => expect(screen.queryByText('ex:Solo')).toBeNull())
     expect(screen.getByText('ex:Thing')).toBeTruthy()
@@ -129,7 +129,7 @@ describe('ClassTree', () => {
     renderTree(fetchMock)
     expect(await screen.findByText('ex:Thing')).toBeTruthy()
 
-    await userEvent.click(screen.getByRole('tab', { name: '属性' }))
+    await userEvent.click(screen.getByRole('button', { name: '属性' }))
 
     expect(await screen.findByText('ex:hasTopping')).toBeTruthy()
     expect(screen.getByText('ex:hasName')).toBeTruthy()
@@ -144,7 +144,7 @@ describe('ClassTree', () => {
     renderTree(fetchMock)
     expect(await screen.findByText('ex:Thing')).toBeTruthy()
 
-    await userEvent.click(screen.getByRole('tab', { name: '前缀' }))
+    await userEvent.click(screen.getByRole('button', { name: '前缀' }))
 
     expect(await screen.findByText('owl')).toBeTruthy()
     expect(screen.getByText('http://www.w3.org/2002/07/owl#')).toBeTruthy()

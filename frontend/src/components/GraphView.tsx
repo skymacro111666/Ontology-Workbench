@@ -44,20 +44,25 @@ const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
 type EntityNodeData = { curie: string; subCount: number; highlighted?: boolean }
 type EntityFlowNodeType = Node<EntityNodeData, 'entity'>
 
-/** Rounded-rect node: CURIE plus a top-right direct-subclass badge (spec §7.3). */
+/** Rounded-rect node (mockup): sans label, 2px primary border + ★ when
+ *  highlighted, rectangular primary subclass badge — no ring. */
 function EntityFlowNode({ data }: NodeProps<EntityFlowNodeType>) {
   return (
     <div
       className={cn(
-        'border-line bg-panel text-ink relative rounded-lg border px-2.5 py-1 font-mono text-xs shadow-xs',
-        data.highlighted && 'border-primary ring-primary/25 ring-2',
+        'border-line bg-panel text-ink relative flex items-center rounded-lg border px-2.5 py-1.5 text-[11.5px] shadow-xs',
+        data.highlighted && 'text-primary border-primary border-2 font-bold',
       )}
     >
       {data.curie}
+      {data.highlighted && <span aria-hidden="true"> ★</span>}
       {data.subCount > 0 && (
         <span
           title="直接子类数"
-          className="bg-primary text-primary-foreground absolute -top-2 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+          className={cn(
+            'bg-primary text-primary-foreground absolute -top-2 -right-2 flex h-[16px] min-w-[18px] items-center justify-center rounded-lg px-1 text-[9px] font-bold',
+            data.highlighted && 'border-panel border-2',
+          )}
         >
           {data.subCount}
         </span>
@@ -138,7 +143,7 @@ export function toFlowEdges(edges: GEdge[], visibleIds: Set<string>, showLabels:
         target: e.target,
         label: showLabels ? e.kind : undefined,
         style: { stroke: visual.stroke, strokeDasharray: visual.dash, strokeWidth: 1.5 },
-        labelStyle: { fontFamily: 'var(--font-mono)', fontSize: 10 },
+        labelStyle: { fontFamily: 'var(--font-mono)', fontSize: 10, fill: '#64748B' },
       }
     })
 }
