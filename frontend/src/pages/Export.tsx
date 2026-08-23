@@ -1,126 +1,133 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { ExportOutlined } from '@ant-design/icons'
-import { Button, Card, Input, Result, Space, Spin, Switch, Typography, message } from 'antd'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { CopyIcon } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { useForm } from 'react-hook-form'
+import { useParams } from 'react-router'
+import { toast } from 'sonner'
+import { z } from 'zod'
 import { ApiErr, api } from '../api/client'
-import type { ExportSiteResult, OntologyMeta } from '../api/types'
+import type { ExportSiteResult } from '../api/types'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 
-/** Docs-site export page: output-dir option, force switch, copyable result path. */
+const exportSchema = z.object({
+  outDir: z.string(),
+})
+
+type ExportForm = z.infer<typeof exportSchema>
+
+/** One-click docs-site export: output-dir option, force switch, copyable result path. */
 export default function Export() {
   const { oid = '' } = useParams()
-  const [outDir, setOutDir] = useState('')
   const [force, setForce] = useState(false)
   const [result, setResult] = useState<ExportSiteResult | null>(null)
-
-  const { data: meta, isError, error, refetch } = useQuery({
-    queryKey: ['ontology', oid],
-    queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
-    retry: false,
+  const [formError, setFormError] = useState<string | null>(null)
+  const form = useForm<ExportForm>({
+    resolver: zodResolver(exportSchema),
+    defaultValues: { outDir: '' },
   })
+  const submitting = form.formState.isSubmitting
 
-  const run = useMutation({
-    mutationFn: () =>
-      api.post<ExportSiteResult>(`/api/ontologies/${oid}/export/site`, {
-        outDir: outDir.trim() || undefined,
-        force,
-      }),
-    onSuccess: (data) => {
-      setResult(data)
-      message.success(`导出完成，共 ${data.pageCount} 页`)
-    },
-    onError: (err) => {
-      message.error(err instanceof ApiErr ? err.message : '导出失败，请稍后重试')
-    },
-  })
-
-  if (isError) {
-    const missing = error instanceof ApiErr && error.code === 'NOT_FOUND'
-    return missing ? (
-      <Result
-        status="404"
-        title="本体不存在"
-        subTitle="它可能已被删除，或不属于当前用户。"
-        extra={
-          <Link to="/">
-            <Button type="primary">返回首页</Button>
-          </Link>
-        }
-      />
-    ) : (
-      <Result
-        status="warning"
-        title="加载失败"
-        subTitle="无法连接服务器，请确认后端已启动。"
-        extra={
-          <Button type="primary" onClick={() => void refetch()}>
-            重试
-          </Button>
-        }
-      />
-    )
+  const onSubmit = async (values: ExportForm) => {
+    setFormError(null)
+    try {
+      setResult(
+        await api.post<ExportSiteResult>(`/api/ontologies/${oid}/export/site`, {
+          outDir: values.outDir.trim() || undefined,
+          force,
+        }),
+      )
+    } catch (err) {
+      if (err instanceof ApiErr && err.code === 'VALIDATION_ERROR') {
+        setFormError('目录非空，勾选覆盖或换一个')
+      } else if (err instanceof ApiErr) {
+        setFormError(err.message)
+      } else {
+        setFormError('导出失败，请稍后重试')
+      }
+    }
   }
-  if (!meta) {
-    return (
-      <div style={{ padding: 48, textAlign: 'center' }}>
-        <Spin />
-      </div>
-    )
+
+  const copyDir = async () => {
+    if (!result) return
+    try {
+      await navigator.clipboard.writeText(result.outputDir)
+      toast.success('已复制')
+    } catch {
+      toast.error('复制失败')
+    }
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 760, margin: '0 auto' }}>
-      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Typography.Title level={5} style={{ margin: 0 }}>
-          导出文档站 — {meta.title}
-        </Typography.Title>
-        <Link to={`/browse/${oid}`}>
-          <Button size="small">返回工作区</Button>
-        </Link>
-      </Space>
-
-      <Card size="small" style={{ marginTop: 12 }}>
-        <Space direction="vertical" size={12} style={{ width: '100%' }}>
-          <div>
-            <Typography.Text type="secondary">输出目录（可选）</Typography.Text>
-            <Input
-              style={{ marginTop: 4 }}
-              placeholder="留空使用默认：{数据目录}/exports/{id}-{时间戳}"
-              value={outDir}
-              onChange={(e) => setOutDir(e.target.value)}
-              disabled={run.isPending}
-            />
-          </div>
-          <Space>
-            <Switch checked={force} onChange={setForce} disabled={run.isPending} />
-            <Typography.Text>覆盖非空目录（force）</Typography.Text>
-          </Space>
-          <div>
-            <Button
-              type="primary"
-              icon={<ExportOutlined />}
-              loading={run.isPending}
-              onClick={() => run.mutate()}
-            >
+    <div className="mx-auto flex w-full max-w-[640px] flex-col gap-6 px-6 py-10">
+      <Card className="rounded-card">
+        <CardHeader>
+          <CardTitle>导出文档站</CardTitle>
+          <CardDescription>
+            将本体一次性渲染为静态 HTML 文档站，写入服务器本地目录；导出完成后在服务器上打开输出目录中的
+            index.html 即可浏览。
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
+            {formError && (
+              <p role="alert" className="text-sm text-destructive">
+                {formError}
+              </p>
+            )}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="outDir">输出目录（可选）</Label>
+              <Input
+                id="outDir"
+                placeholder="留空使用默认：{数据目录}/exports/{id}-{时间戳}"
+                disabled={submitting}
+                {...form.register('outDir')}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="force"
+                checked={force}
+                onCheckedChange={setForce}
+                disabled={submitting}
+              />
+              <Label htmlFor="force">覆盖非空目录</Label>
+            </div>
+            <Button type="submit" className="w-fit" disabled={submitting}>
               开始导出
             </Button>
-          </div>
-        </Space>
+          </form>
+        </CardContent>
       </Card>
 
       {result && (
-        <Card size="small" title="导出结果" style={{ marginTop: 12 }}>
-          <Space direction="vertical" size={4}>
-            <Typography.Paragraph style={{ marginBottom: 0 }} copyable={{ text: result.outputDir }}>
-              目录：{result.outputDir}
-            </Typography.Paragraph>
-            <Typography.Text type="secondary">
+        <Card className="rounded-card">
+          <CardHeader>
+            <CardTitle>导出结果</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <code className="text-ink-2 min-w-0 flex-1 font-mono text-sm break-all">
+                {result.outputDir}
+              </code>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => void copyDir()}
+              >
+                <CopyIcon />
+                复制
+              </Button>
+            </div>
+            <p className="text-ink-2 text-sm">
               共 {result.pageCount} 页（1 个索引页 + {result.pageCount - 1} 个实体页）
-            </Typography.Text>
-            <Typography.Text type="secondary">
-              站点已写入服务器本地目录；在服务器上打开上述路径中的 index.html 即可浏览。
-            </Typography.Text>
-          </Space>
+            </p>
+          </CardContent>
         </Card>
       )}
     </div>
