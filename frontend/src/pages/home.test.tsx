@@ -77,8 +77,10 @@ describe('Home', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderHome()
 
-    // A data-dependent row proves the query resolved before reading tile values.
-    expect(await screen.findByText('17 类 · 4 属性 · 52 公理')).toBeTruthy()
+    // A data-dependent count pill proves the query resolved before tile values.
+    expect(await screen.findByText('17 类')).toBeTruthy()
+    expect(screen.getByText('4 属性')).toBeTruthy()
+    expect(screen.getByText('52 公理')).toBeTruthy()
     expect(screen.getByText('本体')).toBeTruthy()
     expect(screen.getByText('2')).toBeTruthy()
     expect(screen.getByText('类')).toBeTruthy()

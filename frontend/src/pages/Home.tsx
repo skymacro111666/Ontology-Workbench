@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileTextIcon, Trash2Icon } from 'lucide-react'
+import { Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { toast } from 'sonner'
@@ -19,9 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -110,37 +108,67 @@ export default function Home() {
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {items.map((o) => (
-              <Card key={o.id} className="rounded-card gap-2.5 py-4">
-                <CardContent className="flex flex-col gap-1.5 px-4">
-                  <div className="flex items-center gap-2">
-                    <FileTextIcon className="text-ink-3 size-4 shrink-0" aria-hidden />
-                    <span className="truncate text-sm font-medium">{o.title}</span>
-                    <Badge variant="secondary" className="font-mono">
-                      {o.format}
-                    </Badge>
-                    <span className="ml-auto flex shrink-0 gap-1">
-                      <Button size="sm" variant="outline" onClick={() => openOntology(o.id)}>
-                        打开
-                      </Button>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label={`删除 ${o.title}`}
-                        onClick={() => setDeleteTarget(o)}
-                      >
-                        <Trash2Icon />
-                      </Button>
+              // mockup list-card: title + fmt pill + actions on the first row,
+              // file line under it, counts as tag pills; whole card opens.
+              <div
+                key={o.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`打开 ${o.title}`}
+                onClick={() => openOntology(o.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') openOntology(o.id)
+                }}
+                className="border-line bg-panel hover:border-primary-border rounded-card flex cursor-pointer flex-col gap-2 border px-4 py-3.5 transition-colors hover:shadow-[0_2px_8px_rgba(79,70,229,0.08)]"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-bold">{o.title}</span>
+                  <span className="bg-primary-soft border-primary-border text-primary shrink-0 rounded-full border px-2 py-px font-mono text-[11px]">
+                    {o.format}
+                  </span>
+                  <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        openOntology(o.id)
+                      }}
+                    >
+                      打开
+                    </Button>
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      aria-label={`删除 ${o.title}`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setDeleteTarget(o)
+                      }}
+                    >
+                      <Trash2Icon />
+                    </Button>
+                  </span>
+                </div>
+                <p className="text-ink-2 truncate text-xs">
+                  <span className="font-mono">{o.filename}</span> · {formatSize(o.fileSizeBytes)}{' '}
+                  · {formatDate(o.createdAt)}
+                </p>
+                <div className="flex gap-2">
+                  {[
+                    [o.classCount, '类'],
+                    [o.propertyCount, '属性'],
+                    [o.axiomCount, '公理'],
+                  ].map(([count, unit]) => (
+                    <span
+                      key={unit as string}
+                      className="border-line text-ink-2 rounded-full border px-2 py-px text-[11px]"
+                    >
+                      {count} {unit}
                     </span>
-                  </div>
-                  <p className="text-ink-2 truncate text-sm">
-                    <span className="font-mono">{o.filename}</span> · {formatSize(o.fileSizeBytes)}{' '}
-                    · {formatDate(o.createdAt)}
-                  </p>
-                  <p className="text-ink-2 text-sm">
-                    {o.classCount} 类 · {o.propertyCount} 属性 · {o.axiomCount} 公理
-                  </p>
-                </CardContent>
-              </Card>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         )}
