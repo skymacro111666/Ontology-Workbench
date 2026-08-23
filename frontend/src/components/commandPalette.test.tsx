@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useParams, useSearchParams } from 'react-router'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import CommandPalette from './CommandPalette'
 import { LAST_OID_KEY } from '../auth/AuthContext'
 import { useBrowseStore } from '../stores/browseStore'
@@ -27,8 +27,7 @@ function BrowseProbe() {
   return <div>probe:{oid}:{sp.get('eid') ?? ''}</div>
 }
 
-function renderPalette() {
-  const fetchMock = vi.fn(async () => ok(HITS))
+function renderPalette(fetchMock: Mock = vi.fn(async () => ok(HITS))) {
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
@@ -110,6 +109,24 @@ describe('CommandPalette', () => {
     expect(screen.getByText('pizza:Margherita')).toBeTruthy()
     expect(screen.getByText('label')).toBeTruthy()
     expect(screen.getByText('Class')).toBeTruthy()
+  })
+
+  it('does not flash 无匹配结果 while the search fetch is in flight', async () => {
+    // Fake timers freeze the debounce; a never-resolving fetch pins the
+    // query in isPending for the whole test.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const fetchMock: Mock = vi.fn(() => new Promise<Response>(() => {}))
+    renderPalette(fetchMock)
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+    fireEvent.change(screen.getByPlaceholderText('搜索类 / 属性…'), { target: { value: '玛格丽特' } })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(150)
+    })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    // The query dispatched but has not resolved: the empty state stays hidden.
+    expect(screen.queryByText('无匹配结果')).toBeNull()
   })
 
   it('navigates to /browse/:oid?eid=… and reveals the pick in the tree store', async () => {

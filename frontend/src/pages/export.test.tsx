@@ -94,6 +94,23 @@ describe('Export', () => {
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('已复制'))
   })
 
+  it('clears the success card when a resubmit fails', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(ok({ outputDir: OUT_DIR, pageCount: 5 }))
+      .mockResolvedValueOnce(err('VALIDATION_ERROR'))
+    renderExport(fetchMock)
+
+    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    expect(await screen.findByText(OUT_DIR)).toBeTruthy()
+
+    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    // The resubmit failed: the stale success card must not sit beside the alert.
+    expect(screen.queryByText(OUT_DIR)).toBeNull()
+    expect(screen.queryByText(/共 \d+ 页/)).toBeNull()
+  })
+
   it('maps VALIDATION_ERROR to the directory-not-empty copy', async () => {
     const fetchMock = vi.fn(async () => err('VALIDATION_ERROR'))
     renderExport(fetchMock)

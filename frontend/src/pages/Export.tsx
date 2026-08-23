@@ -32,6 +32,8 @@ export default function Export() {
   const submitting = form.formState.isSubmitting
 
   const onSubmit = async (values: ExportForm) => {
+    // A resubmit invalidates the previous run: drop the stale success card.
+    setResult(null)
     setFormError(null)
     try {
       setResult(

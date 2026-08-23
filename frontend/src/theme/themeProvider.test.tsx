@@ -1,5 +1,5 @@
-import { act, renderHook } from '@testing-library/react'
-import { beforeEach, expect, it } from 'vitest'
+import { act, cleanup, renderHook } from '@testing-library/react'
+import { afterEach, beforeEach, expect, it } from 'vitest'
 import { ThemeProvider, useTheme } from './ThemeProvider'
 
 function probe() {
@@ -10,6 +10,10 @@ beforeEach(() => {
   localStorage.clear()
   document.documentElement.classList.remove('dark')
 })
+
+// Vitest globals are off, so RTL auto-cleanup never registers — without this,
+// each test's ThemeProvider stays mounted and keeps writing to <html>.
+afterEach(() => cleanup())
 
 it('defaults to system and resolves via matchMedia', () => {
   window.matchMedia = (q: string) =>

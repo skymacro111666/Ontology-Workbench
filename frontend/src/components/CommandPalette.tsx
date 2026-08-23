@@ -44,7 +44,7 @@ export default function CommandPalette() {
   }, [])
 
   // Hits arrive pre-filtered by the server, so cmdk's own filter is off.
-  const { data: hits } = useQuery({
+  const { data: hits, isPending } = useQuery({
     enabled: open && oid !== null && debounced.trim().length > 0,
     queryKey: ['search', oid, debounced],
     queryFn: () =>
@@ -78,7 +78,10 @@ export default function CommandPalette() {
       </p>
       <CommandInput value={q} onValueChange={setQ} placeholder="搜索类 / 属性…" />
       <CommandList>
-        {debounced.trim() ? <CommandEmpty>无匹配结果</CommandEmpty> : null}
+        {/* No hits is only meaningful once the fetch has settled — while
+            isPending (first fetch and every queryKey switch) the empty
+            state would flash beside nothing. */}
+        {!isPending && debounced.trim() ? <CommandEmpty>无匹配结果</CommandEmpty> : null}
         {(hits ?? []).map((hit) => (
           <CommandItem key={hit.eid} value={hit.eid} onSelect={() => choose(hit)}>
             <span className="font-mono text-sm">{hit.curie}</span>

@@ -14,7 +14,11 @@ beforeEach(() => useUiStore.getState().setImportOpen(true))
 
 // Vitest globals are off, so RTL auto-cleanup never registers — without this,
 // the previous test's tree stays mounted and shares the uiStore dialog.
-afterEach(() => cleanup())
+// unstubAllGlobals drops each test's fetch stub so jsdom's real fetch returns.
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+})
 
 it('uploads a chosen file and closes on success', async () => {
   const invalidate = vi.fn()
