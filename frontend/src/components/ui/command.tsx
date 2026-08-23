@@ -25,13 +25,18 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
 }
 
 function CommandDialog({
-  title = 'Command Palette',
-  description = 'Search for a command to run...',
+  title = '全局搜索',
+  description = '输入关键词以搜索类与属性',
+  commandProps,
   children,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
   description?: string
+  /** Passed to the inner cmdk root, e.g. { shouldFilter: false } for
+   *  server-side-filtered palettes (Chinese label hits must not be
+   *  re-filtered against curie text). */
+  commandProps?: React.ComponentProps<typeof CommandPrimitive>
 }) {
   return (
     <Dialog {...props}>
@@ -40,7 +45,10 @@ function CommandDialog({
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <DialogContent className="overflow-hidden p-0">
-        <Command className="[&_[cmdk-group-heading]]:text-muted-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:size-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:size-5">
+        <Command
+          className="[&_[cmdk-group-heading]]:text-muted-foreground **:data-[slot=command-input-wrapper]:h-12 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:size-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:size-5"
+          {...commandProps}
+        >
           {children}
         </Command>
       </DialogContent>

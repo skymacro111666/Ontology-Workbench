@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { LAST_OID_KEY, useAuth } from '../auth/AuthContext'
 import { useUiStore } from '../stores/uiStore'
 import { useTheme } from '../theme/ThemeProvider'
+import CommandPalette from './CommandPalette'
 import ImportDialog from './ImportDialog'
 import OntologySwitcher from './OntologySwitcher'
 import { Button } from '@/components/ui/button'
@@ -118,6 +119,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
       <main className="min-h-0 flex-1 overflow-y-auto">{children ?? <Outlet />}</main>
 
       <ImportDialog />
+      <CommandPalette />
     </div>
   )
 }
