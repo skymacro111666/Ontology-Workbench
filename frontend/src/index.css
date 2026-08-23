@@ -2,10 +2,7 @@
 @import '@fontsource/manrope/600.css';
 @import '@fontsource/fira-code/400.css';
 
-/* Migration period: theme+utilities only — preflight would fight AntD.
-   Task 15 switches to `@import 'tailwindcss';` */
-@import 'tailwindcss/theme.css' layer(theme);
-@import 'tailwindcss/utilities.css' layer(utilities);
+@import 'tailwindcss';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -77,8 +74,7 @@
   color: var(--color-ink-3);
 }
 
-/* Baseline kept from the pre-rewrite index.css so AntD pages render
-   identically during migration (preflight replaces this in task 15). */
+/* Full-height shell: preflight resets margins/fonts but sets no heights. */
 html,
 body,
 #root {
