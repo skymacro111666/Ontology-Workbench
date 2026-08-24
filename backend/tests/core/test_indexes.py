@@ -59,6 +59,36 @@ def test_overview_small_graph_not_truncated() -> None:
     assert len(ov["nodes"]) == 3 and len(ov["edges"]) == 2
 
 
+def _chain(n: int) -> rdflib.Graph:
+    """A linear class hierarchy L0 <- L1 <- ... <- L(n-1)."""
+    ttl = (
+        "@prefix ex: <http://example.org/> .\n"
+        "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
+        "ex:L0 a owl:Class .\n"
+    )
+    ttl += "".join(f"ex:L{i} a owl:Class ; rdfs:subClassOf ex:L{i - 1} .\n" for i in range(1, n))
+    return rdflib.Graph().parse(data=ttl, format="turtle")
+
+
+def test_overview_renders_full_depth_within_budget() -> None:
+    """Within the node budget the hierarchy renders at full depth (spec §7.5)."""
+    ix = build_indexes(build_ir(_chain(6)))
+    ov = ix.overview()
+    assert ov["truncated"] is False
+    assert len(ov["nodes"]) == 6
+    assert sum(1 for e in ov["edges"] if e["kind"] == "subClassOf") == 5
+
+
+def test_overview_degrades_to_three_levels_past_budget() -> None:
+    """Past the node budget only the top 3 levels render, flagged truncated."""
+    ix = build_indexes(build_ir(_chain(20)))
+    ov = ix.overview(max_nodes=5)
+    assert ov["truncated"] is True
+    assert len(ov["nodes"]) == 4  # levels 0-3 of the chain
+    assert len(ov["edges"]) == 3
+
+
 def test_overview_truncates_large_graphs() -> None:
     """Above max_nodes the overview degrades to top levels and flags it."""
     import io

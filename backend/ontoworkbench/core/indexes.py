@@ -162,15 +162,18 @@ class Indexes:
         }
 
     def overview(self, max_nodes: int = MAX_OVERVIEW_NODES) -> dict[str, Any]:
-        """Whole-graph view, bounded: top-3 levels and at most max_nodes rendered.
+        """Whole-graph view: full hierarchy within max_nodes, top-3 levels past it.
 
-        Wide-but-shallow graphs would blow past max_nodes inside 3 levels,
-        so the budget caps rendered nodes as well (truncated reflects either cut).
+        Past the budget (truncated) wide-but-shallow graphs still blow past
+        max_nodes inside 3 levels, so the budget caps rendered nodes as well.
         """
         roots = self._roots()
         nodes: list[dict[str, Any]] = []
         edges: list[dict[str, str]] = []
         budget = max_nodes
+        # Degrade to the top 3 levels only past the node budget (spec §7.5);
+        # under it the hierarchy renders at full depth.
+        depth_cap = 3 if len(self._ir.entities) > max_nodes else None
         # Multi-parent entities are reachable through several roots/branches —
         # they must still land in `nodes` once (canvas keys nodes by id), while
         # every walked parent link keeps its edge.
@@ -192,7 +195,7 @@ class Indexes:
             )
             budget -= 1
             count = 1
-            if depth < 3:
+            if depth_cap is None or depth < depth_cap:
                 for c in self._children.get(e.eid, []):
                     if budget <= 0:
                         break
@@ -234,11 +237,10 @@ class Indexes:
                 edges.append({"source": e.eid, "target": prop.eid, "kind": kind})
         nodes.extend(prop_nodes.values())
 
-        truncated = len(self._ir.entities) > max_nodes
         return {
             "nodes": nodes,
             "edges": edges,
-            "truncated": truncated,
+            "truncated": depth_cap is not None,
             "total_count": len(self._ir.entities),
         }
 
