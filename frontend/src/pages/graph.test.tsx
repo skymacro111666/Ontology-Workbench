@@ -6,8 +6,25 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Envelope, NodesEdges, OntologyMeta } from '../api/types'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { useBrowseStore } from '../stores/browseStore'
+import { lastG6, resetG6 } from '../test/g6Mock'
 import Browse from './Browse'
 import Graph from './Graph'
+
+/* G6 draws on canvas, which jsdom cannot provide — the module is mocked and
+   canvas interaction goes through the mocked Graph's event handlers. */
+vi.mock('@antv/g6', async () => {
+  const { MockGraph } = await import('../test/g6Mock')
+  return { Graph: MockGraph }
+})
+
+const DOG = 'http://example.org/Dog'
+const THING = 'http://example.org/Thing'
+
+/** Node ids currently on the mocked canvas (empty until the overview loads). */
+const canvasNodeIds = () =>
+  ((lastG6()?.options.data as { nodes?: { id: string }[] } | undefined)?.nodes ?? []).map(
+    (n) => n.id,
+  )
 
 function overview(truncated: boolean): NodesEdges {
   return {
@@ -97,6 +114,7 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   useBrowseStore.setState({ selectedEid: null, revealEid: null })
+  resetG6()
 })
 
 describe('workspace overview mode', () => {
@@ -108,7 +126,8 @@ describe('workspace overview mode', () => {
 
   it('renders no notice for small ontologies', async () => {
     renderOverview(fetchFor(overview(false)))
-    await screen.findByText('ex:Thing')
+    // "Loaded" = the overview payload has reached the mocked canvas.
+    await waitFor(() => expect(canvasNodeIds()).toEqual(expect.arrayContaining([THING, DOG])))
     expect(screen.queryByRole('status')).toBeNull()
   })
 
@@ -136,28 +155,29 @@ describe('workspace overview mode', () => {
     expect(await screen.findByText('加载失败')).toBeTruthy()
     expect(screen.getByText('无法连接服务器，请确认后端已启动。')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '重试' }))
-    expect(await screen.findByText('ex:Thing')).toBeTruthy()
+    await waitFor(() => expect(canvasNodeIds()).toContain(THING))
   })
 
   it('node click selects the entity in the workspace (reveal wiring)', async () => {
     renderOverview(fetchFor(overview(false)))
-    await screen.findByText('ex:Dog')
-    // fireEvent: userEvent's pointer sequence trips React Flow's d3-drag in jsdom.
-    fireEvent.click(screen.getByText('ex:Dog'))
-    await waitFor(() =>
-      expect(useBrowseStore.getState().selectedEid).toBe('http://example.org/Dog'),
-    )
+    await waitFor(() => expect(canvasNodeIds()).toContain(DOG))
+    lastG6()?.handlers['node:click']({ target: { id: DOG } })
+    await waitFor(() => expect(useBrowseStore.getState().selectedEid).toBe(DOG))
   })
 
   it('focused entity deep link highlights the node', async () => {
     renderOverview(
       fetchFor(overview(false)),
-      `/browse/oid-1?view=overview&focus=${encodeURIComponent('http://example.org/Dog')}`,
+      `/browse/oid-1?view=overview&focus=${encodeURIComponent(DOG)}`,
     )
-    const dog = await screen.findByText('ex:Dog')
-    // Highlighted = 2px primary border, bold primary text, star (mockup).
-    await waitFor(() => expect(dog.className).toContain('border-primary'))
-    expect(dog.textContent).toContain('★')
+    // Highlighted = starred label on the canvas node + camera focus on it
+    // (the style mapping itself is covered in graphView.test).
+    await waitFor(() => {
+      const dog = (lastG6()?.options.data as { nodes?: { id: string; style?: unknown }[] })
+        ?.nodes?.find((n) => n.id === DOG)
+      expect((dog?.style as { labelText?: string })?.labelText).toBe('ex:Dog ★')
+      expect(lastG6()?.focusElement).toHaveBeenCalledWith(DOG)
+    })
   })
 })
 

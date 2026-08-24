@@ -1,9 +1,31 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GEdge } from '../api/types'
 import { ThemeProvider } from '../theme/ThemeProvider'
-import GraphView, { toFlowEdges, type GraphViewNode } from './GraphView'
+import { lastG6, MockGraph, resetG6 } from '../test/g6Mock'
+import GraphView, { computeSubCounts, toG6Edges, toG6Nodes, type GraphViewNode } from './GraphView'
+
+/* G6 renders on canvas, which jsdom cannot provide — the module is mocked and
+   assertions target (a) the DOM overlays (legend/controls, real) and (b) the
+   data passed into the mocked Graph (constructor data / setData / update*).
+   Pure mappings are covered directly below. */
+
+vi.mock('@antv/g6', async () => {
+  const { MockGraph } = await import('../test/g6Mock')
+  return { Graph: MockGraph }
+})
+
+const TOKENS = {
+  primary: '#4f46e5',
+  primaryFg: '#ffffff',
+  panel: '#ffffff',
+  line: '#e2e8f0',
+  ink: '#0f172a',
+  ink3: '#94a3b8',
+  edgeSub: '#8b5cf6',
+  mono: 'mono',
+}
 
 const NODES: GraphViewNode[] = [
   { id: 'a', curie: 'ex:A', label: {}, kind: 'class', highlighted: true },
@@ -18,16 +40,33 @@ const EDGES: GEdge[] = [
   { source: 'a', target: 'p', kind: 'property' },
 ]
 
-function draw(extra: { showControls?: boolean } = {}) {
-  return render(
+function draw(extra: Record<string, unknown> = {}, onSelect = vi.fn()) {
+  const view = render(
     <ThemeProvider>
-      <GraphView nodes={NODES} edges={EDGES} onSelect={vi.fn()} {...extra} />
+      <GraphView nodes={NODES} edges={EDGES} onSelect={onSelect} {...extra} />
     </ThemeProvider>,
   )
+  return { view, onSelect }
+}
+
+interface G6Datum {
+  id: string
+  style: Record<string, unknown> & { badges?: { text: string }[] }
+}
+
+const lastData = (from: 'constructor' | 'setData' = 'constructor') => {
+  const g = lastG6()
+  if (!g) throw new Error('no graph instance')
+  const raw = from === 'constructor' ? g.options.data : g.setData.mock.lastCall?.[0]
+  return raw as {
+    nodes: G6Datum[]
+    edges: { id: string; source: string; target: string; style: Record<string, unknown> }[]
+  }
 }
 
 beforeEach(() => {
   localStorage.clear()
+  resetG6()
 })
 
 afterEach(() => {
@@ -35,73 +74,73 @@ afterEach(() => {
 })
 
 describe('GraphView', () => {
-  it('renders every node with the subclass badge, legend and controls', async () => {
+  it('passes every node (highlight star, subclass badge) and edge to the canvas', () => {
     draw()
-    expect(await screen.findByText('ex:A')).toBeTruthy()
-    expect(screen.getByText('ex:B')).toBeTruthy()
-    expect(screen.getByText('ex:C')).toBeTruthy()
-    expect(screen.getByText('ex:hasTopping')).toBeTruthy()
+    const { nodes, edges } = lastData()
+    expect(nodes.map((n) => n.style.labelText)).toEqual(['ex:A ★', 'ex:B', 'ex:C', 'ex:hasTopping'])
     // Badge = count of subClassOf edges whose target is the node (b and c).
-    expect(screen.getByTitle('直接子类数').textContent).toBe('2')
-    // ThemeProvider resolves system -> light; the canvas follows via colorMode.
-    expect(document.querySelector('.react-flow.light')).toBeTruthy()
-    // Legend spells out the three edge semantics.
+    expect(nodes.find((n) => n.id === 'a')?.style.badges?.[0].text).toBe('2')
+    expect(edges).toHaveLength(3)
+    // Legend and zoom controls render as DOM overlays.
     expect(screen.getByText('子类（subClassOf）')).toBeTruthy()
     expect(screen.getByText('对象属性')).toBeTruthy()
     expect(screen.getByText('数据属性')).toBeTruthy()
-    // Zoom controls default to visible.
-    expect(document.querySelector('.react-flow__controls')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '适配' })).toBeTruthy()
   })
 
-  // React Flow only mounts edges once node measurement completes; the no-op
-  // ResizeObserver stub in test/setup.ts keeps that from ever happening, so
-  // label show/hide is asserted via the switch itself here and via the
-  // toFlowEdges mapping below.
+  it('focuses the focusId entity after the first render', async () => {
+    draw({ focusId: 'a' })
+    const g = lastG6() as MockGraph
+    await waitFor(() => expect(g.focusElement).toHaveBeenCalledWith('a'))
+  })
+
+  it('reports node clicks through onSelect', () => {
+    const { onSelect } = draw()
+    const g = lastG6() as MockGraph
+    g.handlers['node:click']({ target: { id: 'b' } })
+    expect(onSelect).toHaveBeenCalledWith('b')
+  })
+
   it('toggles the edge-label switch off and back on', async () => {
     draw()
-    expect(await screen.findByText('ex:A')).toBeTruthy()
-    const btn = screen.getByRole('button', { name: '标签' })
-    expect(btn.getAttribute('aria-pressed')).toBe('true')
-    await userEvent.click(btn)
-    expect(btn.getAttribute('aria-pressed')).toBe('false')
-    await userEvent.click(btn)
-    expect(btn.getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: '标签' }).getAttribute('aria-pressed')).toBe('true')
+    await userEvent.click(screen.getByRole('button', { name: '标签' }))
+    expect(screen.getByRole('button', { name: '标签' }).getAttribute('aria-pressed')).toBe('false')
+    const g = lastG6() as MockGraph
+    const off = g.updateEdgeData.mock.lastCall?.[0] as { style: { labelText: string } }[]
+    expect(off.every((e) => e.style.labelText === '')).toBe(true)
+    await userEvent.click(screen.getByRole('button', { name: '标签' }))
+    const on = g.updateEdgeData.mock.lastCall?.[0] as { style: { labelText: string } }[]
+    expect(on.map((e) => e.style.labelText)).toEqual(['subClassOf', 'subClassOf', 'property'])
   })
 
   it('classes-only filter drops property nodes and their edges', async () => {
     draw()
-    expect(await screen.findByText('ex:hasTopping')).toBeTruthy()
     await userEvent.click(screen.getByRole('radio', { name: '仅类' }))
-    expect(screen.getByText('ex:A')).toBeTruthy()
-    expect(screen.getByText('ex:B')).toBeTruthy()
-    expect(screen.getByText('ex:C')).toBeTruthy()
-    expect(screen.queryByText('ex:hasTopping')).toBeNull()
+    const data = lastData('setData')
+    expect(data.nodes.map((n) => n.id).sort()).toEqual(['a', 'b', 'c'])
     // The class-property edge is pruned along with its endpoint.
-    expect(screen.queryByText('property')).toBeNull()
+    expect(data.edges.every((e) => e.source !== 'a' || e.target !== 'p')).toBe(true)
     await userEvent.click(screen.getByRole('radio', { name: '全部' }))
-    expect(screen.getByText('ex:hasTopping')).toBeTruthy()
+    expect(lastData('setData').nodes.map((n) => n.id)).toContain('p')
   })
 
   it('props-only filter keeps just the property node', async () => {
     draw()
-    expect(await screen.findByText('ex:A')).toBeTruthy()
     await userEvent.click(screen.getByRole('radio', { name: '仅属性' }))
-    expect(screen.getByText('ex:hasTopping')).toBeTruthy()
-    expect(screen.queryByText('ex:A')).toBeNull()
-    expect(screen.queryByText('ex:B')).toBeNull()
-    expect(screen.queryByText('ex:C')).toBeNull()
+    const data = lastData('setData')
+    expect(data.nodes.map((n) => n.id)).toEqual(['p'])
   })
 
-  it('hides the zoom controls when showControls is false', async () => {
+  it('hides the zoom controls when showControls is false', () => {
     draw({ showControls: false })
-    expect(await screen.findByText('ex:A')).toBeTruthy()
-    expect(document.querySelector('.react-flow__controls')).toBeNull()
+    expect(screen.queryByRole('button', { name: '适配' })).toBeNull()
+    // The legend stays regardless.
+    expect(screen.getByText('子类（subClassOf）')).toBeTruthy()
   })
 })
 
-describe('toFlowEdges', () => {
-  // React Flow edge labels measure to zero in jsdom; the mapping itself is
-  // covered here, label visibility in DOM above.
+describe('toG6Edges', () => {
   const all = new Set(['a', 'b', 'c', 'd', 'p'])
   const edges: GEdge[] = [
     { source: 'b', target: 'a', kind: 'subClassOf' },
@@ -110,27 +149,39 @@ describe('toFlowEdges', () => {
     { source: 'a', target: 'ghost', kind: 'subClassOf' },
   ]
 
-  it('encodes the three edge semantics via CSS tokens', () => {
-    const flow = toFlowEdges(edges, all, false)
-    expect(flow).toHaveLength(3) // edge to a filtered-out endpoint is dropped
-    expect(flow[0].style).toMatchObject({
-      stroke: 'var(--color-edge-sub)',
-      strokeDasharray: '6 5',
-    })
-    expect(flow[1].style).toMatchObject({ stroke: 'var(--color-primary)' })
-    expect(flow[1].style?.strokeDasharray).toBeUndefined()
-    expect(flow[2].style).toMatchObject({
-      stroke: 'var(--color-ink-3)',
-      strokeDasharray: '1 4',
-    })
+  it('encodes the three edge semantics via tokens with matching arrows', () => {
+    const mapped = toG6Edges(edges, all, false, TOKENS)
+    const st = (e: { style?: Record<string, unknown> }) => e.style ?? {}
+    expect(mapped).toHaveLength(3) // edge to a filtered-out endpoint is dropped
+    expect(st(mapped[0])).toMatchObject({ stroke: '#8b5cf6', lineDash: [6, 5], endArrow: true })
+    expect(st(mapped[1])).toMatchObject({ stroke: '#4f46e5', endArrowFill: '#4f46e5' })
+    expect(st(mapped[1]).lineDash).toBeUndefined()
+    expect(st(mapped[2])).toMatchObject({ stroke: '#94a3b8', lineDash: [1, 4] })
   })
 
   it('labels edges only when enabled', () => {
-    expect(toFlowEdges(edges, all, true).map((e) => e.label)).toEqual([
+    const st = (e: { style?: Record<string, unknown> }) => e.style ?? {}
+    expect(toG6Edges(edges, all, true, TOKENS).map((e) => st(e).labelText)).toEqual([
       'subClassOf',
       'property',
       'datatype',
     ])
-    expect(toFlowEdges(edges, all, false).every((e) => e.label === undefined)).toBe(true)
+    expect(toG6Edges(edges, all, false, TOKENS).every((e) => st(e).labelText === '')).toBe(true)
+  })
+})
+
+describe('toG6Nodes', () => {
+  it('styles the highlighted entity and property nodes apart from classes', () => {
+    const mapped = toG6Nodes(NODES, computeSubCounts(EDGES), TOKENS)
+    const by = (id: string) => mapped.find((n) => n.id === id) as G6Datum
+    // Highlighted: 2px primary border, star, bold label.
+    expect(by('a').style).toMatchObject({ stroke: '#4f46e5', lineWidth: 2, labelFontWeight: 700 })
+    expect(by('a').style.labelText).toBe('ex:A ★')
+    // Property node: dashed violet border.
+    expect(by('p').style).toMatchObject({ stroke: '#8b5cf6', lineDash: [4, 3] })
+    // Plain class: solid grey border, no dash.
+    expect(by('b').style).toMatchObject({ stroke: '#e2e8f0' })
+    expect(by('b').style.lineDash).toBeUndefined()
+    expect(by('b').style.badges).toBeUndefined()
   })
 })

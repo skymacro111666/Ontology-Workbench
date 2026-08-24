@@ -1,20 +1,10 @@
-import {
-  Controls,
-  MarkerType,
-  Panel,
-  ReactFlow,
-  useReactFlow,
-  type Edge,
-  type Node,
-  type NodeProps,
-} from '@xyflow/react'
-import '@xyflow/react/dist/style.css'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Graph } from '@antv/g6'
+import type { EdgeData, GraphData, IPointerEvent, NodeData } from '@antv/g6'
 import type { GEdge, GNode } from '../api/types'
 import { useTheme } from '../theme/ThemeProvider'
 import { Toggle } from '@/components/ui/toggle'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { cn } from '@/lib/utils'
 
 /** Node extended with what the canvas renders beyond the API payload. */
 export type GraphViewNode = GNode & {
@@ -24,148 +14,170 @@ export type GraphViewNode = GNode & {
 export type GraphViewFilter = 'all' | 'classes' | 'props'
 type Filter = GraphViewFilter
 
-/**
- * Edge semantics (spec §7.3), expressed through palette tokens so dark mode
- * rides the CSS overrides: subclass dashed purple, object property solid
- * indigo, data property dotted slate.
- */
-const EDGE_VISUALS: Record<string, { stroke: string; dash?: string }> = {
-  subClassOf: { stroke: 'var(--color-edge-sub)', dash: '6 5' },
-  property: { stroke: 'var(--color-primary)' },
-  datatype: { stroke: 'var(--color-ink-3)', dash: '1 4' },
+/** Design tokens resolved to concrete colors — G6 draws on canvas, where CSS
+ *  variables do not resolve, so values are read at (re)build time. */
+export interface CanvasTokens {
+  primary: string
+  primaryFg: string
+  panel: string
+  line: string
+  ink: string
+  ink3: string
+  edgeSub: string
+  mono: string
+}
+
+export function readCanvasTokens(): CanvasTokens {
+  const cs = getComputedStyle(document.documentElement)
+  const v = (name: string) => cs.getPropertyValue(name).trim()
+  return {
+    primary: v('--color-primary'),
+    primaryFg: v('--color-primary-foreground'),
+    panel: v('--color-panel'),
+    line: v('--color-line'),
+    ink: v('--color-ink'),
+    ink3: v('--color-ink-3'),
+    edgeSub: v('--color-edge-sub'),
+    mono: v('--font-mono'),
+  }
+}
+
+/** Edge semantics (spec §7.3): subclass dashed purple, object property solid
+ *  indigo, data property dotted slate — each with a matching arrowhead. */
+function edgeVisualFor(kind: string, t: CanvasTokens): { stroke: string; dash?: number[] } {
+  if (kind === 'subClassOf') return { stroke: t.edgeSub, dash: [6, 5] }
+  if (kind === 'datatype') return { stroke: t.ink3, dash: [1, 4] }
+  return { stroke: t.primary }
 }
 
 /** Legend copy tied to the visuals above so the two cannot drift apart. */
 const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
-  { label: '子类（subClassOf）', visual: EDGE_VISUALS.subClassOf },
-  { label: '对象属性', visual: EDGE_VISUALS.property },
-  { label: '数据属性', visual: EDGE_VISUALS.datatype },
+  { label: '子类（subClassOf）', visual: { stroke: 'var(--color-edge-sub)', dash: '6 5' } },
+  { label: '对象属性', visual: { stroke: 'var(--color-primary)' } },
+  { label: '数据属性', visual: { stroke: 'var(--color-ink-3)', dash: '1 4' } },
 ]
 
-type EntityNodeData = { curie: string; kind: string; subCount: number; highlighted?: boolean }
-type EntityFlowNodeType = Node<EntityNodeData, 'entity'>
+/** Fixed dagre layout: top-down hierarchy. */
+const LAYOUT = { type: 'antv-dagre', rankdir: 'TB', nodesep: 50, ranksep: 110 } as const
 
-/** Rounded-rect node (mockup): classes get a solid grey border, property
- *  nodes a dashed violet one (kind encoded in the border), and the focused
- *  entity a 2px primary border + ★ — no ring. */
-function EntityFlowNode({ data }: NodeProps<EntityFlowNodeType>) {
-  const isProperty = data.kind === 'property'
-  return (
-    <div
-      className={cn(
-        'bg-panel text-ink relative flex items-center rounded-lg border px-2.5 py-1.5 text-[11.5px] shadow-xs',
-        data.highlighted
-          ? 'text-primary border-primary border-2 font-bold'
-          : isProperty
-            ? 'border-edge-sub border-dashed'
-            : 'border-line border',
-      )}
-    >
-      {data.curie}
-      {data.highlighted && <span aria-hidden="true"> ★</span>}
-      {data.subCount > 0 && (
-        <span
-          title="直接子类数"
-          className={cn(
-            'bg-primary text-primary-foreground absolute -top-2 -right-2 flex h-[16px] min-w-[18px] items-center justify-center rounded-lg px-1 text-[9px] font-bold',
-            data.highlighted && 'border-panel border-2',
-          )}
-        >
-          {data.subCount}
-        </span>
-      )}
-    </div>
-  )
-}
-
-const NODE_TYPES = { entity: EntityFlowNode }
-
-/**
- * Fits the canvas onto one node once nodes are measured; must render inside
- * <ReactFlow> to reach the viewport instance. The timeout lets the first
- * layout pass settle (jsdom-safe no-op).
- */
-function FocusFit({ id }: { id: string }) {
-  const { fitView } = useReactFlow()
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      void fitView({ nodes: [{ id }], duration: 400, padding: 0.3 })
-    }, 120)
-    return () => clearTimeout(timer)
-  }, [id, fitView])
-  return null
-}
-
-const LAYER_GAP = 170
-const COLUMN_GAP = 210
-
-/**
- * Deterministic layered layout: depth = subClassOf distance to a top node;
- * nodes of one depth stack in input order. Property edges do not drive depth.
- */
-function layeredPositions(nodes: GraphViewNode[], edges: GEdge[]): Map<string, { x: number; y: number }> {
-  const parentOf = new Map<string, string>()
+/** Direct-subclass badge input: subClassOf edges pointing at each node. */
+export function computeSubCounts(edges: GEdge[]): Map<string, number> {
+  const counts = new Map<string, number>()
   for (const e of edges) {
-    if (e.kind === 'subClassOf') parentOf.set(e.source, e.target)
+    if (e.kind === 'subClassOf') counts.set(e.target, (counts.get(e.target) ?? 0) + 1)
   }
-  const depth = new Map<string, number>()
-  const visiting = new Set<string>()
-
-  const depthOf = (id: string): number => {
-    if (depth.has(id)) return depth.get(id) as number
-    if (visiting.has(id)) return 0 // cycle guard
-    visiting.add(id)
-    const parent = parentOf.get(id)
-    const d = parent && parent !== id ? depthOf(parent) + 1 : 0
-    visiting.delete(id)
-    depth.set(id, d)
-    return d
-  }
-  for (const n of nodes) depthOf(n.id)
-
-  const byDepth = new Map<number, GraphViewNode[]>()
-  for (const n of nodes) {
-    const d = depth.get(n.id) ?? 0
-    byDepth.set(d, [...(byDepth.get(d) ?? []), n])
-  }
-
-  const pos = new Map<string, { x: number; y: number }>()
-  for (const [d, layer] of byDepth) {
-    layer.forEach((n, i) => {
-      pos.set(n.id, { x: i * COLUMN_GAP, y: d * LAYER_GAP })
-    })
-  }
-  return pos
+  return counts
 }
 
-/** Map API edges to React Flow edges: visibility, label, semantic styling.
- *  Each relation kind keeps its own line style AND a matching arrowhead so
- *  inheritance vs property links read apart at a glance (mockup §7.3). */
-export function toFlowEdges(edges: GEdge[], visibleIds: Set<string>, showLabels: boolean): Edge[] {
+/** Card style (mockup): classes get a solid grey border, property nodes a
+ *  dashed violet one (kind encoded in the border), and the highlighted
+ *  entity a 2px primary border + ★. */
+export function toG6Nodes(
+  nodes: GraphViewNode[],
+  subCounts: Map<string, number>,
+  t: CanvasTokens,
+): NodeData[] {
+  return nodes.map((n) => {
+    const isProperty = n.kind === 'property'
+    const focused = !!n.highlighted
+    const w = Math.min(220, Math.max(96, Math.round(n.curie.length * 7.4 + 26)))
+    const style: Record<string, unknown> = {
+      size: [w, 32],
+      radius: 8,
+      fill: t.panel,
+      stroke: focused ? t.primary : isProperty ? t.edgeSub : t.line,
+      lineWidth: focused ? 2 : 1,
+      shadowColor: 'rgba(15, 23, 42, 0.08)',
+      shadowBlur: 4,
+      labelText: focused ? `${n.curie} ★` : n.curie,
+      labelFill: focused ? t.primary : t.ink,
+      labelFontSize: 12,
+      labelFontWeight: focused ? 700 : 400,
+      labelPlacement: 'center',
+    }
+    if (isProperty && !focused) style.lineDash = [4, 3]
+    const subCount = subCounts.get(n.id) ?? 0
+    if (subCount > 0) {
+      style.badges = [
+        {
+          text: String(subCount),
+          placement: 'right-top',
+          backgroundFill: t.primary,
+          fill: t.primaryFg,
+          fontSize: 9,
+          padding: [2, 5],
+        },
+      ]
+    }
+    return { id: n.id, data: { kind: n.kind, curie: n.curie }, style }
+  })
+}
+
+/** Map API edges to G6 edges: visibility, label, semantic styling. Edges to
+ *  filtered-out endpoints are pruned along with the endpoint itself. */
+export function toG6Edges(
+  edges: GEdge[],
+  visibleIds: Set<string>,
+  showLabels: boolean,
+  t: CanvasTokens,
+): EdgeData[] {
   return edges
     .filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target))
     .map((e, i) => {
-      const visual = EDGE_VISUALS[e.kind] ?? EDGE_VISUALS.property
+      const v = edgeVisualFor(e.kind, t)
       return {
         id: `e${i}-${e.source}-${e.target}`,
         source: e.source,
         target: e.target,
-        label: showLabels ? e.kind : undefined,
-        style: { stroke: visual.stroke, strokeDasharray: visual.dash, strokeWidth: 1.5 },
-        labelStyle: { fontFamily: 'var(--font-mono)', fontSize: 10, fill: '#64748B' },
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: visual.stroke,
-          width: 14,
-          height: 14,
+        data: { kind: e.kind },
+        style: {
+          stroke: v.stroke,
+          lineWidth: 1.5,
+          ...(v.dash ? { lineDash: v.dash } : {}),
+          endArrow: true,
+          endArrowSize: 8,
+          endArrowFill: v.stroke,
+          labelText: showLabels ? e.kind : '',
+          labelFill: '#64748B',
+          labelFontSize: 10,
+          labelFontFamily: t.mono,
+          labelBackground: true,
+          labelBackgroundFill: t.panel,
+          labelBackgroundOpacity: 0.9,
+          labelBackgroundRadius: 3,
+          labelPadding: [1, 4],
         },
       }
     })
 }
 
-/** Shared graph canvas: edge semantics, label toggle, type filter (spec §7.3).
- *  Label/filter controls render as an in-canvas overlay by default; passing
- *  the controlled props (in pairs) moves them to the caller's toolbar. */
+function visibleOf(nodes: GraphViewNode[], filter: Filter): GraphViewNode[] {
+  if (filter === 'all') return nodes
+  const want = (kind: string) => (filter === 'props' ? kind === 'property' : kind !== 'property')
+  return nodes.filter((n) => want(n.kind))
+}
+
+function buildData(
+  nodes: GraphViewNode[],
+  edges: GEdge[],
+  filter: Filter,
+  showLabels: boolean,
+  t: CanvasTokens,
+): GraphData {
+  const visible = visibleOf(nodes, filter)
+  const ids = new Set(visible.map((n) => n.id))
+  return {
+    nodes: toG6Nodes(visible, computeSubCounts(edges), t),
+    edges: toG6Edges(edges, ids, showLabels, t),
+  }
+}
+
+/**
+ * Shared graph canvas on G6 5.x: dagre hierarchy, edge semantics, label
+ * toggle, type filter (spec §7.3). Label/filter controls render as an
+ * in-canvas overlay by default; passing the controlled props (in pairs)
+ * moves them to the caller's toolbar.
+ */
 export default function GraphView({
   nodes,
   edges,
@@ -196,112 +208,172 @@ export default function GraphView({
   const resolved = useTheme().resolved
   const [labelsFallback, setLabelsFallback] = useState(true)
   const [filterFallback, setFilterFallback] = useState<Filter>('all')
+  const [zoomPct, setZoomPct] = useState(100)
   const external = onShowLabelsChange !== undefined || onTypeFilterChange !== undefined
   const showLabels = showLabelsProp ?? labelsFallback
   const setShowLabels = onShowLabelsChange ?? setLabelsFallback
   const filter = typeFilterProp ?? filterFallback
   const setFilter = onTypeFilterChange ?? setFilterFallback
 
-  const visible = useMemo(() => {
-    if (filter === 'all') return nodes
-    const want = (kind: string) => (filter === 'props' ? kind === 'property' : kind !== 'property')
-    return nodes.filter((n) => want(n.kind))
-  }, [nodes, filter])
+  const containerRef = useRef<HTMLDivElement>(null)
+  const graphRef = useRef<Graph | null>(null)
+  // onSelect through a ref so the build effect never re-runs for a new callback.
+  const onSelectRef = useRef(onSelect)
+  useEffect(() => {
+    onSelectRef.current = onSelect
+  })
+  // Latest state for the build effect (its deps are narrower than the state).
+  // Updated in a render-following effect declared before everything else.
+  const stateRef = useRef({ nodes, edges, showLabels, filter, focusId })
+  useEffect(() => {
+    stateRef.current = { nodes, edges, showLabels, filter, focusId }
+  })
 
-  /** Direct-subclass badge input: subClassOf edges pointing at each node. */
-  const subCounts = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const e of edges) {
-      if (e.kind === 'subClassOf') counts.set(e.target, (counts.get(e.target) ?? 0) + 1)
+  /** (Re)build the graph on data or theme change. The class toggle is
+   *  idempotent with ThemeProvider's own and guards first-paint ordering. */
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    document.documentElement.classList.toggle('dark', resolved === 'dark')
+    const t = readCanvasTokens()
+    const snap = stateRef.current
+    const graph = new Graph({
+      container: el,
+      autoResize: true,
+      animation: false,
+      theme: resolved,
+      padding: [40, 40, 40, 40],
+      data: buildData(snap.nodes, snap.edges, snap.filter, snap.showLabels, t),
+      layout: LAYOUT,
+      node: { type: 'rect' },
+      edge: { type: 'line' },
+      behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element'],
+      plugins: [],
+    })
+    graphRef.current = graph
+
+    graph.on('node:click', (e) => {
+      const id = (e as IPointerEvent).target
+        ? ((e as IPointerEvent).target as unknown as { id: string }).id
+        : undefined
+      if (id) onSelectRef.current?.(id)
+    })
+
+    void graph.render().then(() => {
+      if (snap.focusId) void graph.focusElement(snap.focusId)
+      else void graph.fitView()
+      setZoomPct(Math.round(graph.getZoom() * 100))
+    })
+
+    return () => {
+      graph.destroy()
+      graphRef.current = null
     }
-    return counts
-  }, [edges])
+  }, [nodes, edges, resolved])
 
-  const flowNodes: EntityFlowNodeType[] = useMemo(() => {
-    const pos = layeredPositions(nodes, edges)
-    return visible.map((n) => ({
-      id: n.id,
-      type: 'entity' as const,
-      position: pos.get(n.id) ?? { x: 0, y: 0 },
-      data: {
-        curie: n.curie,
-        kind: n.kind,
-        subCount: subCounts.get(n.id) ?? 0,
-        highlighted: n.highlighted,
-      },
-    }))
-  }, [nodes, edges, visible, subCounts])
+  /** Edge-label toggle without rebuilding (keeps dragged positions). */
+  useEffect(() => {
+    const g = graphRef.current
+    if (!g) return
+    const snap = stateRef.current
+    const ids = new Set(visibleOf(snap.nodes, snap.filter).map((n) => n.id))
+    g.updateEdgeData(toG6Edges(snap.edges, ids, showLabels, readCanvasTokens()))
+    void g.draw()
+  }, [showLabels])
 
-  const flowEdges = useMemo(() => {
-    const visibleIds = new Set(visible.map((n) => n.id))
-    return toFlowEdges(edges, visibleIds, showLabels)
-  }, [edges, visible, showLabels])
+  /** Type filter via setData (dagre is deterministic, so the view is stable). */
+  useEffect(() => {
+    const g = graphRef.current
+    if (!g) return
+    const snap = stateRef.current
+    g.setData(buildData(snap.nodes, snap.edges, filter, snap.showLabels, readCanvasTokens()))
+    void g.render()
+  }, [filter])
+
+  /** Focus follow: fit the focused entity without rebuilding the graph. */
+  useEffect(() => {
+    const g = graphRef.current
+    if (!g || !focusId) return
+    void g.focusElement(focusId)
+  }, [focusId])
+
+  const zoomBy = async (ratio: number) => {
+    const g = graphRef.current
+    if (!g) return
+    await g.zoomBy(ratio)
+    setZoomPct(Math.round(g.getZoom() * 100))
+  }
+  const fit = async () => {
+    const g = graphRef.current
+    if (!g) return
+    await g.fitView()
+    setZoomPct(Math.round(g.getZoom() * 100))
+  }
+
+  const ctlBtn =
+    'border-line bg-panel/90 text-ink-2 hover:text-ink rounded-ctl border px-2 py-1 text-xs shadow-xs backdrop-blur'
 
   return (
     <div
-      className="canvas-dots bg-canvas border-line rounded-card relative overflow-hidden border"
+      className="canvas-dots bg-canvas border-line relative overflow-hidden border"
       style={{ height, width: '100%' }}
     >
-      <ReactFlow
-        nodes={flowNodes}
-        edges={flowEdges}
-        nodeTypes={NODE_TYPES}
-        colorMode={resolved}
-        fitView
-        minZoom={0.15}
-        proOptions={{ hideAttribution: true }}
-        onNodeClick={(_, node) => onSelect?.(node.id)}
-      >
-        {showControls && <Controls position="bottom-right" showInteractive={false} />}
-        {focusId && <FocusFit id={focusId} />}
-        <Panel position="bottom-left">
-          <div className="border-line bg-panel/90 rounded-ctl flex flex-col gap-1 border p-2 shadow-xs backdrop-blur">
-            {LEGEND.map(({ label, visual }) => (
-              <div key={label} className="flex items-center gap-2">
-                <svg width="26" height="6" aria-hidden="true" className="shrink-0">
-                  <line
-                    x1="1"
-                    y1="3"
-                    x2="25"
-                    y2="3"
-                    stroke={visual.stroke}
-                    strokeWidth="1.5"
-                    strokeDasharray={visual.dash}
-                  />
-                </svg>
-                <span className="text-ink-2 text-xs">{label}</span>
-              </div>
-            ))}
+      <div ref={containerRef} className="h-full w-full" />
+
+      {showControls && (
+        <div className="border-line bg-panel/90 rounded-ctl absolute right-2 bottom-2 flex items-center gap-1 border p-1 shadow-xs backdrop-blur">
+          <button type="button" className={ctlBtn} onClick={() => void zoomBy(0.9)}>
+            −
+          </button>
+          <span className="text-ink-2 w-10 text-center font-mono text-[11px]">{zoomPct}%</span>
+          <button type="button" className={ctlBtn} onClick={() => void zoomBy(1.1)}>
+            +
+          </button>
+          <button type="button" className={ctlBtn} onClick={() => void fit()}>
+            适配
+          </button>
+        </div>
+      )}
+
+      <div className="border-line bg-panel/90 rounded-ctl absolute bottom-2 left-2 flex flex-col gap-1 border p-2 shadow-xs backdrop-blur">
+        {LEGEND.map(({ label, visual }) => (
+          <div key={label} className="flex items-center gap-2">
+            <svg width="26" height="6" aria-hidden="true" className="shrink-0">
+              <line
+                x1="1"
+                y1="3"
+                x2="25"
+                y2="3"
+                stroke={visual.stroke}
+                strokeWidth="1.5"
+                strokeDasharray={visual.dash}
+              />
+            </svg>
+            <span className="text-ink-2 text-xs">{label}</span>
           </div>
-        </Panel>
-        {!external && (
-          <Panel position="top-right">
-          <div className="border-line bg-panel/90 rounded-ctl flex items-center gap-1 border p-1 shadow-xs backdrop-blur">
-            <Toggle
-              variant="outline"
-              size="sm"
-              pressed={showLabels}
-              onPressedChange={setShowLabels}
-            >
-              标签
-            </Toggle>
-            <ToggleGroup
-              type="single"
-              variant="outline"
-              size="sm"
-              value={filter}
-              onValueChange={(v) => {
-                if (v) setFilter(v as Filter)
-              }}
-            >
-              <ToggleGroupItem value="all">全部</ToggleGroupItem>
-              <ToggleGroupItem value="classes">仅类</ToggleGroupItem>
-              <ToggleGroupItem value="props">仅属性</ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-        </Panel>
-        )}
-      </ReactFlow>
+        ))}
+      </div>
+
+      {!external && (
+        <div className="border-line bg-panel/90 rounded-ctl absolute top-2 right-2 flex items-center gap-1 border p-1 shadow-xs backdrop-blur">
+          <Toggle variant="outline" size="sm" pressed={showLabels} onPressedChange={setShowLabels}>
+            标签
+          </Toggle>
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={filter}
+            onValueChange={(v) => {
+              if (v) setFilter(v as Filter)
+            }}
+          >
+            <ToggleGroupItem value="all">全部</ToggleGroupItem>
+            <ToggleGroupItem value="classes">仅类</ToggleGroupItem>
+            <ToggleGroupItem value="props">仅属性</ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+      )}
     </div>
   )
 }

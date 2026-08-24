@@ -1,11 +1,19 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Browse from './Browse'
 import { useBrowseStore } from '../stores/browseStore'
 import { ThemeProvider } from '../theme/ThemeProvider'
+import { lastG6, resetG6 } from '../test/g6Mock'
 import type { Envelope, EntityIR, NodesEdges, OntologyMeta } from '../api/types'
+
+/* G6 draws on canvas, which jsdom cannot provide — the module is mocked and
+   canvas interaction goes through the mocked Graph's event handlers. */
+vi.mock('@antv/g6', async () => {
+  const { MockGraph } = await import('../test/g6Mock')
+  return { Graph: MockGraph }
+})
 
 const EID = 'http://example.org/Dog'
 const ANIMAL = 'http://example.org/Animal'
@@ -107,6 +115,7 @@ function renderBrowse(
 
 beforeEach(() => {
   useBrowseStore.setState({ selectedEid: null, revealEid: null })
+  resetG6()
 })
 
 afterEach(() => {
@@ -137,10 +146,14 @@ describe('Browse workspace (overview-only)', () => {
 
   it('canvas node click selects through reveal and walks the tree', async () => {
     renderBrowse(stubFetch())
-    expect(await screen.findByText('pizza:Animal')).toBeTruthy()
+    // Overview data reaches the canvas once the mocked Graph is built with it.
+    const canvasIds = () =>
+      ((lastG6()?.options.data as { nodes?: { id: string }[] } | undefined)?.nodes ?? []).map(
+        (n) => n.id,
+      )
+    await waitFor(() => expect(canvasIds()).toContain(ANIMAL))
 
-    // fireEvent: userEvent's pointer sequence trips React Flow's d3-drag in jsdom.
-    fireEvent.click(screen.getByText('pizza:Animal'))
+    lastG6()?.handlers['node:click']({ target: { id: ANIMAL } })
 
     // Selection lands in the store; tree walk + inspector follow it (the
     // reveal→fetch chain is covered end-to-end in graph.test).
