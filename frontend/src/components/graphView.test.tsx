@@ -111,7 +111,7 @@ describe('GraphView', () => {
     expect(off.every((e) => e.style.labelText === '')).toBe(true)
     await userEvent.click(screen.getByRole('button', { name: '标签' }))
     const on = g.updateEdgeData.mock.lastCall?.[0] as { style: { labelText: string } }[]
-    expect(on.map((e) => e.style.labelText)).toEqual(['subClassOf', 'subClassOf', 'property'])
+    expect(on.map((e) => e.style.labelText)).toEqual(['subClassOf', 'subClassOf', 'ex:hasTopping'])
   })
 
   it('classes-only filter drops property nodes and their edges', async () => {
@@ -141,11 +141,17 @@ describe('GraphView', () => {
 })
 
 describe('toG6Edges', () => {
-  const all = new Set(['a', 'b', 'c', 'd', 'p'])
+  const all = new Map([
+    ['a', 'ex:A'],
+    ['b', 'ex:B'],
+    ['c', 'ex:C'],
+    ['d', 'ex:age'],
+    ['p', 'ex:hasTopping'],
+  ])
   const edges: GEdge[] = [
     { source: 'b', target: 'a', kind: 'subClassOf' },
     { source: 'a', target: 'p', kind: 'property' },
-    { source: 'd', target: 'a', kind: 'datatype' },
+    { source: 'a', target: 'd', kind: 'datatype' },
     { source: 'a', target: 'ghost', kind: 'subClassOf' },
   ]
 
@@ -159,12 +165,12 @@ describe('toG6Edges', () => {
     expect(st(mapped[2])).toMatchObject({ stroke: '#94a3b8', lineDash: [1, 4] })
   })
 
-  it('labels edges only when enabled', () => {
+  it('labels edges only when enabled — property edges by curie, not kind', () => {
     const st = (e: { style?: Record<string, unknown> }) => e.style ?? {}
     expect(toG6Edges(edges, all, true, TOKENS).map((e) => st(e).labelText)).toEqual([
       'subClassOf',
-      'property',
-      'datatype',
+      'ex:hasTopping',
+      'ex:age',
     ])
     expect(toG6Edges(edges, all, false, TOKENS).every((e) => st(e).labelText === '')).toBe(true)
   })

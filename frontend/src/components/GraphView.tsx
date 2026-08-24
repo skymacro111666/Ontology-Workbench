@@ -114,17 +114,21 @@ export function toG6Nodes(
 }
 
 /** Map API edges to G6 edges: visibility, label, semantic styling. Edges to
- *  filtered-out endpoints are pruned along with the endpoint itself. */
+ *  filtered-out endpoints are pruned along with the endpoint itself. The map
+ *  doubles as the id→curie lookup for property labels. */
 export function toG6Edges(
   edges: GEdge[],
-  visibleIds: Set<string>,
+  visible: Map<string, string>,
   showLabels: boolean,
   t: CanvasTokens,
 ): EdgeData[] {
   return edges
-    .filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target))
+    .filter((e) => visible.has(e.source) && visible.has(e.target))
     .map((e, i) => {
       const v = edgeVisualFor(e.kind, t)
+      // Property edges label with the property they point at (its curie);
+      // subClassOf keeps the relation word — the target is just a parent.
+      const label = e.kind === 'subClassOf' ? 'subClassOf' : (visible.get(e.target) ?? e.kind)
       return {
         id: `e${i}-${e.source}-${e.target}`,
         source: e.source,
@@ -137,7 +141,7 @@ export function toG6Edges(
           endArrow: true,
           endArrowSize: 8,
           endArrowFill: v.stroke,
-          labelText: showLabels ? e.kind : '',
+          labelText: showLabels ? label : '',
           labelFill: '#64748B',
           labelFontSize: 10,
           labelFontFamily: t.mono,
@@ -165,7 +169,7 @@ function buildData(
   t: CanvasTokens,
 ): GraphData {
   const visible = visibleOf(nodes, filter)
-  const ids = new Set(visible.map((n) => n.id))
+  const ids = new Map(visible.map((n) => [n.id, n.curie]))
   return {
     nodes: toG6Nodes(visible, computeSubCounts(edges), t),
     edges: toG6Edges(edges, ids, showLabels, t),
@@ -276,7 +280,7 @@ export default function GraphView({
     const g = graphRef.current
     if (!g) return
     const snap = stateRef.current
-    const ids = new Set(visibleOf(snap.nodes, snap.filter).map((n) => n.id))
+    const ids = new Map(visibleOf(snap.nodes, snap.filter).map((n) => [n.id, n.curie]))
     g.updateEdgeData(toG6Edges(snap.edges, ids, showLabels, readCanvasTokens()))
     void g.draw()
   }, [showLabels])
