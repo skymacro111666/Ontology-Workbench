@@ -112,6 +112,14 @@ describe('GraphView', () => {
     expect(opts.edge).toMatchObject({ type: 'polyline' })
   })
 
+  it('defaultFilter seeds the uncontrolled filter (overview opens class-only)', () => {
+    draw({ defaultFilter: 'classes' })
+    const ids = lastData().nodes.map((n: { id: string }) => n.id)
+    // Property nodes are hidden from the first render; instances stay.
+    expect(ids).not.toContain('p')
+    expect(ids).toEqual(expect.arrayContaining(['a', 'b', 'c', 'i1']))
+  })
+
   it('focuses the focusId entity after the first render', async () => {
     draw({ focusId: 'a' })
     const g = lastG6() as MockGraph

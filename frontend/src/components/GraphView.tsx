@@ -234,6 +234,7 @@ export default function GraphView({
   onShowLabelsChange,
   typeFilter: typeFilterProp,
   onTypeFilterChange,
+  defaultFilter: defaultFilterProp,
 }: {
   nodes: GraphViewNode[]
   edges: GEdge[]
@@ -245,6 +246,9 @@ export default function GraphView({
   focusId?: string
   /** Whether the zoom/fit control cluster is rendered (default true). */
   showControls?: boolean
+  /** Initial uncontrolled filter (the canvas stays 'all'-neutral; callers
+   *  with class-only semantics — e.g. the overview — seed it here). */
+  defaultFilter?: Filter
   /** Controlled edge-label switch; pass with onShowLabelsChange. */
   showLabels?: boolean
   onShowLabelsChange?: (v: boolean) => void
@@ -254,7 +258,7 @@ export default function GraphView({
 }) {
   const resolved = useTheme().resolved
   const [labelsFallback, setLabelsFallback] = useState(true)
-  const [filterFallback, setFilterFallback] = useState<Filter>('all')
+  const [filterFallback, setFilterFallback] = useState<Filter>(defaultFilterProp ?? 'all')
   const [zoomPct, setZoomPct] = useState(100)
   const external = onShowLabelsChange !== undefined || onTypeFilterChange !== undefined
   const showLabels = showLabelsProp ?? labelsFallback

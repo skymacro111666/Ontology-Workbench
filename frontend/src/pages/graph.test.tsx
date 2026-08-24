@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { useEffect } from 'react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -32,15 +33,26 @@ const canvasNodeIds = () =>
     (n) => n.id,
   )
 
+/** Node ids in the most recent setData payload (filter switches go through
+ *  setData, which the mock records but does not apply to options.data). */
+const lastSetDataNodeIds = () => {
+  const calls = (lastG6()?.setData as unknown as { mock: { calls: unknown[][] } }).mock.calls
+  return ((calls.at(-1)?.[0] as { nodes?: { id: string }[] })?.nodes ?? []).map((n) => n.id)
+}
+
 function overview(truncated: boolean): NodesEdges {
   return {
     nodes: [
       { id: 'http://example.org/Thing', curie: 'ex:Thing', label: {}, kind: 'class' },
       { id: DOG, curie: 'ex:Dog', label: {}, kind: 'class', instanceCount: 1 },
+      { id: 'http://example.org/hasTopping', curie: 'ex:hasTopping', label: {}, kind: 'property' },
     ],
-    edges: [{ source: DOG, target: THING, kind: 'subClassOf' }],
+    edges: [
+      { source: DOG, target: THING, kind: 'subClassOf' },
+      { source: DOG, target: 'http://example.org/hasTopping', kind: 'property' },
+    ],
     truncated,
-    totalCount: truncated ? 800 : 2,
+    totalCount: truncated ? 800 : 3,
   }
 }
 
@@ -141,6 +153,16 @@ describe('workspace overview mode', () => {
     // "Loaded" = the overview payload has reached the mocked canvas.
     await waitFor(() => expect(canvasNodeIds()).toEqual(expect.arrayContaining([THING, DOG])))
     expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('opens class-only: property nodes wait for the 全部 filter', async () => {
+    const PROP = 'http://example.org/hasTopping'
+    renderOverview(fetchFor(overview(false)))
+    await waitFor(() => expect(canvasNodeIds()).toContain(DOG))
+    // The canvas defaults to 仅类 — properties stay off until asked for.
+    expect(canvasNodeIds()).not.toContain(PROP)
+    await userEvent.click(screen.getByRole('radio', { name: '全部' }))
+    await waitFor(() => expect(lastSetDataNodeIds()).toContain(PROP))
   })
 
   it('NOT_FOUND lands on the missing-ontology card with a way home', async () => {
