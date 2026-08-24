@@ -79,6 +79,34 @@ def test_overview_truncates_large_graphs() -> None:
     assert len(ov["nodes"]) < ov["total_count"]
 
 
+MINI_DIAMOND = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:A a owl:Class .
+ex:B a owl:Class .
+ex:Child a owl:Class ; rdfs:subClassOf ex:A , ex:B .
+"""
+
+
+def test_overview_multi_parent_child_not_duplicated() -> None:
+    """A child reachable from several roots/branches appears once.
+
+    G6 (canvas) keys nodes by id — duplicate ids crash the whole page
+    (wine#Sauternes / foaf:Person blanks), so the walk must dedupe nodes
+    while still emitting one edge per real parent link.
+    """
+    g = rdflib.Graph().parse(data=MINI_DIAMOND, format="turtle")
+    ix = build_indexes(build_ir(g))
+    ov = ix.overview()
+    ids = [n["id"] for n in ov["nodes"]]
+    assert len(ids) == len(set(ids)) == 3
+    pairs = {(e["source"], e["target"]) for e in ov["edges"]}
+    assert pairs == {
+        ("http://example.org/Child", "http://example.org/A"),
+        ("http://example.org/Child", "http://example.org/B"),
+    }
+
+
 MINI2 = """@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .

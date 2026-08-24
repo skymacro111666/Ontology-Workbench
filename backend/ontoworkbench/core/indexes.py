@@ -157,11 +157,16 @@ class Indexes:
         nodes: list[dict[str, Any]] = []
         edges: list[dict[str, str]] = []
         budget = max_nodes
+        # Multi-parent entities are reachable through several roots/branches —
+        # they must still land in `nodes` once (canvas keys nodes by id), while
+        # every walked parent link keeps its edge.
+        seen: set[str] = set()
 
         def walk(e: EntityIR, depth: int) -> int:
             nonlocal budget
-            if budget <= 0:
+            if budget <= 0 or e.eid in seen:
                 return 0
+            seen.add(e.eid)
             nodes.append({"id": e.eid, "curie": e.curie, "label": e.label, "kind": "class"})
             budget -= 1
             count = 1
