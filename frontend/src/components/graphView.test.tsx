@@ -12,8 +12,13 @@ import GraphView, { toG6Edges, toG6Nodes, type GraphViewNode } from './GraphView
    Pure mappings are covered directly below. */
 
 vi.mock('@antv/g6', async () => {
-  const { MockGraph } = await import('../test/g6Mock')
-  return { Graph: MockGraph }
+  const mock = await import('../test/g6Mock')
+  return {
+    Graph: mock.MockGraph,
+    BaseLayout: mock.BaseLayout,
+    register: mock.register,
+    ExtensionCategory: mock.ExtensionCategory,
+  }
 })
 
 const TOKENS = {
@@ -95,6 +100,16 @@ describe('GraphView', () => {
     expect(screen.getByText('数据属性')).toBeTruthy()
     expect(screen.getByText('实例')).toBeTruthy()
     expect(screen.getByRole('button', { name: '适配' })).toBeTruthy()
+  })
+
+  it('lays out as a dagre → rank-wrap pipeline with orthogonal edges', () => {
+    draw()
+    const opts = lastG6()!.options as Record<string, unknown>
+    const layout = opts.layout as { type: string }[]
+    expect(layout).toHaveLength(2)
+    expect(layout[0]).toMatchObject({ type: 'antv-dagre', rankdir: 'TB', nodesep: 16 })
+    expect(layout[1]).toMatchObject({ type: 'rank-wrap', targetRowWidth: 1700 })
+    expect(opts.edge).toMatchObject({ type: 'polyline' })
   })
 
   it('focuses the focusId entity after the first render', async () => {
@@ -240,6 +255,13 @@ describe('toG6Edges', () => {
 })
 
 describe('toG6Nodes', () => {
+  it('keeps cards compact: min 72px wide, 6.6px per curie char', () => {
+    const mapped = toG6Nodes(NODES, TOKENS)
+    // 'ex:B' (4 chars) floors at the 72px minimum.
+    const b = mapped.find((n) => n.id === 'b') as G6Datum
+    expect(b.style.size).toEqual([72, 32])
+  })
+
   it('styles the highlighted entity and property nodes apart from classes', () => {
     const mapped = toG6Nodes(NODES, TOKENS)
     const by = (id: string) => mapped.find((n) => n.id === id) as G6Datum

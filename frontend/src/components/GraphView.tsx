@@ -5,6 +5,8 @@ import type { GEdge, GNode } from '../api/types'
 import { useTheme } from '../theme/ThemeProvider'
 import { Toggle } from '@/components/ui/toggle'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+// Side effect: registers the pipeline's second layout stage ('rank-wrap').
+import './wrapRanks'
 
 /** Node extended with what the canvas renders beyond the API payload. */
 export type GraphViewNode = GNode & {
@@ -60,8 +62,15 @@ const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
   { label: '实例', visual: { stroke: 'var(--color-ink-3)' } },
 ]
 
-/** Fixed dagre layout: top-down hierarchy. */
-const LAYOUT = { type: 'antv-dagre', rankdir: 'TB', nodesep: 50, ranksep: 110 } as const
+/** Two-stage layout pipeline: dagre fixes the ranks and sibling order
+ *  top-down, then rank-wrap packs each rank's nodes into sub-rows of at
+ *  most ~1700px so canvas width scales with the widest row, not the widest
+ *  rank (54 siblings in one row would otherwise span ~9,800px). Orthogonal
+ *  polyline edges read org-chart style and dodge the staggered rows. */
+const LAYOUT = [
+  { type: 'antv-dagre', rankdir: 'TB', nodesep: 16, ranksep: 90 },
+  { type: 'rank-wrap', rowGap: 14, rankGap: 90, nodesep: 16, targetRowWidth: 1700 },
+]
 
 /** A G6 display object as click events expose it (structural subset). */
 export type HitShape = { className?: unknown; parentElement?: HitShape | null }
@@ -103,7 +112,7 @@ export function toG6Nodes(nodes: GraphViewNode[], t: CanvasTokens): NodeData[] {
         },
       }
     }
-    const w = Math.min(220, Math.max(96, Math.round(n.curie.length * 7.4 + 26)))
+    const w = Math.min(220, Math.max(72, Math.round(n.curie.length * 6.6 + 26)))
     const style: Record<string, unknown> = {
       size: [w, 32],
       radius: 8,
@@ -288,7 +297,7 @@ export default function GraphView({
       data: buildData(snap.nodes, snap.edges, snap.filter, snap.showLabels, t),
       layout: LAYOUT,
       node: { type: (d: NodeData) => (d.data?.kind === 'instance' ? 'circle' : 'rect') },
-      edge: { type: 'line' },
+      edge: { type: 'polyline' },
       behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element'],
       plugins: [],
     })

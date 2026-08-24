@@ -44,3 +44,24 @@ export const lastG6 = (): MockGraph | undefined => MockGraph.instances.at(-1)
 export const resetG6 = (): void => {
   MockGraph.instances.length = 0
 }
+
+/** Stand-ins for the named exports GraphView consumes (mirrors the real
+ *  module's surface; layout extensions are plain classes registered by name). */
+export class BaseLayout {
+  options: Record<string, unknown>
+  constructor(_context: unknown, options?: Record<string, unknown>) {
+    this.options = options ?? {}
+  }
+}
+
+export const register = vi.fn()
+
+export const ExtensionCategory = {
+  BEHAVIOR: 'behavior',
+  COMBO: 'combo',
+  EDGE: 'edge',
+  LAYOUT: 'layout',
+  NODE: 'node',
+  PLUGIN: 'plugin',
+  TRANSFORM: 'transform',
+} as const

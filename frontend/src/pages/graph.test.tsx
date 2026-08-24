@@ -13,8 +13,13 @@ import Graph from './Graph'
 /* G6 draws on canvas, which jsdom cannot provide — the module is mocked and
    canvas interaction goes through the mocked Graph's event handlers. */
 vi.mock('@antv/g6', async () => {
-  const { MockGraph } = await import('../test/g6Mock')
-  return { Graph: MockGraph }
+  const mock = await import('../test/g6Mock')
+  return {
+    Graph: mock.MockGraph,
+    BaseLayout: mock.BaseLayout,
+    register: mock.register,
+    ExtensionCategory: mock.ExtensionCategory,
+  }
 })
 
 const DOG = 'http://example.org/Dog'
