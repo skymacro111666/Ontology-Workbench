@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from ontoworkbench.core.ir import EntityIR, IRBundle
 
-MAX_OVERVIEW_NODES = 500
+MAX_OVERVIEW_NODES = 5000
 
 # Sentinel parent for the sidebar's property tab: tree(parent=__props__)
 # lists property entities (eids are full IRIs, so this cannot collide).
@@ -182,6 +182,36 @@ class Indexes:
             if budget <= 0:
                 break
             walk(r, 0)
+
+        # Properties join the canvas after the class tree (spec §7.3): each
+        # property entity renders once, linked to every rendered class it
+        # constrains via domain/range; DatatypeProperty reads as 'datatype'
+        # (dotted), every other property as 'property' (solid).
+        prop_nodes: dict[str, dict[str, Any]] = {}
+        for e in self._ir.entities.values():
+            if budget <= 0:
+                break
+            if e.type != "Class" or e.eid not in seen:
+                continue
+            linked: set[str] = set()
+            for prop in e.properties:
+                if prop.eid in linked:
+                    continue
+                linked.add(prop.eid)
+                if prop.eid not in prop_nodes:
+                    if budget <= 0:
+                        break
+                    prop_nodes[prop.eid] = {
+                        "id": prop.eid,
+                        "curie": prop.curie,
+                        "label": prop.label,
+                        "kind": "property",
+                    }
+                    budget -= 1
+                kind = "datatype" if prop.ptype == "DatatypeProperty" else "property"
+                edges.append({"source": e.eid, "target": prop.eid, "kind": kind})
+        nodes.extend(prop_nodes.values())
+
         truncated = len(self._ir.entities) > max_nodes
         return {
             "nodes": nodes,

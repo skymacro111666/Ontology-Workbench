@@ -73,10 +73,39 @@ def test_overview_truncates_large_graphs() -> None:
         buf.write(f"ex:C{i} a owl:Class ; rdfs:subClassOf ex:Root .\n")
     g = rdflib.Graph().parse(data=buf.getvalue(), format="turtle")
     ix = build_indexes(build_ir(g))
-    ov = ix.overview()
+    ov = ix.overview(max_nodes=100)
     assert ov["truncated"] is True
     assert ov["total_count"] == 601
-    assert len(ov["nodes"]) < ov["total_count"]
+    assert len(ov["nodes"]) == 100
+
+
+def test_overview_budget_default_is_5000() -> None:
+    """The default canvas budget is 5000 (user decision, 2026-08-24)."""
+    from ontoworkbench.core.indexes import MAX_OVERVIEW_NODES
+
+    assert MAX_OVERVIEW_NODES == 5000
+
+
+def test_overview_includes_property_nodes_and_typed_edges() -> None:
+    """Spec §7.3: properties join the canvas with typed edges.
+
+    Object properties render as solid 'property' edges, datatype
+    properties as dotted 'datatype' ones, each linked to the classes
+    it constrains via domain/range.
+    """
+    ix = make2()
+    ov = ix.overview()
+    kinds = {n["curie"]: n["kind"] for n in ov["nodes"]}
+    assert kinds.get("ex:likes") == "property"
+    assert kinds.get("ex:age") == "property"
+    triples = {(e["source"], e["target"], e["kind"]) for e in ov["edges"]}
+    dog = "http://example.org/Dog"
+    cat = "http://example.org/Cat"
+    assert (dog, "http://example.org/likes", "property") in triples
+    assert (cat, "http://example.org/likes", "property") in triples
+    assert (dog, "http://example.org/age", "datatype") in triples
+    # External range (xsd:integer) is not an entity and must not dangle.
+    assert all(e["target"] in {n["id"] for n in ov["nodes"]} for e in ov["edges"])
 
 
 MINI_DIAMOND = """@prefix ex: <http://example.org/> .
@@ -110,11 +139,13 @@ def test_overview_multi_parent_child_not_duplicated() -> None:
 MINI2 = """@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 ex:Thing a owl:Class .
 ex:Animal a owl:Class ; rdfs:subClassOf ex:Thing ; rdfs:comment "alive"@en .
 ex:Dog a owl:Class ; rdfs:subClassOf ex:Animal ; rdfs:label "小狗狗"@en .
 ex:Cat a owl:Class ; rdfs:subClassOf ex:Animal .
 ex:likes a owl:ObjectProperty ; rdfs:domain ex:Dog ; rdfs:range ex:Cat .
+ex:age a owl:DatatypeProperty ; rdfs:domain ex:Dog ; rdfs:range xsd:integer .
 ex:Ghost a owl:Class ; rdfs:subClassOf <http://external.org/X> .
 """
 
@@ -134,7 +165,7 @@ def test_orphan_class_with_external_parent_is_root() -> None:
     ov = ix.overview()
     ghost_nodes = [n for n in ov["nodes"] if n["curie"] == "ex:Ghost"]
     assert ghost_nodes, "orphan class must appear in the overview"
-    assert ov["total_count"] == 6
+    assert ov["total_count"] == 7
 
 
 def test_neighbors_cover_siblings_and_properties() -> None:

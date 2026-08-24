@@ -121,7 +121,7 @@ describe('workspace overview mode', () => {
   it('shows the degradation notice only when truncated', async () => {
     renderOverview(fetchFor(overview(true)))
     const notice = await screen.findByRole('status')
-    expect(notice.textContent).toBe('本体超过 500 实体，仅显示顶层 3 层（共 800）')
+    expect(notice.textContent).toBe('本体超过 5000 实体，仅显示顶层 3 层（共 800）')
   })
 
   it('renders no notice for small ontologies', async () => {

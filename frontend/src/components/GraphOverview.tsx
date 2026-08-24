@@ -7,7 +7,7 @@ import GraphView, { type GraphViewNode } from './GraphView'
 import { Button } from '@/components/ui/button'
 
 /** Whole-ontology overview canvas — the workspace's single content view;
- *  degrades to the top 3 levels past 500 entities (spec §7.5). Label switch
+ *  degrades to the top 3 levels past 5000 entities (spec §7.5). Label switch
  *  and type filter render as the canvas's in-canvas overlay controls. */
 export default function GraphOverview({
   oid,
@@ -57,7 +57,7 @@ export default function GraphOverview({
           role="status"
           className="border-primary-border bg-primary-soft text-ink-2 rounded-ctl shrink-0 border px-3 py-2 text-sm"
         >
-          本体超过 500 实体，仅显示顶层 3 层（共 {data.totalCount}）
+          本体超过 5000 实体，仅显示顶层 3 层（共 {data.totalCount}）
         </div>
       )}
       <div className="min-h-0 flex-1">

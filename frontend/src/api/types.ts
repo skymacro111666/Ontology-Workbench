@@ -83,14 +83,14 @@ export interface GNode {
   kind: 'self' | 'class' | 'property' | string
 }
 
-/** Graph edge; kind encodes the relation (subClassOf / property). */
+/** Graph edge; kind encodes the relation (subClassOf / property / datatype). */
 export interface GEdge {
   source: string
   target: string
-  kind: 'subClassOf' | 'property' | string
+  kind: 'subClassOf' | 'property' | 'datatype' | string
 }
 
-/** Nodes/edges payload; truncated marks an overview cut at 500 nodes / 3 levels. */
+/** Nodes/edges payload; truncated marks an overview cut at 5000 nodes / 3 levels. */
 export interface NodesEdges {
   nodes: GNode[]
   edges: GEdge[]
