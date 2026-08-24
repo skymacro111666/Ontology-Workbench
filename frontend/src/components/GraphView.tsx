@@ -43,10 +43,12 @@ export function readCanvasTokens(): CanvasTokens {
 }
 
 /** Edge semantics (spec §7.3): subclass dashed purple, object property solid
- *  indigo, data property dotted slate — each with a matching arrowhead. */
+ *  indigo, data property dotted slate, instance plain grey — each with a
+ *  matching arrowhead. */
 function edgeVisualFor(kind: string, t: CanvasTokens): { stroke: string; dash?: number[] } {
   if (kind === 'subClassOf') return { stroke: t.edgeSub, dash: [6, 5] }
   if (kind === 'datatype') return { stroke: t.ink3, dash: [1, 4] }
+  if (kind === 'instance') return { stroke: t.ink3 }
   return { stroke: t.primary }
 }
 
@@ -55,31 +57,36 @@ const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
   { label: '子类（subClassOf）', visual: { stroke: 'var(--color-edge-sub)', dash: '6 5' } },
   { label: '对象属性', visual: { stroke: 'var(--color-primary)' } },
   { label: '数据属性', visual: { stroke: 'var(--color-ink-3)', dash: '1 4' } },
+  { label: '实例', visual: { stroke: 'var(--color-ink-3)' } },
 ]
 
 /** Fixed dagre layout: top-down hierarchy. */
 const LAYOUT = { type: 'antv-dagre', rankdir: 'TB', nodesep: 50, ranksep: 110 } as const
 
-/** Direct-subclass badge input: subClassOf edges pointing at each node. */
-export function computeSubCounts(edges: GEdge[]): Map<string, number> {
-  const counts = new Map<string, number>()
-  for (const e of edges) {
-    if (e.kind === 'subClassOf') counts.set(e.target, (counts.get(e.target) ?? 0) + 1)
-  }
-  return counts
-}
-
 /** Card style (mockup): classes get a solid grey border, property nodes a
  *  dashed violet one (kind encoded in the border), and the highlighted
- *  entity a 2px primary border + ★. */
-export function toG6Nodes(
-  nodes: GraphViewNode[],
-  subCounts: Map<string, number>,
-  t: CanvasTokens,
-): NodeData[] {
+ *  entity a 2px primary border + ★. Instances (on-demand badge reveal)
+ *  render as small grey circles beside their class. */
+export function toG6Nodes(nodes: GraphViewNode[], t: CanvasTokens): NodeData[] {
   return nodes.map((n) => {
     const isProperty = n.kind === 'property'
     const focused = !!n.highlighted
+    if (n.kind === 'instance') {
+      return {
+        id: n.id,
+        data: { kind: n.kind, curie: n.curie },
+        style: {
+          size: 12,
+          fill: t.panel,
+          stroke: focused ? t.primary : t.ink3,
+          lineWidth: focused ? 2 : 1,
+          labelText: focused ? `${n.curie} ★` : n.curie,
+          labelFill: focused ? t.primary : t.ink,
+          labelFontSize: 10,
+          labelPlacement: 'right',
+        },
+      }
+    }
     const w = Math.min(220, Math.max(96, Math.round(n.curie.length * 7.4 + 26)))
     const style: Record<string, unknown> = {
       size: [w, 32],
@@ -96,16 +103,17 @@ export function toG6Nodes(
       labelPlacement: 'center',
     }
     if (isProperty && !focused) style.lineDash = [4, 3]
-    const subCount = subCounts.get(n.id) ?? 0
-    if (subCount > 0) {
+    // Badge = the class's direct instances; clicking it reveals them.
+    if ((n.instanceCount ?? 0) > 0) {
       style.badges = [
         {
-          text: String(subCount),
+          text: String(n.instanceCount),
           placement: 'right-top',
           backgroundFill: t.primary,
           fill: t.primaryFg,
           fontSize: 9,
           padding: [2, 5],
+          cursor: 'pointer',
         },
       ]
     }
@@ -171,7 +179,7 @@ function buildData(
   const visible = visibleOf(nodes, filter)
   const ids = new Map(visible.map((n) => [n.id, n.curie]))
   return {
-    nodes: toG6Nodes(visible, computeSubCounts(edges), t),
+    nodes: toG6Nodes(visible, t),
     edges: toG6Edges(edges, ids, showLabels, t),
   }
 }
@@ -186,6 +194,7 @@ export default function GraphView({
   nodes,
   edges,
   onSelect,
+  onBadgeClick,
   height = '100%',
   focusId,
   showControls = true,
@@ -197,6 +206,8 @@ export default function GraphView({
   nodes: GraphViewNode[]
   edges: GEdge[]
   onSelect?: (eid: string) => void
+  /** Badge (instance-count) click; default no-op. */
+  onBadgeClick?: (eid: string) => void
   height?: number | string
   /** Optional entity to fit-view onto (overview focus param). */
   focusId?: string
@@ -226,6 +237,10 @@ export default function GraphView({
   useEffect(() => {
     onSelectRef.current = onSelect
   })
+  const onBadgeClickRef = useRef(onBadgeClick)
+  useEffect(() => {
+    onBadgeClickRef.current = onBadgeClick
+  })
   // Latest state for the build effect (its deps are narrower than the state).
   // Updated in a render-following effect declared before everything else.
   const stateRef = useRef({ nodes, edges, showLabels, filter, focusId })
@@ -249,7 +264,7 @@ export default function GraphView({
       padding: [40, 40, 40, 40],
       data: buildData(snap.nodes, snap.edges, snap.filter, snap.showLabels, t),
       layout: LAYOUT,
-      node: { type: 'rect' },
+      node: { type: (d: NodeData) => (d.data?.kind === 'instance' ? 'circle' : 'rect') },
       edge: { type: 'line' },
       behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element'],
       plugins: [],
@@ -257,10 +272,12 @@ export default function GraphView({
     graphRef.current = graph
 
     graph.on('node:click', (e) => {
-      const id = (e as IPointerEvent).target
-        ? ((e as IPointerEvent).target as unknown as { id: string }).id
-        : undefined
-      if (id) onSelectRef.current?.(id)
+      const evt = e as IPointerEvent & { originalTarget?: { name?: string } }
+      const id = evt.target ? (evt.target as unknown as { id: string }).id : undefined
+      if (!id) return
+      // The badge click (any badge-* shape) reveals instances; the body selects.
+      if (evt.originalTarget?.name?.startsWith('badge')) onBadgeClickRef.current?.(id)
+      else onSelectRef.current?.(id)
     })
 
     void graph.render().then(() => {

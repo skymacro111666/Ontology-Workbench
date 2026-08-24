@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GEdge } from '../api/types'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { lastG6, MockGraph, resetG6 } from '../test/g6Mock'
-import GraphView, { computeSubCounts, toG6Edges, toG6Nodes, type GraphViewNode } from './GraphView'
+import GraphView, { toG6Edges, toG6Nodes, type GraphViewNode } from './GraphView'
 
 /* G6 renders on canvas, which jsdom cannot provide — the module is mocked and
    assertions target (a) the DOM overlays (legend/controls, real) and (b) the
@@ -28,10 +28,11 @@ const TOKENS = {
 }
 
 const NODES: GraphViewNode[] = [
-  { id: 'a', curie: 'ex:A', label: {}, kind: 'class', highlighted: true },
+  { id: 'a', curie: 'ex:A', label: {}, kind: 'class', highlighted: true, instanceCount: 3 },
   { id: 'b', curie: 'ex:B', label: {}, kind: 'class' },
   { id: 'c', curie: 'ex:C', label: {}, kind: 'class' },
   { id: 'p', curie: 'ex:hasTopping', label: {}, kind: 'property' },
+  { id: 'i1', curie: 'ex:rex', label: {}, kind: 'instance' },
 ]
 
 const EDGES: GEdge[] = [
@@ -74,17 +75,25 @@ afterEach(() => {
 })
 
 describe('GraphView', () => {
-  it('passes every node (highlight star, subclass badge) and edge to the canvas', () => {
+  it('passes every node (highlight star, instance badge) and edge to the canvas', () => {
     draw()
     const { nodes, edges } = lastData()
-    expect(nodes.map((n) => n.style.labelText)).toEqual(['ex:A ★', 'ex:B', 'ex:C', 'ex:hasTopping'])
-    // Badge = count of subClassOf edges whose target is the node (b and c).
-    expect(nodes.find((n) => n.id === 'a')?.style.badges?.[0].text).toBe('2')
+    expect(nodes.map((n) => n.style.labelText)).toEqual([
+      'ex:A ★',
+      'ex:B',
+      'ex:C',
+      'ex:hasTopping',
+      'ex:rex',
+    ])
+    // Badge = the class's direct instance count (a has 3).
+    expect(nodes.find((n) => n.id === 'a')?.style.badges?.[0].text).toBe('3')
+    expect(nodes.find((n) => n.id === 'b')?.style.badges).toBeUndefined()
     expect(edges).toHaveLength(3)
     // Legend and zoom controls render as DOM overlays.
     expect(screen.getByText('子类（subClassOf）')).toBeTruthy()
     expect(screen.getByText('对象属性')).toBeTruthy()
     expect(screen.getByText('数据属性')).toBeTruthy()
+    expect(screen.getByText('实例')).toBeTruthy()
     expect(screen.getByRole('button', { name: '适配' })).toBeTruthy()
   })
 
@@ -97,6 +106,27 @@ describe('GraphView', () => {
   it('reports node clicks through onSelect', () => {
     const { onSelect } = draw()
     const g = lastG6() as MockGraph
+    g.handlers['node:click']({ target: { id: 'b' } })
+    expect(onSelect).toHaveBeenCalledWith('b')
+  })
+
+  it('routes badge clicks to onBadgeClick, body clicks to onSelect', () => {
+    const onSelect = vi.fn()
+    const onBadgeClick = vi.fn()
+    render(
+      <ThemeProvider>
+        <GraphView
+          nodes={NODES}
+          edges={EDGES}
+          onSelect={onSelect}
+          onBadgeClick={onBadgeClick}
+        />
+      </ThemeProvider>,
+    )
+    const g = lastG6() as MockGraph
+    g.handlers['node:click']({ target: { id: 'b' }, originalTarget: { name: 'badge-0' } })
+    expect(onBadgeClick).toHaveBeenCalledWith('b')
+    expect(onSelect).not.toHaveBeenCalled()
     g.handlers['node:click']({ target: { id: 'b' } })
     expect(onSelect).toHaveBeenCalledWith('b')
   })
@@ -118,7 +148,8 @@ describe('GraphView', () => {
     draw()
     await userEvent.click(screen.getByRole('radio', { name: '仅类' }))
     const data = lastData('setData')
-    expect(data.nodes.map((n) => n.id).sort()).toEqual(['a', 'b', 'c'])
+    // Instances hang off classes, so they stay; only property nodes go.
+    expect(data.nodes.map((n) => n.id).sort()).toEqual(['a', 'b', 'c', 'i1'])
     // The class-property edge is pruned along with its endpoint.
     expect(data.edges.every((e) => e.source !== 'a' || e.target !== 'p')).toBe(true)
     await userEvent.click(screen.getByRole('radio', { name: '全部' }))
@@ -178,16 +209,29 @@ describe('toG6Edges', () => {
 
 describe('toG6Nodes', () => {
   it('styles the highlighted entity and property nodes apart from classes', () => {
-    const mapped = toG6Nodes(NODES, computeSubCounts(EDGES), TOKENS)
+    const mapped = toG6Nodes(NODES, TOKENS)
     const by = (id: string) => mapped.find((n) => n.id === id) as G6Datum
     // Highlighted: 2px primary border, star, bold label.
     expect(by('a').style).toMatchObject({ stroke: '#4f46e5', lineWidth: 2, labelFontWeight: 700 })
     expect(by('a').style.labelText).toBe('ex:A ★')
     // Property node: dashed violet border.
     expect(by('p').style).toMatchObject({ stroke: '#8b5cf6', lineDash: [4, 3] })
-    // Plain class: solid grey border, no dash.
+    // Plain class: solid grey border, no dash, no badge.
     expect(by('b').style).toMatchObject({ stroke: '#e2e8f0' })
     expect(by('b').style.lineDash).toBeUndefined()
     expect(by('b').style.badges).toBeUndefined()
+  })
+
+  it('styles instances as small grey circles with a side label', () => {
+    const mapped = toG6Nodes(NODES, TOKENS)
+    const inst = mapped.find((n) => n.id === 'i1') as G6Datum
+    expect(inst.style).toMatchObject({
+      size: 12,
+      stroke: '#94a3b8',
+      labelPlacement: 'right',
+      labelFontSize: 10,
+    })
+    expect(inst.style.badges).toBeUndefined()
+    expect(inst.style.radius).toBeUndefined()
   })
 })

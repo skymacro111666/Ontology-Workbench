@@ -19,6 +19,7 @@ vi.mock('@antv/g6', async () => {
 
 const DOG = 'http://example.org/Dog'
 const THING = 'http://example.org/Thing'
+const REX = 'http://example.org/rex'
 
 /** Node ids currently on the mocked canvas (empty until the overview loads). */
 const canvasNodeIds = () =>
@@ -30,9 +31,9 @@ function overview(truncated: boolean): NodesEdges {
   return {
     nodes: [
       { id: 'http://example.org/Thing', curie: 'ex:Thing', label: {}, kind: 'class' },
-      { id: 'http://example.org/Dog', curie: 'ex:Dog', label: {}, kind: 'class' },
+      { id: DOG, curie: 'ex:Dog', label: {}, kind: 'class', instanceCount: 1 },
     ],
-    edges: [{ source: 'http://example.org/Dog', target: 'http://example.org/Thing', kind: 'subClassOf' }],
+    edges: [{ source: DOG, target: THING, kind: 'subClassOf' }],
     truncated,
     totalCount: truncated ? 800 : 2,
   }
@@ -74,13 +75,19 @@ function LocationProbe() {
   return null
 }
 
-/** Fetch stub routing by URL: meta/tree/overview; overview failures injectable. */
+/** Fetch stub routing by URL: meta/tree/overview/instances; overview failures injectable. */
 function fetchFor(ov: NodesEdges, overviewFail?: Error) {
   return vi.fn(async (url: string | URL) => {
     const u = String(url)
     if (u.includes('/overview')) {
       if (overviewFail) throw overviewFail
       return envelope(ov)
+    }
+    if (u.includes('/instances')) {
+      return envelope({
+        nodes: [{ id: REX, curie: 'ex:rex', label: {}, kind: 'instance' }],
+        edges: [{ source: REX, target: DOG, kind: 'instance' }],
+      })
     }
     if (u.includes('/meta')) return envelope(meta())
     if (u.includes('/tree')) return envelope([])
@@ -163,6 +170,20 @@ describe('workspace overview mode', () => {
     await waitFor(() => expect(canvasNodeIds()).toContain(DOG))
     lastG6()?.handlers['node:click']({ target: { id: DOG } })
     await waitFor(() => expect(useBrowseStore.getState().selectedEid).toBe(DOG))
+  })
+
+  it('badge click reveals the class instances on the canvas, again collapses', async () => {
+    renderOverview(fetchFor(overview(false)))
+    await waitFor(() => expect(canvasNodeIds()).toContain(DOG))
+
+    lastG6()?.handlers['node:click']({ target: { id: DOG }, originalTarget: { name: 'badge-0' } })
+    await waitFor(() => expect(canvasNodeIds()).toContain(REX))
+    const edges = ((lastG6()?.options.data as { edges?: { data?: { kind: string } }[] })?.edges ?? [])
+    expect(edges.some((e) => e.data?.kind === 'instance')).toBe(true)
+
+    // Clicking the badge again collapses the class's instances.
+    lastG6()?.handlers['node:click']({ target: { id: DOG }, originalTarget: { name: 'badge-0' } })
+    await waitFor(() => expect(canvasNodeIds()).not.toContain(REX))
   })
 
   it('focused entity deep link highlights the node', async () => {

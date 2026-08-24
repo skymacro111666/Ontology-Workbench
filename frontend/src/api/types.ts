@@ -80,14 +80,16 @@ export interface GNode {
   id: string
   curie: string
   label: LocalizedLabels
-  kind: 'self' | 'class' | 'property' | string
+  kind: 'self' | 'class' | 'property' | 'instance' | string
+  /** Direct named individuals of a class (overview badge data). */
+  instanceCount?: number
 }
 
-/** Graph edge; kind encodes the relation (subClassOf / property / datatype). */
+/** Graph edge; kind encodes the relation (subClassOf / property / datatype / instance). */
 export interface GEdge {
   source: string
   target: string
-  kind: 'subClassOf' | 'property' | 'datatype' | string
+  kind: 'subClassOf' | 'property' | 'datatype' | 'instance' | string
 }
 
 /** Nodes/edges payload; truncated marks an overview cut at 5000 nodes / 3 levels. */

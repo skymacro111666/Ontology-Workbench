@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { ApiErr, api } from '../api/client'
 import type { NodesEdges } from '../api/types'
 import { useBrowseStore } from '../stores/browseStore'
@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 
 /** Whole-ontology overview canvas — the workspace's single content view;
  *  degrades to the top 3 levels past 5000 entities (spec §7.5). Label switch
- *  and type filter render as the canvas's in-canvas overlay controls. */
+ *  and type filter render as the canvas's in-canvas overlay controls. The
+ *  instance badge reveals a class's named individuals on demand. */
 export default function GraphOverview({
   oid,
   focus,
@@ -23,9 +24,43 @@ export default function GraphOverview({
     retry: false,
   })
 
+  /** Revealed instances per class eid (badge toggle), null while loading. */
+  const [revealed, setRevealed] = useState<Record<string, NodesEdges | null>>({})
+  const toggleInstances = async (eid: string) => {
+    if (eid in revealed) {
+      setRevealed((m) => {
+        const next = { ...m }
+        delete next[eid]
+        return next
+      })
+      return
+    }
+    setRevealed((m) => ({ ...m, [eid]: null }))
+    try {
+      const inst = await api.get<NodesEdges>(
+        `/api/ontologies/${oid}/entities/${encodeURIComponent(eid)}/instances`,
+      )
+      setRevealed((m) => ({ ...m, [eid]: inst }))
+    } catch {
+      // Loading failed — drop the placeholder so the badge can be retried.
+      setRevealed((m) => {
+        const next = { ...m }
+        delete next[eid]
+        return next
+      })
+    }
+  }
+
   const nodes: GraphViewNode[] = useMemo(
-    () => (data?.nodes ?? []).map((n) => (n.id === focus ? { ...n, highlighted: true } : n)),
-    [data, focus],
+    () => [
+      ...(data?.nodes ?? []).map((n) => (n.id === focus ? { ...n, highlighted: true } : n)),
+      ...Object.values(revealed).flatMap((p) => (p?.nodes ?? []) as GraphViewNode[]),
+    ],
+    [data, focus, revealed],
+  )
+  const edges = useMemo(
+    () => [...(data?.edges ?? []), ...Object.values(revealed).flatMap((p) => p?.edges ?? [])],
+    [data, revealed],
   )
 
   if (isError) {
@@ -61,7 +96,13 @@ export default function GraphOverview({
         </div>
       )}
       <div className="min-h-0 flex-1">
-        <GraphView nodes={nodes} edges={data.edges} focusId={focus ?? undefined} onSelect={reveal} />
+        <GraphView
+          nodes={nodes}
+          edges={edges}
+          focusId={focus ?? undefined}
+          onSelect={reveal}
+          onBadgeClick={(eid) => void toggleInstances(eid)}
+        />
       </div>
     </div>
   )
