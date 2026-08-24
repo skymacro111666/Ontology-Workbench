@@ -79,6 +79,9 @@ class IRBundle(BaseModel):
     entities: dict[str, EntityIR]
     counts: Counts
     prefixes: dict[str, str]
+    # class eid → its direct named individuals (on-demand canvas data,
+    # deliberately outside entities so schema walks/counts stay unchanged)
+    instances: dict[str, list[Ref]] = {}
 
 
 def _curie(graph: rdflib.Graph, uri: URIRef) -> str:
@@ -254,4 +257,17 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
         for p, n in graph.namespaces()
         if any(iri.startswith(str(n)) for iri in used_iris)
     }
-    return IRBundle(entities=entities, counts=counts, prefixes=prefixes)
+
+    # Named individuals group under their declared rdf:type classes (direct
+    # typing only — no subclass inference, matching the badge's direct count).
+    class_set = set(classes)
+    instances: dict[str, list[Ref]] = {}
+    for ind in sorted(
+        (s for s in graph.subjects(RDF.type, OWL.NamedIndividual) if isinstance(s, URIRef)),
+        key=str,
+    ):
+        for t in graph.objects(ind, RDF.type):
+            if t in class_set:
+                instances.setdefault(str(t), []).append(_ref(graph, ind))
+
+    return IRBundle(entities=entities, counts=counts, prefixes=prefixes, instances=instances)

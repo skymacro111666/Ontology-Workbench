@@ -97,6 +97,20 @@ def neighbors(
     return respond(_camel(ix.neighbors(eid)))
 
 
+@router.get("/{ontology_id}/entities/{eid:path}/instances")
+def instances(
+    ontology_id: str,
+    eid: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """A class's direct named individuals, canvas-shaped (badge reveal)."""
+    _, ix = _owned(request, user, ontology_id, session)
+    _entity_or_404(ix, eid)
+    return respond(_camel(ix.instances(eid)))
+
+
 @router.get("/{ontology_id}/entities/{eid:path}")
 def entity(
     ontology_id: str,

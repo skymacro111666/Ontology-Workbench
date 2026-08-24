@@ -120,3 +120,29 @@ def test_ir_referenced_by_relations() -> None:
     animal_refs = {(r.curie, r.relation) for r in animal.referenced_by}
     assert ("ex:Dog", "subClassOf") in animal_refs
     assert ("ex:likes", "rdfs:range") in animal_refs
+
+
+def test_ir_individuals_grouped_by_direct_class() -> None:
+    """Named individuals typed at a declared class group under it.
+
+    Individuals stay out of entities/counts — they join the canvas on
+    demand, not the schema walk.
+    """
+    ttl = MINI + (
+        'ex:rex a owl:NamedIndividual , ex:Dog ; rdfs:label "Rex"@en .\n'
+        "ex:buddy a owl:NamedIndividual , ex:Dog .\n"
+        "ex:loose a owl:NamedIndividual .\n"
+    )
+    g = rdflib.Graph().parse(data=ttl, format="turtle")
+    ir = build_ir(g)
+    dog_insts = ir.instances["http://example.org/Dog"]
+    assert [i.curie for i in dog_insts] == ["ex:buddy", "ex:rex"]
+    rex = next(i for i in dog_insts if i.curie == "ex:rex")
+    assert rex.eid == "http://example.org/rex"
+    assert rex.label == {"en": "Rex"}
+    # No declared class -> nowhere to group; no class gains phantom instances.
+    assert "http://example.org/loose" not in {
+        i.eid for insts in ir.instances.values() for i in insts
+    }
+    assert ir.counts.class_count == 2
+    assert "http://example.org/rex" not in ir.entities

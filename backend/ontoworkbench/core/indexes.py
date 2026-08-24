@@ -147,6 +147,20 @@ class Indexes:
             edges.append({"source": eid, "target": prop.eid, "kind": "property"})
         return {"nodes": list(nodes.values()), "edges": edges}
 
+    def instances(self, eid: str) -> dict[str, Any]:
+        """A class's direct named individuals as a canvas-shaped payload.
+
+        Instances join the graph only on demand (badge click), each linked
+        to its class with an 'instance' edge.
+        """
+        insts = self._ir.instances.get(eid, [])
+        return {
+            "nodes": [
+                {"id": i.eid, "curie": i.curie, "label": i.label, "kind": "instance"} for i in insts
+            ],
+            "edges": [{"source": i.eid, "target": eid, "kind": "instance"} for i in insts],
+        }
+
     def overview(self, max_nodes: int = MAX_OVERVIEW_NODES) -> dict[str, Any]:
         """Whole-graph view, bounded: top-3 levels and at most max_nodes rendered.
 
@@ -167,7 +181,15 @@ class Indexes:
             if budget <= 0 or e.eid in seen:
                 return 0
             seen.add(e.eid)
-            nodes.append({"id": e.eid, "curie": e.curie, "label": e.label, "kind": "class"})
+            nodes.append(
+                {
+                    "id": e.eid,
+                    "curie": e.curie,
+                    "label": e.label,
+                    "kind": "class",
+                    "instance_count": len(self._ir.instances.get(e.eid, [])),
+                }
+            )
             budget -= 1
             count = 1
             if depth < 3:

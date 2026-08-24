@@ -117,6 +117,58 @@ ex:Child a owl:Class ; rdfs:subClassOf ex:A , ex:B .
 """
 
 
+MINI3 = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:Animal a owl:Class .
+ex:Dog a owl:Class ; rdfs:subClassOf ex:Animal .
+ex:Cat a owl:Class ; rdfs:subClassOf ex:Animal .
+ex:rex a owl:NamedIndividual , ex:Dog ; rdfs:label "Rex"@en .
+ex:buddy a owl:NamedIndividual , ex:Dog .
+ex:whiskers a owl:NamedIndividual , ex:Cat .
+"""
+
+
+def make3():
+    """Build indexes over MINI3 (classes with named individuals)."""
+    g = rdflib.Graph().parse(data=MINI3, format="turtle")
+    return build_indexes(build_ir(g))
+
+
+def test_overview_reports_instance_counts() -> None:
+    """Overview nodes carry the class's direct-instance count (badge data)."""
+    ix = make3()
+    ov = ix.overview()
+    counts = {n["curie"]: n.get("instance_count") for n in ov["nodes"]}
+    assert counts["ex:Dog"] == 2
+    assert counts["ex:Cat"] == 1
+    assert counts["ex:Animal"] == 0
+    # Instances stay off the schema canvas until asked for.
+    assert all(n["kind"] == "class" for n in ov["nodes"])
+
+
+def test_instances_payload_is_canvas_shaped() -> None:
+    """instances(eid) returns canvas-ready nodes/edges, instance kind."""
+    ix = make3()
+    payload = ix.instances("http://example.org/Dog")
+    assert [n["curie"] for n in payload["nodes"]] == ["ex:buddy", "ex:rex"]
+    assert all(n["kind"] == "instance" for n in payload["nodes"])
+    assert payload["edges"] == [
+        {
+            "source": "http://example.org/buddy",
+            "target": "http://example.org/Dog",
+            "kind": "instance",
+        },
+        {
+            "source": "http://example.org/rex",
+            "target": "http://example.org/Dog",
+            "kind": "instance",
+        },
+    ]
+    # A class without instances yields an empty canvas payload, not an error.
+    assert ix.instances("http://example.org/Animal") == {"nodes": [], "edges": []}
+
+
 def test_overview_multi_parent_child_not_duplicated() -> None:
     """A child reachable from several roots/branches appears once.
 

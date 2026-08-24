@@ -117,6 +117,41 @@ def test_meta_endpoint(client: TestClient) -> None:
     assert "owl" in meta["prefixes"]
 
 
+MINI_INST = b"""@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:Animal a owl:Class .
+ex:Dog a owl:Class ; rdfs:subClassOf ex:Animal .
+ex:rex a owl:NamedIndividual , ex:Dog ; rdfs:label "Rex"@en .
+ex:buddy a owl:NamedIndividual , ex:Dog .
+"""
+
+
+def test_instances_endpoint(client: TestClient) -> None:
+    """GET entities/{eid}/instances serves canvas-shaped instance data."""
+    r = client.post(
+        "/api/ontologies",
+        files={"file": ("inst.ttl", io.BytesIO(MINI_INST), "text/turtle")},
+    )
+    oid = r.json()["data"]["id"]
+    eid = quote("http://example.org/Dog", safe="")
+
+    data = client.get(f"/api/ontologies/{oid}/entities/{eid}/instances").json()["data"]
+    assert [n["curie"] for n in data["nodes"]] == ["ex:buddy", "ex:rex"]
+    assert all(n["kind"] == "instance" for n in data["nodes"])
+    assert data["edges"][0] == {
+        "source": "http://example.org/buddy",
+        "target": "http://example.org/Dog",
+        "kind": "instance",
+    }
+
+    # The overview badge count serializes camelCase.
+    ov = client.get(f"/api/ontologies/{oid}/overview").json()["data"]
+    dog = next(n for n in ov["nodes"] if n["curie"] == "ex:Dog")
+    assert dog["instanceCount"] == 2
+    assert "instance_count" not in dog
+
+
 def test_unknown_ontology_is_404(client: TestClient) -> None:
     """A random UUID yields the uniform NOT_FOUND envelope."""
     import uuid
