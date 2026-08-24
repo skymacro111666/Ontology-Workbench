@@ -16,6 +16,9 @@ frontend/dist/
 .idea/
 .vscode/
 
+# 对话记录
+CONVERSATION.md
+
 # Claude Code 会话产物(worktrees、settings.local.json)
 .claude/
 
