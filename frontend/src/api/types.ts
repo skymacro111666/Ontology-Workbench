@@ -92,7 +92,7 @@ export interface GEdge {
   kind: 'subClassOf' | 'property' | 'datatype' | 'instance' | string
 }
 
-/** Nodes/edges payload; truncated marks an overview cut at 5000 nodes / 3 levels. */
+/** Nodes/edges payload; truncated marks the >5000-node degradation to 3 levels. */
 export interface NodesEdges {
   nodes: GNode[]
   edges: GEdge[]

@@ -60,7 +60,6 @@ export default function Browse() {
   if (!meta) {
     return <div className="text-ink-3 py-16 text-center text-sm">加载中…</div>
   }
-
   return (
     <div className="grid h-full min-h-0 grid-cols-[264px_1fr_312px] grid-rows-[1fr_30px]">
       {/* Zone 1: class tree */}
@@ -77,7 +76,6 @@ export default function Browse() {
       <aside className="min-h-0 overflow-hidden p-2">
         <InspectorPanel oid={oid} eid={selectedEid} />
       </aside>
-
       {/* Zone 4: status bar (mockup: breathing gaps, no dot separators) */}
       <footer className="border-line bg-panel text-ink-3 row-start-2 col-span-full flex items-center gap-3.5 border-t px-3.5 text-[11.5px]">
         <span className="font-mono">{meta.filename}</span>

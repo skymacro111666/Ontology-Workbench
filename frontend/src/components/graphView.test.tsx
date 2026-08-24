@@ -187,6 +187,7 @@ describe('toG6Edges', () => {
     ['b', 'ex:B'],
     ['c', 'ex:C'],
     ['d', 'ex:age'],
+    ['i1', 'ex:rex'],
     ['p', 'ex:hasTopping'],
   ])
   const edges: GEdge[] = [
@@ -200,10 +201,31 @@ describe('toG6Edges', () => {
     const mapped = toG6Edges(edges, all, false, TOKENS)
     const st = (e: { style?: Record<string, unknown> }) => e.style ?? {}
     expect(mapped).toHaveLength(3) // edge to a filtered-out endpoint is dropped
-    expect(st(mapped[0])).toMatchObject({ stroke: '#8b5cf6', lineDash: [6, 5], endArrow: true })
+    expect(st(mapped[0])).toMatchObject({ stroke: '#8b5cf6', lineDash: [6, 5], startArrow: true })
     expect(st(mapped[1])).toMatchObject({ stroke: '#4f46e5', endArrowFill: '#4f46e5' })
     expect(st(mapped[1]).lineDash).toBeUndefined()
     expect(st(mapped[2])).toMatchObject({ stroke: '#94a3b8', lineDash: [1, 4] })
+  })
+
+  it('reverses attach edges so dagre reads top-down, arrow keeps pointing at the parent', () => {
+    // subClassOf/instance arrive child→class; dagre TB places a datum's
+    // source above its target, so attach edges are swapped (parent above
+    // child) and the arrow moves to the start — on screen it still points
+    // at the parent/class. Property edges keep class→property as-is.
+    const attach: GEdge[] = [
+      { source: 'b', target: 'a', kind: 'subClassOf' },
+      { source: 'i1', target: 'a', kind: 'instance' },
+      { source: 'a', target: 'p', kind: 'property' },
+    ]
+    const mapped = toG6Edges(attach, all, false, TOKENS)
+    const st = (e: { style?: Record<string, unknown> }) => e.style ?? {}
+    expect(mapped[0]).toMatchObject({ source: 'a', target: 'b' })
+    expect(st(mapped[0])).toMatchObject({ startArrow: true })
+    expect(st(mapped[0]).endArrow).toBeUndefined()
+    expect(mapped[1]).toMatchObject({ source: 'a', target: 'i1' })
+    expect(st(mapped[1])).toMatchObject({ startArrow: true })
+    expect(mapped[2]).toMatchObject({ source: 'a', target: 'p' })
+    expect(st(mapped[2])).toMatchObject({ endArrow: true })
   })
 
   it('labels edges only when enabled — property edges by curie, not kind', () => {

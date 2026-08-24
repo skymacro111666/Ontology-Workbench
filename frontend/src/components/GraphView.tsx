@@ -153,18 +153,25 @@ export function toG6Edges(
       // Property edges label with the property they point at (its curie);
       // subClassOf keeps the relation word — the target is just a parent.
       const label = e.kind === 'subClassOf' ? 'subClassOf' : (visible.get(e.target) ?? e.kind)
+      // Attach edges (subClassOf child→parent, instance→class) are swapped:
+      // dagre TB places a datum's source above its target, so swapping puts
+      // parents above children and instances below their class. The arrow
+      // moves to the start so on screen it still points at the parent/class.
+      const swapped = e.kind === 'subClassOf' || e.kind === 'instance'
+      const source = swapped ? e.target : e.source
+      const target = swapped ? e.source : e.target
       return {
-        id: `e${i}-${e.source}-${e.target}`,
-        source: e.source,
-        target: e.target,
+        id: `e${i}-${source}-${target}`,
+        source,
+        target,
         data: { kind: e.kind },
         style: {
           stroke: v.stroke,
           lineWidth: 1.5,
           ...(v.dash ? { lineDash: v.dash } : {}),
-          endArrow: true,
-          endArrowSize: 8,
-          endArrowFill: v.stroke,
+          ...(swapped
+            ? { startArrow: true, startArrowSize: 8, startArrowFill: v.stroke }
+            : { endArrow: true, endArrowSize: 8, endArrowFill: v.stroke }),
           labelText: showLabels ? label : '',
           labelFill: '#64748B',
           labelFontSize: 10,
