@@ -63,6 +63,22 @@ const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
 /** Fixed dagre layout: top-down hierarchy. */
 const LAYOUT = { type: 'antv-dagre', rankdir: 'TB', nodesep: 50, ranksep: 110 } as const
 
+/** A G6 display object as click events expose it (structural subset). */
+export type HitShape = { className?: unknown; parentElement?: HitShape | null }
+
+/** True when the hit shape — or an ancestor up to the node element — is one
+ *  of the node's badge sub-shapes. G6 tags them 'badge-0', 'badge-1', … on
+ *  className (the name property stays empty), and the hit often lands on
+ *  the badge label's nested text/background shape, hence the climb. */
+export function hitBadge(hit: HitShape | null | undefined, node: unknown): boolean {
+  let shape: HitShape | null | undefined = hit
+  while (shape && shape !== node) {
+    if (typeof shape.className === 'string' && shape.className.startsWith('badge')) return true
+    shape = shape.parentElement
+  }
+  return false
+}
+
 /** Card style (mockup): classes get a solid grey border, property nodes a
  *  dashed violet one (kind encoded in the border), and the highlighted
  *  entity a 2px primary border + ★. Instances (on-demand badge reveal)
@@ -272,11 +288,11 @@ export default function GraphView({
     graphRef.current = graph
 
     graph.on('node:click', (e) => {
-      const evt = e as IPointerEvent & { originalTarget?: { name?: string } }
+      const evt = e as IPointerEvent & { originalTarget?: HitShape | null }
       const id = evt.target ? (evt.target as unknown as { id: string }).id : undefined
       if (!id) return
       // The badge click (any badge-* shape) reveals instances; the body selects.
-      if (evt.originalTarget?.name?.startsWith('badge')) onBadgeClickRef.current?.(id)
+      if (hitBadge(evt.originalTarget, evt.target)) onBadgeClickRef.current?.(id)
       else onSelectRef.current?.(id)
     })
 

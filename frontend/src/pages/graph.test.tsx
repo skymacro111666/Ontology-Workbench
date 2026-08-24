@@ -176,13 +176,19 @@ describe('workspace overview mode', () => {
     renderOverview(fetchFor(overview(false)))
     await waitFor(() => expect(canvasNodeIds()).toContain(DOG))
 
-    lastG6()?.handlers['node:click']({ target: { id: DOG }, originalTarget: { name: 'badge-0' } })
+    lastG6()?.handlers['node:click']({
+      target: { id: DOG },
+      originalTarget: { className: 'badge-0' },
+    })
     await waitFor(() => expect(canvasNodeIds()).toContain(REX))
     const edges = ((lastG6()?.options.data as { edges?: { data?: { kind: string } }[] })?.edges ?? [])
     expect(edges.some((e) => e.data?.kind === 'instance')).toBe(true)
 
     // Clicking the badge again collapses the class's instances.
-    lastG6()?.handlers['node:click']({ target: { id: DOG }, originalTarget: { name: 'badge-0' } })
+    lastG6()?.handlers['node:click']({
+      target: { id: DOG },
+      originalTarget: { className: 'badge-0' },
+    })
     await waitFor(() => expect(canvasNodeIds()).not.toContain(REX))
   })
 

@@ -124,10 +124,20 @@ describe('GraphView', () => {
       </ThemeProvider>,
     )
     const g = lastG6() as MockGraph
-    g.handlers['node:click']({ target: { id: 'b' }, originalTarget: { name: 'badge-0' } })
+    /* Real G6 5.1.1 event shape (runtime/behavior.js): target is the node
+       element, originalTarget the innermost hit shape. A badge click hits
+       the badge label's text shape; sub-shapes carry className (never name). */
+    g.handlers['node:click']({
+      target: { id: 'b' },
+      originalTarget: { className: 'text', parentElement: { className: 'badge-0' } },
+    })
     expect(onBadgeClick).toHaveBeenCalledWith('b')
     expect(onSelect).not.toHaveBeenCalled()
-    g.handlers['node:click']({ target: { id: 'b' } })
+    // Direct hit on the badge shape itself works the same.
+    g.handlers['node:click']({ target: { id: 'b' }, originalTarget: { className: 'badge-0' } })
+    expect(onBadgeClick).toHaveBeenCalledTimes(2)
+    // A body click hits the key shape — plain select.
+    g.handlers['node:click']({ target: { id: 'b' }, originalTarget: { className: 'key' } })
     expect(onSelect).toHaveBeenCalledWith('b')
   })
 
