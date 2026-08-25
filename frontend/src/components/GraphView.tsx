@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Graph } from '@antv/g6'
 import type { EdgeData, GraphData, IPointerEvent, NodeData } from '@antv/g6'
 import type { GEdge, GNode } from '../api/types'
+import { localName } from '../lib/localName'
 import { useTheme } from '../theme/ThemeProvider'
 import { Toggle } from '@/components/ui/toggle'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -111,12 +112,14 @@ export function hitBadge(hit: HitShape | null | undefined, node: unknown): boole
 
 /** Card style (mockup): classes get a solid grey border, property nodes a
  *  dashed violet one (kind encoded in the border), and the highlighted
- *  entity a 2px primary border + ★. Instances (on-demand badge reveal)
- *  render as small grey circles beside their class. */
+ *  entity a 2px primary border. Node labels show local names (prefix
+ *  stripped); the inspector carries the full curie. Instances (on-demand
+ *  badge reveal) render as small grey circles beside their class. */
 export function toG6Nodes(nodes: GraphViewNode[], t: CanvasTokens): NodeData[] {
   return nodes.map((n) => {
     const isProperty = n.kind === 'property'
     const focused = !!n.highlighted
+    const name = localName(n.curie)
     if (n.kind === 'instance') {
       return {
         id: n.id,
@@ -126,14 +129,14 @@ export function toG6Nodes(nodes: GraphViewNode[], t: CanvasTokens): NodeData[] {
           fill: t.panel,
           stroke: focused ? t.primary : t.ink3,
           lineWidth: focused ? 2 : 1,
-          labelText: focused ? `${n.curie} ★` : n.curie,
+          labelText: name,
           labelFill: focused ? t.primary : t.ink,
           labelFontSize: 10,
           labelPlacement: 'right',
         },
       }
     }
-    const w = Math.min(220, Math.max(72, Math.round(n.curie.length * 6.6 + 26)))
+    const w = Math.min(220, Math.max(72, Math.round(name.length * 6.6 + 26)))
     const style: Record<string, unknown> = {
       size: [w, 32],
       radius: 8,
@@ -142,7 +145,7 @@ export function toG6Nodes(nodes: GraphViewNode[], t: CanvasTokens): NodeData[] {
       lineWidth: focused ? 2 : 1,
       shadowColor: 'rgba(15, 23, 42, 0.08)',
       shadowBlur: 4,
-      labelText: focused ? `${n.curie} ★` : n.curie,
+      labelText: name,
       labelFill: focused ? t.primary : t.ink,
       labelFontSize: 12,
       labelFontWeight: focused ? 700 : 400,
@@ -180,9 +183,11 @@ export function toG6Edges(
     .filter((e) => visible.has(e.source) && visible.has(e.target))
     .map((e, i) => {
       const v = edgeVisualFor(e.kind, t)
-      // Property edges label with the property they point at (its curie);
-      // subClassOf keeps the relation word — the target is just a parent.
-      const label = e.kind === 'subClassOf' ? 'subClassOf' : (visible.get(e.target) ?? e.kind)
+      // Property edges label with the property they point at (local name —
+      // prefix stripped, like node labels); subClassOf keeps the relation
+      // word, the target is just a parent.
+      const label =
+        e.kind === 'subClassOf' ? 'subClassOf' : localName(visible.get(e.target) ?? e.kind)
       // Attach edges (subClassOf child→parent, instance→class) are swapped:
       // dagre TB places a datum's source above its target, so swapping puts
       // parents above children and instances below their class. The arrow

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { EntityIR, OntologyMeta, TreeNode } from '../api/types'
 import { useContainerHeight } from '../hooks/useContainerHeight'
+import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
 import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
@@ -28,15 +29,6 @@ function matchesTerm(n: TreeRow, term: string): boolean {
   const t = term.trim().toLowerCase()
   if (n.curie.toLowerCase().includes(t)) return true
   return Object.values(n.label ?? {}).some((v) => v.toLowerCase().includes(t))
-}
-
-/** Sidebar display name without namespace noise: curie prefix stripped,
- *  full-IRI fallback (unbound namespace) reduced to its last #/ segment.
- *  Search still matches the full curie; tooltips carry it for disambiguation. */
-function localName(curie: string): string {
-  if (/^https?:\/\//.test(curie)) return curie.split(/[#/]/).filter(Boolean).pop() ?? curie
-  const i = curie.indexOf(':')
-  return i === -1 ? curie : curie.slice(i + 1)
 }
 
 /** One row: chevron + curie + instance-count badge (solid primary pill,

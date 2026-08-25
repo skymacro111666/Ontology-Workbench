@@ -225,12 +225,12 @@ describe('workspace overview mode', () => {
       fetchFor(overview(false)),
       `/browse/oid-1?view=overview&focus=${encodeURIComponent(DOG)}`,
     )
-    // Highlighted = starred label on the canvas node + camera focus on it
+    // Highlighted = local-name label with focus styling + camera focus on it
     // (the style mapping itself is covered in graphView.test).
     await waitFor(() => {
       const dog = (lastG6()?.options.data as { nodes?: { id: string; style?: unknown }[] })
         ?.nodes?.find((n) => n.id === DOG)
-      expect((dog?.style as { labelText?: string })?.labelText).toBe('ex:Dog ★')
+      expect((dog?.style as { labelText?: string })?.labelText).toBe('Dog')
       expect(lastG6()?.focusElement).toHaveBeenCalledWith(DOG)
     })
   })
