@@ -88,7 +88,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
 
         <div className="ml-auto flex items-center gap-2">
           <Button size="sm" onClick={() => setImportOpen(true)}>
-            ＋ 导入本体
+            ＋ 导入
           </Button>
 
           <DropdownMenu>

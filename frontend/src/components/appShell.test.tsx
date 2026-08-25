@@ -42,7 +42,7 @@ it('renders nav, opens import dialog, logs out', async () => {
   // the import dialog is open.
   expect(screen.getByRole('button', { name: '概览' })).toBeTruthy()
   expect(screen.getByRole('button', { name: '工作区' })).toBeTruthy()
-  await userEvent.click(screen.getByRole('button', { name: /导入本体/ }))
+  await userEvent.click(screen.getByRole('button', { name: '＋ 导入' }))
   expect(await screen.findByRole('dialog')).toBeTruthy()
 })
 

@@ -33,7 +33,7 @@ const editorTheme = EditorView.theme({
     fontSize: '12px',
     lineHeight: '1.7',
   },
-  '.cm-content': { paddingBottom: '24px' },
+  '.cm-content': { paddingBottom: '24px', maxWidth: '150ch' },
   '.cm-gutters': {
     backgroundColor: 'transparent',
     color: 'var(--color-ink-3)',
@@ -77,6 +77,10 @@ export default function SourceView({ oid }: { oid: string }) {
           lineNumbers(),
           editorTheme,
           syntaxHighlighting(editorHighlight),
+          // Wrap long lines at the .cm-content max-width cap instead of
+          // horizontal scrolling; CM's wrap mode also breaks unbroken runs
+          // (long IRIs) via overflow-wrap: anywhere.
+          EditorView.lineWrapping,
           EditorState.readOnly.of(true),
           EditorView.editable.of(false),
           ...(language ? [language] : []),

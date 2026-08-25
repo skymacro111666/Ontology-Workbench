@@ -65,6 +65,10 @@ describe('SourceView', () => {
     })
     // Line-number gutter is on.
     expect(container.querySelector('.cm-gutters')).toBeTruthy()
+    // Line wrapping is on (long lines fold at the content cap, no h-scroll).
+    expect(container.querySelector('.cm-content')?.classList.contains('cm-lineWrapping')).toBe(
+      true,
+    )
   })
 
   it('destroys the editor on unmount', async () => {

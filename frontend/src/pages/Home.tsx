@@ -123,13 +123,14 @@ export default function Home() {
               >
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-bold">{o.title}</span>
-                  <span className="bg-primary-soft border-primary-border text-primary shrink-0 rounded-full border px-2 py-px font-mono text-[11px]">
+                  <span className="bg-primary-soft border-primary-border text-primary shrink-0 rounded-full border px-2 py-px font-mono text-[11px] font-bold">
                     {o.format}
                   </span>
                   <span className="border-line ml-auto flex shrink-0 items-center gap-1.5">
                     <Button
                       size="sm"
                       variant="outline"
+                      className="border-line"
                       onClick={(e) => {
                         e.stopPropagation()
                         openOntology(o.id)
