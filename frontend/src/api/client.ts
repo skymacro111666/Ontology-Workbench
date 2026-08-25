@@ -45,6 +45,27 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return data
 }
 
+/** Envelope-carried file payload (export/file endpoint). */
+export interface FilePayload {
+  filename: string
+  mediaType: string
+  content: string
+}
+
+/** Fetch an envelope-carried file and trigger the browser download:
+ *  blob from the text content, anchor click, then release the URL. */
+async function downloadFile(url: string, fallbackName: string): Promise<string> {
+  const file = await request<FilePayload>(url)
+  const blob = new Blob([file.content], { type: file.mediaType })
+  const href = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = href
+  a.download = file.filename || fallbackName
+  a.click()
+  URL.revokeObjectURL(href)
+  return file.filename || fallbackName
+}
+
 export const api = {
   get: <T>(url: string) => request<T>(url),
   post: <T>(url: string, body?: unknown) =>
@@ -59,4 +80,5 @@ export const api = {
     form.append('file', file)
     return request<T>('/api/ontologies', { method: 'POST', body: form })
   },
+  download: downloadFile,
 }

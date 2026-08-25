@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { LAST_OID_KEY, useAuth } from '../auth/AuthContext'
+import { ApiErr, api } from '../api/client'
 import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { useTheme } from '../theme/ThemeProvider'
 import { cn } from '@/lib/utils'
@@ -15,11 +16,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
 const NEXT_THEME = { light: 'dark', dark: 'system', system: 'light' } as const
 const THEME_LABEL = { light: '浅色', dark: '深色', system: '跟随系统' } as const
+
+/** Dropdown file exports: query value → menu label (export/file endpoint). */
+const FILE_EXPORTS: [string, string][] = [
+  ['turtle', '导出 Turtle (.ttl)'],
+  ['json-ld', '导出 JSON-LD (.jsonld)'],
+  ['rdf-xml', '导出 RDF/XML (.rdf)'],
+]
 
 /** App frame: 48px persistent topbar (logo, nav, switcher, actions) + content.
  *  Nav (mockup): 概览 = home; 工作区 merges browse + the overview canvas. */
@@ -40,6 +49,24 @@ export default function AppShell({ children }: { children?: ReactNode }) {
       return
     }
     navigate(`${prefix}/${last}`)
+  }
+
+  /** Download the current ontology re-serialized in the given RDF format. */
+  const downloadAs = async (format: string) => {
+    const last = localStorage.getItem(LAST_OID_KEY)
+    if (!last) {
+      toast('先选择一个本体')
+      return
+    }
+    try {
+      const name = await api.download(
+        `/api/ontologies/${last}/export/file?format=${format}`,
+        'ontology',
+      )
+      toast.success(`已导出 ${name}`)
+    } catch (err) {
+      toast.error(err instanceof ApiErr ? err.message : '导出失败，请稍后重试')
+    }
   }
 
   const isWorkspace = location.pathname.startsWith('/browse') || location.pathname.startsWith('/graph')
@@ -97,8 +124,14 @@ export default function AppShell({ children }: { children?: ReactNode }) {
                 导出 ▾
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="text-[13px]">
               <DropdownMenuItem onSelect={() => openLast('/export')}>导出文档站</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {FILE_EXPORTS.map(([fmt, label]) => (
+                <DropdownMenuItem key={fmt} onSelect={() => void downloadAs(fmt)}>
+                  {label}
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
 

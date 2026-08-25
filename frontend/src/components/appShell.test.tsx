@@ -1,15 +1,19 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router'
 import AppShell from './AppShell'
-import { AuthProvider } from '../auth/AuthContext'
+import { AuthProvider, LAST_OID_KEY } from '../auth/AuthContext'
+import { api } from '../api/client'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { useUiStore } from '../stores/uiStore'
 
 vi.mock('../api/client', () => ({
-  api: { get: vi.fn(async () => ({ items: [], total: 0 })) },
+  api: {
+    get: vi.fn(async () => ({ items: [], total: 0 })),
+    download: vi.fn(async () => 'mini.jsonld'),
+  },
   ApiErr: class extends Error {},
 }))
 
@@ -44,6 +48,37 @@ it('renders nav, opens import dialog, logs out', async () => {
   expect(screen.getByRole('button', { name: '工作区' })).toBeTruthy()
   await userEvent.click(screen.getByRole('button', { name: '＋ 导入' }))
   expect(await screen.findByRole('dialog')).toBeTruthy()
+})
+
+it('export menu downloads the current ontology in the picked RDF format', async () => {
+  localStorage.setItem(LAST_OID_KEY, 'oid-1')
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider>
+        <MemoryRouter>
+          <AuthProvider>
+            <AppShell>
+              <div>content</div>
+            </AppShell>
+          </AuthProvider>
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+
+  await userEvent.click(screen.getByRole('button', { name: '导出 ▾' }))
+  // All three format items are offered alongside the docs-site entry.
+  expect(screen.getByText('导出 Turtle (.ttl)')).toBeTruthy()
+  expect(screen.getByText('导出 RDF/XML (.rdf)')).toBeTruthy()
+  await userEvent.click(screen.getByText('导出 JSON-LD (.jsonld)'))
+
+  await waitFor(() =>
+    expect(vi.mocked(api.download)).toHaveBeenCalledWith(
+      '/api/ontologies/oid-1/export/file?format=json-ld',
+      'ontology',
+    ),
+  )
 })
 
 function shell(entry: string) {
