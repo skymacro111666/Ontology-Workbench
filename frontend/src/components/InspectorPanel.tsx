@@ -69,29 +69,42 @@ function dirRefs(refs: ReferencedRef[]): ReferencedRef[] {
   return refs.filter((r) => r.relation !== 'subClassOf')
 }
 
-/** Backref chips grouped by relation direction (competitor's relationship
- *  usage): properties/classes tied through rdfs:domain vs rdfs:range. */
+/** Display name for a plain (non-chip) ref: label or local curie name. */
+function refName(r: Ref): string {
+  return Object.values(r.label ?? {})[0] ?? localName(r.curie)
+}
+
+/** Backref rows grouped by relation direction (competitor's relationship
+ *  usage): each row pairs the referencing entity with the axiom's far end
+ *  (`works in → Department` for a domain ref, `reviewed by ← Manager` for
+ *  a range ref); the counterpart stays plain text — external IRIs have no
+ *  detail page to land on. */
 function BackRefChips({ refs }: { refs: ReferencedRef[] }) {
   const domains = refs.filter((r) => r.relation === 'rdfs:domain')
   const ranges = refs.filter((r) => r.relation === 'rdfs:range')
   if (domains.length + ranges.length === 0) return <span className="text-ink-3 text-xs">无</span>
-  const group = (title: string, list: ReferencedRef[]) =>
+  const group = (title: string, list: ReferencedRef[], arrow: string) =>
     list.length > 0 && (
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1">
         <span className="text-ink-3 text-[11px]">
           {title} ({list.length})
         </span>
-        <div className="flex flex-wrap gap-1.5">
-          {list.map((r) => (
-            <Chip key={r.eid} {...r} />
-          ))}
-        </div>
+        {list.map((r) => (
+          <div key={r.eid} className="flex flex-wrap items-baseline gap-x-1.5 text-xs">
+            <Chip {...r} />
+            {r.counterpart && (
+              <span className="text-ink-3 font-mono break-all">
+                {arrow} {refName(r.counterpart)}
+              </span>
+            )}
+          </div>
+        ))}
       </div>
     )
   return (
     <div className="flex flex-col gap-2">
-      {group('作为定义域', domains)}
-      {group('作为值域', ranges)}
+      {group('作为定义域', domains, '→')}
+      {group('作为值域', ranges, '←')}
     </div>
   )
 }

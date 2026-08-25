@@ -128,15 +128,26 @@ def test_ir_referenced_by_relations() -> None:
     # likes points at Dog via rdfs:domain -> Dog is referenced by likes
     refs = {(r.curie, r.relation) for r in dog.referenced_by}
     assert ("ex:likes", "rdfs:domain") in refs
+    # The domain ref carries the axiom's far end: likes's range Animal.
+    dog_likes = next(r for r in dog.referenced_by if r.curie == "ex:likes")
+    assert dog_likes.counterpart is not None
+    assert dog_likes.counterpart.curie == "ex:Animal"
     likes = ir.entities["http://example.org/likes"]
     # and likes is referenced by the classes its axioms point at
     prop_refs = {(r.curie, r.relation) for r in likes.referenced_by}
     assert ("ex:Dog", "rdfs:domain") in prop_refs
     assert ("ex:Animal", "rdfs:range") in prop_refs
+    # Property side mirrors: the Animal range ref's far end is likes's domain.
+    likes_animal = next(r for r in likes.referenced_by if r.curie == "ex:Animal")
+    assert likes_animal.counterpart is not None
+    assert likes_animal.counterpart.curie == "ex:Dog"
     animal = ir.entities["http://example.org/Animal"]
     animal_refs = {(r.curie, r.relation) for r in animal.referenced_by}
     assert ("ex:Dog", "subClassOf") in animal_refs
     assert ("ex:likes", "rdfs:range") in animal_refs
+    # subClassOf backrefs have no counterpart.
+    animal_dog = next(r for r in animal.referenced_by if r.curie == "ex:Dog")
+    assert animal_dog.counterpart is None
 
 
 def test_ir_individuals_grouped_by_direct_class() -> None:

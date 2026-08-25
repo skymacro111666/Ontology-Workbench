@@ -30,9 +30,12 @@ export interface PropRef extends Ref {
   ptype: string
 }
 
-/** Reverse reference carrying the axiom relating the two entities. */
+/** Reverse reference carrying the axiom relating the two entities.
+ *  counterpart is the axiom's far end (range class for a domain ref,
+ *  domain class for a range ref); null when the axiom leaves it untyped. */
 export interface ReferencedRef extends Ref {
   relation: string
+  counterpart?: Ref | null
 }
 
 /** Aggregate counts shown on entity pages. */

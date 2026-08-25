@@ -30,9 +30,14 @@ class PropRef(Ref):
 
 
 class ReferencedRef(Ref):
-    """Reverse reference carrying the axiom relating the two entities."""
+    """Reverse reference carrying the axiom relating the two entities.
+
+    counterpart is the axiom's other end (the range class for a domain
+    ref, the domain class for a range ref); None when untyped.
+    """
 
     relation: str = ""
+    counterpart: Ref | None = None
 
 
 class Axiom(BaseModel):
@@ -169,6 +174,13 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
 
     def _referenced(uri: URIRef, is_class: bool, children: list[Ref]) -> list[ReferencedRef]:
         """Entities whose axioms mention uri: subclassers and domain/range peers."""
+
+        def _counterpart(prop: URIRef, relation: str) -> Ref | None:
+            """The axiom's far end: range of prop for a domain ref, vice versa."""
+            other = RDFS.range if relation == "rdfs:domain" else RDFS.domain
+            far = next((o for o in graph.objects(prop, other) if isinstance(o, URIRef)), None)
+            return _ref(graph, far) if far is not None else None
+
         refs = {
             r.eid: ReferencedRef(eid=r.eid, curie=r.curie, label=r.label, relation="subClassOf")
             for r in children
@@ -178,13 +190,21 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
                 base = _ref(graph, p)
                 relation = "rdfs:domain" if uri in graph.objects(p, RDFS.domain) else "rdfs:range"
                 refs[base.eid] = ReferencedRef(
-                    eid=base.eid, curie=base.curie, label=base.label, relation=relation
+                    eid=base.eid,
+                    curie=base.curie,
+                    label=base.label,
+                    relation=relation,
+                    counterpart=_counterpart(p, relation),
                 )
         else:
             for c, relation in classes_by_prop.get(uri, []):
                 base = _ref(graph, c)
                 refs[base.eid] = ReferencedRef(
-                    eid=base.eid, curie=base.curie, label=base.label, relation=relation
+                    eid=base.eid,
+                    curie=base.curie,
+                    label=base.label,
+                    relation=relation,
+                    counterpart=_counterpart(uri, relation),
                 )
         return sorted(refs.values(), key=lambda r: r.curie)
 

@@ -128,7 +128,11 @@ describe('InspectorPanel', () => {
   it('groups backrefs by domain/range, dropping the subclass duplicates', async () => {
     const ent = entity()
     ent.referencedBy = [
-      ...ent.referencedBy, // pizza:Kennel — rdfs:domain
+      // pizza:Kennel — rdfs:domain, far end = the property's range class.
+      {
+        ...ent.referencedBy[0],
+        counterpart: { eid: 'http://example.org/Dept', curie: 'pizza:Dept', label: {} },
+      },
       { eid: 'http://example.org/Leads', curie: 'pizza:leads', label: { en: 'Leads' }, relation: 'rdfs:range' },
       { eid: 'http://example.org/Puppy', curie: 'pizza:Puppy', label: {}, relation: 'subClassOf' },
     ]
@@ -140,6 +144,9 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('被引用 (2)')).toBeTruthy()
     // Labeled refs show the human name; the curie rides in the tooltip.
     expect(screen.getByText('Leads').title).toBe('pizza:leads')
+    // Domain rows pair the ref with the axiom's far end (→ range class);
+    // untyped refs show no arrow.
+    expect(screen.getByText('→ Dept')).toBeTruthy()
   })
 
   it('lists a class\'s direct instances below the backrefs (label + curie rows)', async () => {
