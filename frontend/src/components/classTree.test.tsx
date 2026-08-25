@@ -56,7 +56,12 @@ function stubFetch() {
       return ok([node(ANIMAL, 'ex:Animal', 1)])
     }
     if (u.endsWith('/tree')) {
-      return ok([node(THING, 'ex:Thing', 1, 'Class', 3), node('http://example.org/Solo', 'ex:Solo', 0)])
+      return ok([
+        node(THING, 'ex:Thing', 1, 'Class', 3),
+        node('http://example.org/Solo', 'ex:Solo', 0),
+        // Unbound-namespace fallback: _curie returns the full IRI.
+        node('http://fallback.example/Odd', 'http://fallback.example/Odd', 0),
+      ])
     }
     throw new Error(`unmocked url: ${u}`)
   })
@@ -85,8 +90,8 @@ describe('ClassTree', () => {
   it('renders the roots with instance-count badges', async () => {
     const fetchMock = stubFetch()
     renderTree(fetchMock)
-    expect(await screen.findByText('ex:Thing')).toBeTruthy()
-    expect(screen.getByText('ex:Solo')).toBeTruthy()
+    expect(await screen.findByText('Thing')).toBeTruthy()
+    expect(screen.getByText('Solo')).toBeTruthy()
     // Thing has 3 instances; Solo none, so exactly one badge shows.
     const badge = screen.getByTitle('实例数')
     expect(badge.textContent).toBe('3')
@@ -96,29 +101,39 @@ describe('ClassTree', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/ontologies/oid-1/tree', expect.anything())
   })
 
+  it('shows local names (prefix stripped), full curie kept on the tooltip', async () => {
+    renderTree(stubFetch())
+    const name = await screen.findByText('Thing')
+    // Tooltip carries the full curie for disambiguation.
+    expect(name.title).toBe('ex:Thing')
+    // Unbound-namespace curie (full IRI fallback) reduces to its last segment.
+    const odd = screen.getByText('Odd')
+    expect(odd.title).toBe('http://fallback.example/Odd')
+  })
+
   it('lazily loads children on expand and publishes selection to the store', async () => {
     const fetchMock = stubFetch()
     renderTree(fetchMock)
-    expect(await screen.findByText('ex:Thing')).toBeTruthy()
+    expect(await screen.findByText('Thing')).toBeTruthy()
 
     await userEvent.click(screen.getByRole('button', { name: '展开' }))
 
-    expect(await screen.findByText('ex:Animal')).toBeTruthy()
+    expect(await screen.findByText('Animal')).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith(
       `/api/ontologies/oid-1/tree?parent=${encodeURIComponent(THING)}`,
       expect.anything(),
     )
 
     // Clicking a row updates the shared browse store.
-    await userEvent.click(screen.getByText('ex:Animal'))
+    await userEvent.click(screen.getByText('Animal'))
     await waitFor(() => expect(useBrowseStore.getState().selectedEid).toBe(ANIMAL))
   })
 
   it('marks the store-selected row as selected', async () => {
     useBrowseStore.setState({ selectedEid: THING })
     renderTree(stubFetch())
-    expect(await screen.findByText('ex:Thing')).toBeTruthy()
-    const row = screen.getByText('ex:Thing').closest('[role="treeitem"]')
+    expect(await screen.findByText('Thing')).toBeTruthy()
+    const row = screen.getByText('Thing').closest('[role="treeitem"]')
     expect(row?.getAttribute('aria-selected')).toBe('true')
     // The highlight lives on the row content inside the treeitem wrapper.
     expect(row?.querySelector('.bg-primary-soft')).toBeTruthy()
@@ -126,24 +141,25 @@ describe('ClassTree', () => {
 
   it('filters loaded nodes case-insensitively from the top search box', async () => {
     renderTree(stubFetch())
-    expect(await screen.findByText('ex:Thing')).toBeTruthy()
-    expect(screen.getByText('ex:Solo')).toBeTruthy()
+    expect(await screen.findByText('Thing')).toBeTruthy()
+    expect(screen.getByText('Solo')).toBeTruthy()
 
+    // Search still matches the full curie, though rows display local names.
     await userEvent.type(screen.getByPlaceholderText('搜索类 / 属性 / 注释…'), 'THING')
 
-    await waitFor(() => expect(screen.queryByText('ex:Solo')).toBeNull())
-    expect(screen.getByText('ex:Thing')).toBeTruthy()
+    await waitFor(() => expect(screen.queryByText('Solo')).toBeNull())
+    expect(screen.getByText('Thing')).toBeTruthy()
   })
 
   it('lists properties on the __props__ tab', async () => {
     const fetchMock = stubFetch()
     renderTree(fetchMock)
-    expect(await screen.findByText('ex:Thing')).toBeTruthy()
+    expect(await screen.findByText('Thing')).toBeTruthy()
 
     await userEvent.click(screen.getByRole('button', { name: '属性' }))
 
-    expect(await screen.findByText('ex:hasTopping')).toBeTruthy()
-    expect(screen.getByText('ex:hasName')).toBeTruthy()
+    expect(await screen.findByText('hasTopping')).toBeTruthy()
+    expect(screen.getByText('hasName')).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/ontologies/oid-1/tree?parent=__props__',
       expect.anything(),
@@ -153,7 +169,7 @@ describe('ClassTree', () => {
   it('renders the prefix table from ontology meta', async () => {
     const fetchMock = stubFetch()
     renderTree(fetchMock)
-    expect(await screen.findByText('ex:Thing')).toBeTruthy()
+    expect(await screen.findByText('Thing')).toBeTruthy()
 
     await userEvent.click(screen.getByRole('button', { name: '命名空间' }))
 

@@ -30,6 +30,15 @@ function matchesTerm(n: TreeRow, term: string): boolean {
   return Object.values(n.label ?? {}).some((v) => v.toLowerCase().includes(t))
 }
 
+/** Sidebar display name without namespace noise: curie prefix stripped,
+ *  full-IRI fallback (unbound namespace) reduced to its last #/ segment.
+ *  Search still matches the full curie; tooltips carry it for disambiguation. */
+function localName(curie: string): string {
+  if (/^https?:\/\//.test(curie)) return curie.split(/[#/]/).filter(Boolean).pop() ?? curie
+  const i = curie.indexOf(':')
+  return i === -1 ? curie : curie.slice(i + 1)
+}
+
 /** One row: chevron + curie + instance-count badge (solid primary pill,
  *  white with primary border when the row is selected). */
 function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
@@ -66,7 +75,12 @@ function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
       ) : (
         <span className="h-3 w-3 shrink-0" />
       )}
-      <span className={cn('truncate', node.isSelected && 'font-mono')}>{node.data.curie}</span>
+      <span
+        title={node.data.curie}
+        className={cn('truncate', node.isSelected && 'font-mono')}
+      >
+        {localName(node.data.curie)}
+      </span>
       {(node.data.instanceCount ?? 0) > 0 && (
         <span
           title="实例数"
