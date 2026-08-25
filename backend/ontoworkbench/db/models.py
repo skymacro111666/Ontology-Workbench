@@ -83,6 +83,7 @@ class Ontology(Base):
     class_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     property_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     axiom_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    instance_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     stats_json: Mapped[dict[str, Any] | None] = mapped_column(StatsJSON)
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     file_hash: Mapped[str] = mapped_column(String(64))

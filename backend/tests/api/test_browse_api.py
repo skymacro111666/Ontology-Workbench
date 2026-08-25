@@ -151,6 +151,23 @@ def test_instances_endpoint(client: TestClient) -> None:
     assert dog["instanceCount"] == 2
     assert "instance_count" not in dog
 
+    # The sidebar tree badge serializes the same count camelCase.
+    kids = client.get(
+        f"/api/ontologies/{oid}/tree", params={"parent": "http://example.org/Animal"}
+    ).json()["data"]
+    assert kids[0]["instanceCount"] == 2
+    assert "instance_count" not in kids[0]
+
+
+def test_overview_property_nodes_carry_ptype(client: TestClient) -> None:
+    """Overview property nodes carry ptype so the canvas filter can split them."""
+    oid = _upload_props(client)
+    ov = client.get(f"/api/ontologies/{oid}/overview").json()["data"]
+    ptypes = {n["curie"]: n.get("ptype") for n in ov["nodes"]}
+    assert ptypes["ex:livesIn"] == "ObjectProperty"
+    assert ptypes["ex:age"] == "DatatypeProperty"
+    assert ptypes["ex:Dog"] is None
+
 
 def test_unknown_ontology_is_404(client: TestClient) -> None:
     """A random UUID yields the uniform NOT_FOUND envelope."""

@@ -36,6 +36,23 @@ def test_build_ir_counts_and_refs() -> None:
     assert "ex:Dog" in animal_refs
 
 
+def test_counts_individual_count_is_distinct() -> None:
+    """individual_count = distinct NamedIndividuals, deduped across classes."""
+    ttl = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:Animal a owl:Class .
+ex:Dog a owl:Class ; rdfs:subClassOf ex:Animal .
+ex:rex a owl:NamedIndividual , ex:Dog , ex:Animal .
+ex:buddy a owl:NamedIndividual , ex:Dog .
+"""
+    ir = build_ir(rdflib.Graph().parse(data=ttl, format="turtle"))
+    assert ir.counts.individual_count == 2
+    # Graphs without individuals count zero.
+    mini = build_ir(rdflib.Graph().parse(data=MINI, format="turtle"))
+    assert mini.counts.individual_count == 0
+
+
 def test_ir_prefixes_and_axioms() -> None:
     """Namespace bindings surface as prefixes; axioms serialize as Turtle."""
     g = rdflib.Graph().parse(data=MINI, format="turtle")

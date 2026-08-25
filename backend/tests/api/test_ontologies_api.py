@@ -74,6 +74,32 @@ def test_upload_list_delete(client: TestClient) -> None:
     assert client.delete(f"/api/ontologies/{meta['id']}").json()["code"] == "NOT_FOUND"
 
 
+TTL_INST = (
+    TTL
+    + b"""@prefix ex: <http://example.org/> .
+ex:rex a owl:NamedIndividual , ex:B .
+ex:buddy a owl:NamedIndividual , ex:B .
+"""
+)
+
+
+def test_upload_meta_reports_instance_count(client: TestClient) -> None:
+    """Upload and /meta carry the distinct-individual count (footer 实例数)."""
+    up = client.post(
+        "/api/ontologies",
+        files={"file": ("inst.ttl", io.BytesIO(TTL_INST), "text/turtle")},
+    )
+    meta = up.json()["data"]
+    assert meta["instanceCount"] == 2
+
+    oid = meta["id"]
+    again = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    assert again["instanceCount"] == 2
+
+    listed = client.get("/api/ontologies").json()["data"]["items"]
+    assert listed[0]["instanceCount"] == 2
+
+
 def test_upload_rejects_garbage(client: TestClient) -> None:
     """Binary garbage is rejected as UNSUPPORTED_FORMAT, not 500."""
     bad = client.post(

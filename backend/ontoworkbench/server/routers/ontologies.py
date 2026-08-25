@@ -44,6 +44,7 @@ class OntologyMeta(CamelModel):
     class_count: int
     property_count: int
     axiom_count: int
+    instance_count: int
     file_size_bytes: int
     file_hash: str
     prefixes: dict[str, str] = Field(default_factory=dict)
@@ -61,6 +62,7 @@ class OntologySummary(CamelModel):
     class_count: int
     property_count: int
     axiom_count: int
+    instance_count: int
     file_size_bytes: int
     created_at: str
 
@@ -86,6 +88,7 @@ def _meta(row: Ontology) -> dict[str, Any]:
         class_count=row.class_count,
         property_count=row.property_count,
         axiom_count=row.axiom_count,
+        instance_count=row.instance_count,
         file_size_bytes=row.file_size_bytes,
         file_hash=row.file_hash,
         prefixes=prefixes,
@@ -104,6 +107,7 @@ def _summary(row: Ontology) -> dict[str, Any]:
         class_count=row.class_count,
         property_count=row.property_count,
         axiom_count=row.axiom_count,
+        instance_count=row.instance_count,
         file_size_bytes=row.file_size_bytes,
         created_at=row.created_at.isoformat(),
     ).model_dump(by_alias=True)
@@ -143,6 +147,7 @@ def _import_bytes(
         class_count=ir.counts.class_count,
         property_count=ir.counts.property_count,
         axiom_count=ir.counts.axiom_count,
+        instance_count=ir.counts.individual_count,
         stats_json={"prefixes": ir.prefixes, "parse_ms": round(parse_ms, 1)},
         file_size_bytes=len(data),
         file_hash=LocalUserDirStore.file_hash(data),

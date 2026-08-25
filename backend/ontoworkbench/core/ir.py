@@ -71,6 +71,7 @@ class Counts(BaseModel):
     class_count: int = 0
     property_count: int = 0
     axiom_count: int = 0
+    individual_count: int = 0
 
 
 class IRBundle(BaseModel):
@@ -262,12 +263,15 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
     # typing only — no subclass inference, matching the badge's direct count).
     class_set = set(classes)
     instances: dict[str, list[Ref]] = {}
+    individuals: set[str] = set()
     for ind in sorted(
         (s for s in graph.subjects(RDF.type, OWL.NamedIndividual) if isinstance(s, URIRef)),
         key=str,
     ):
+        individuals.add(str(ind))
         for t in graph.objects(ind, RDF.type):
             if t in class_set:
                 instances.setdefault(str(t), []).append(_ref(graph, ind))
 
+    counts.individual_count = len(individuals)
     return IRBundle(entities=entities, counts=counts, prefixes=prefixes, instances=instances)

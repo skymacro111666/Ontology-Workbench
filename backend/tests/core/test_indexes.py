@@ -128,6 +128,11 @@ def test_overview_includes_property_nodes_and_typed_edges() -> None:
     kinds = {n["curie"]: n["kind"] for n in ov["nodes"]}
     assert kinds.get("ex:likes") == "property"
     assert kinds.get("ex:age") == "property"
+    ptypes = {n["curie"]: n.get("ptype") for n in ov["nodes"]}
+    assert ptypes["ex:likes"] == "ObjectProperty"
+    assert ptypes["ex:age"] == "DatatypeProperty"
+    # Class nodes stay ptype-free; the field only distinguishes properties.
+    assert ptypes["ex:Dog"] is None
     triples = {(e["source"], e["target"], e["kind"]) for e in ov["edges"]}
     dog = "http://example.org/Dog"
     cat = "http://example.org/Cat"
@@ -163,6 +168,16 @@ def make3():
     """Build indexes over MINI3 (classes with named individuals)."""
     g = rdflib.Graph().parse(data=MINI3, format="turtle")
     return build_indexes(build_ir(g))
+
+
+def test_tree_reports_instance_counts() -> None:
+    """Tree nodes carry each class's direct-instance count (sidebar badge)."""
+    ix = make3()
+    roots = {r.curie: r.instance_count for r in ix.tree(None)}
+    assert roots["ex:Animal"] == 0
+    kids = {k.curie: k.instance_count for k in ix.tree("http://example.org/Animal")}
+    assert kids["ex:Dog"] == 2
+    assert kids["ex:Cat"] == 1
 
 
 def test_overview_reports_instance_counts() -> None:

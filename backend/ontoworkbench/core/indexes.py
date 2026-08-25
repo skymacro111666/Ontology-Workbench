@@ -23,6 +23,7 @@ class TreeNode(BaseModel):
     label: dict[str, str] = {}
     type: str = "Class"
     children_count: int = 0
+    instance_count: int = 0
 
 
 class SearchHit(BaseModel):
@@ -87,6 +88,7 @@ class Indexes:
                 label=e.label,
                 type=e.type,
                 children_count=len(self._children.get(e.eid, [])),
+                instance_count=len(self._ir.instances.get(e.eid, [])),
             )
             for e in items
         ]
@@ -231,6 +233,7 @@ class Indexes:
                         "curie": prop.curie,
                         "label": prop.label,
                         "kind": "property",
+                        "ptype": prop.ptype,
                     }
                     budget -= 1
                 kind = "datatype" if prop.ptype == "DatatypeProperty" else "property"

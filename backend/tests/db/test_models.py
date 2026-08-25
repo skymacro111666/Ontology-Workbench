@@ -58,3 +58,22 @@ def test_ddl_defaults_on_raw_insert(db: Session) -> None:
     row = db.execute(text("SELECT is_admin FROM users WHERE username = 'rawuser'")).fetchone()
     assert row is not None
     assert row[0] in (1, True)  # sqlite renders TRUE as 1; PG returns bool
+
+
+def test_ontology_instance_count_defaults_to_zero(db: Session) -> None:
+    """instance_count fills 0 on raw inserts (rows predating the column)."""
+    u = User(username="alice", password_hash="x")
+    db.add(u)
+    db.commit()
+    db.execute(
+        text(
+            "INSERT INTO ontologies (id, owner_user_id, filename, storage_path,"
+            " format, file_hash, file_size_bytes)"
+            " VALUES (:i, :o, 'a.ttl', 'p', 'turtle', 'h', 0)"
+        ),
+        {"i": uuid4().hex, "o": u.id.hex},
+    )
+    db.commit()
+    row = db.execute(text("SELECT instance_count FROM ontologies")).fetchone()
+    assert row is not None
+    assert row[0] == 0

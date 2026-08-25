@@ -190,6 +190,7 @@ def import_ontology(
             class_count=ir.counts.class_count,
             property_count=ir.counts.property_count,
             axiom_count=ir.counts.axiom_count,
+            instance_count=ir.counts.individual_count,
             stats_json={"prefixes": ir.prefixes, "parse_ms": round(parse_ms, 1)},
             file_size_bytes=len(data),
             file_hash=LocalUserDirStore.file_hash(data),
