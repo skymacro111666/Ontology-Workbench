@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/button'
 
 /** Whole-ontology overview canvas — the workspace's single content view;
  *  degrades to the top 3 levels past 5000 entities (spec §7.5). Label switch
- *  and type filter render as the canvas's in-canvas overlay controls. The
+ *  and kind filter render as the canvas's in-canvas overlay controls. The
  *  instance badge reveals a class's named individuals on demand. Opens
- *  class-only (defaultFilter) — properties join via the 全部 toggle. */
+ *  class-only (defaultKinds) — properties join via the kind toggles / 全部. */
 export default function GraphOverview({
   oid,
   focus,
@@ -103,7 +103,7 @@ export default function GraphOverview({
           focusId={focus ?? undefined}
           onSelect={reveal}
           onBadgeClick={(eid) => void toggleInstances(eid)}
-          defaultFilter="classes"
+          defaultKinds={{ classes: true, objectProps: false, dataProps: false }}
         />
       </div>
     </div>

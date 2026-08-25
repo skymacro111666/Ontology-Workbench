@@ -32,6 +32,7 @@ function meta(): OntologyMeta {
     classCount: 99,
     propertyCount: 8,
     axiomCount: 300,
+    instanceCount: 42,
     fileSizeBytes: 106000,
     createdAt: '2026-08-21T00:00:00',
     fileHash: 'h',
@@ -134,8 +135,10 @@ describe('Browse workspace (overview-only)', () => {
     renderBrowse(stubFetch())
     expect(await screen.findAllByText('pizza:Dog')).toBeTruthy()
 
-    // Zone 1: class-tree pill tabs.
-    expect(screen.getByRole('button', { name: '类' })).toBeTruthy()
+    // Zone 1: class-tree pill tabs (canvas filter also has a 类 toggle —
+    // the sidebar tab is the one with the 属性 sibling tab).
+    expect(screen.getAllByRole('button', { name: '类' }).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByRole('button', { name: '属性' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '命名空间' })).toBeTruthy()
     // Zone 2: whole-ontology canvas nodes (Animal also chips in the inspector).
     expect(screen.getAllByText('pizza:Animal').length).toBeGreaterThanOrEqual(1)
@@ -146,6 +149,7 @@ describe('Browse workspace (overview-only)', () => {
     // Zone 4: statusbar copy (mono filename · counts · green parse status).
     expect(screen.getByText('pizza.ttl')).toBeTruthy()
     expect(screen.getByText('99 类')).toBeTruthy()
+    expect(screen.getByText('42 实例')).toBeTruthy()
     expect(screen.getByText('解析 OK · 1.2s')).toBeTruthy()
   })
 

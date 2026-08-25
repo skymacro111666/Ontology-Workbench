@@ -81,6 +81,7 @@ export default function Browse() {
         <span className="font-mono">{meta.filename}</span>
         <span>{meta.classCount} 类</span>
         <span>{meta.propertyCount} 属性</span>
+        <span>{meta.instanceCount} 实例</span>
         <span>{meta.axiomCount} 公理</span>
         <span className="text-success flex items-center gap-1">
           <span aria-hidden="true">●</span>

@@ -30,7 +30,7 @@ function matchesTerm(n: TreeRow, term: string): boolean {
   return Object.values(n.label ?? {}).some((v) => v.toLowerCase().includes(t))
 }
 
-/** One row: chevron + curie + direct-subclass badge (mockup: grey pill,
+/** One row: chevron + curie + instance-count badge (solid primary pill,
  *  white with primary border when the row is selected). */
 function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
   return (
@@ -67,17 +67,17 @@ function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
         <span className="h-3 w-3 shrink-0" />
       )}
       <span className={cn('truncate', node.isSelected && 'font-mono')}>{node.data.curie}</span>
-      {node.data.childrenCount > 0 && (
+      {(node.data.instanceCount ?? 0) > 0 && (
         <span
-          title="直接子类数"
+          title="实例数"
           className={cn(
             'ml-auto flex h-[17px] min-w-[17px] items-center justify-center rounded-full px-[5px] text-[10px]',
             node.isSelected
               ? 'bg-panel border-primary-border text-primary border'
-              : 'bg-panel-2 border-line text-ink-2 border',
+              : 'bg-primary border-transparent text-primary-foreground border',
           )}
         >
-          {node.data.childrenCount}
+          {node.data.instanceCount}
         </span>
       )}
     </div>

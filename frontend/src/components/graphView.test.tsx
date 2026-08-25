@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GEdge } from '../api/types'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { lastG6, MockGraph, resetG6 } from '../test/g6Mock'
-import GraphView, { toG6Edges, toG6Nodes, type GraphViewNode } from './GraphView'
+import GraphView, { toG6Edges, toG6Nodes, type GraphViewNode, type KindFilter } from './GraphView'
 
 /* G6 renders on canvas, which jsdom cannot provide — the module is mocked and
    assertions target (a) the DOM overlays (legend/controls, real) and (b) the
@@ -36,7 +36,8 @@ const NODES: GraphViewNode[] = [
   { id: 'a', curie: 'ex:A', label: {}, kind: 'class', highlighted: true, instanceCount: 3 },
   { id: 'b', curie: 'ex:B', label: {}, kind: 'class' },
   { id: 'c', curie: 'ex:C', label: {}, kind: 'class' },
-  { id: 'p', curie: 'ex:hasTopping', label: {}, kind: 'property' },
+  { id: 'p', curie: 'ex:hasTopping', label: {}, kind: 'property', ptype: 'ObjectProperty' },
+  { id: 'd', curie: 'ex:age', label: {}, kind: 'property', ptype: 'DatatypeProperty' },
   { id: 'i1', curie: 'ex:rex', label: {}, kind: 'instance' },
 ]
 
@@ -44,7 +45,11 @@ const EDGES: GEdge[] = [
   { source: 'b', target: 'a', kind: 'subClassOf' },
   { source: 'c', target: 'a', kind: 'subClassOf' },
   { source: 'a', target: 'p', kind: 'property' },
+  { source: 'a', target: 'd', kind: 'datatype' },
 ]
+
+/** The overview's opening state: classes only, properties wait off-stage. */
+const CLASS_ONLY: KindFilter = { classes: true, objectProps: false, dataProps: false }
 
 function draw(extra: Record<string, unknown> = {}, onSelect = vi.fn()) {
   const view = render(
@@ -88,17 +93,21 @@ describe('GraphView', () => {
       'ex:B',
       'ex:C',
       'ex:hasTopping',
+      'ex:age',
       'ex:rex',
     ])
     // Badge = the class's direct instance count (a has 3).
     expect(nodes.find((n) => n.id === 'a')?.style.badges?.[0].text).toBe('3')
     expect(nodes.find((n) => n.id === 'b')?.style.badges).toBeUndefined()
-    expect(edges).toHaveLength(3)
-    // Legend and zoom controls render as DOM overlays.
+    expect(edges).toHaveLength(4)
+    // Legend and zoom controls render as DOM overlays; the kind toggles use
+    // the short 对象/数据 labels, the legend spells them out.
     expect(screen.getByText('子类（subClassOf）')).toBeTruthy()
     expect(screen.getByText('对象属性')).toBeTruthy()
     expect(screen.getByText('数据属性')).toBeTruthy()
     expect(screen.getByText('实例')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '对象' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '数据' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '适配' })).toBeTruthy()
   })
 
@@ -112,8 +121,8 @@ describe('GraphView', () => {
     expect(opts.edge).toMatchObject({ type: 'polyline' })
   })
 
-  it('defaultFilter seeds the uncontrolled filter (overview opens class-only)', () => {
-    draw({ defaultFilter: 'classes' })
+  it('defaultKinds seeds the uncontrolled filter (overview opens class-only)', () => {
+    draw({ defaultKinds: CLASS_ONLY })
     const ids = lastData().nodes.map((n: { id: string }) => n.id)
     // Property nodes are hidden from the first render; instances stay.
     expect(ids).not.toContain('p')
@@ -174,26 +183,49 @@ describe('GraphView', () => {
     expect(off.every((e) => e.style.labelText === '')).toBe(true)
     await userEvent.click(screen.getByRole('button', { name: '标签' }))
     const on = g.updateEdgeData.mock.lastCall?.[0] as { style: { labelText: string } }[]
-    expect(on.map((e) => e.style.labelText)).toEqual(['subClassOf', 'subClassOf', 'ex:hasTopping'])
+    expect(on.map((e) => e.style.labelText)).toEqual([
+      'subClassOf',
+      'subClassOf',
+      'ex:hasTopping',
+      'ex:age',
+    ])
   })
 
-  it('classes-only filter drops property nodes and their edges', async () => {
-    draw()
-    await userEvent.click(screen.getByRole('radio', { name: '仅类' }))
+  it('combines kind dimensions: 类 + 对象属性 coexist on one canvas', async () => {
+    draw({ defaultKinds: CLASS_ONLY })
+    await userEvent.click(screen.getByRole('button', { name: '对象' }))
     const data = lastData('setData')
-    // Instances hang off classes, so they stay; only property nodes go.
-    expect(data.nodes.map((n) => n.id).sort()).toEqual(['a', 'b', 'c', 'i1'])
-    // The class-property edge is pruned along with its endpoint.
-    expect(data.edges.every((e) => e.source !== 'a' || e.target !== 'p')).toBe(true)
-    await userEvent.click(screen.getByRole('radio', { name: '全部' }))
-    expect(lastData('setData').nodes.map((n) => n.id)).toContain('p')
+    // Classes (and their instances) plus the object property — together.
+    expect(data.nodes.map((n) => n.id).sort()).toEqual(['a', 'b', 'c', 'i1', 'p'])
+    expect(data.edges.some((e) => e.source === 'a' && e.target === 'p')).toBe(true)
+    // The datatype property stays hidden — dimensions are independent.
+    expect(data.nodes.map((n) => n.id)).not.toContain('d')
   })
 
-  it('props-only filter keeps just the property node', async () => {
-    draw()
-    await userEvent.click(screen.getByRole('radio', { name: '仅属性' }))
+  it('数据属性 toggles independently of 对象属性', async () => {
+    draw({ defaultKinds: CLASS_ONLY })
+    await userEvent.click(screen.getByRole('button', { name: '数据' }))
     const data = lastData('setData')
-    expect(data.nodes.map((n) => n.id)).toEqual(['p'])
+    expect(data.nodes.map((n) => n.id).sort()).toEqual(['a', 'b', 'c', 'd', 'i1'])
+  })
+
+  it('全部 switches every dimension on and reads pressed while all are on', async () => {
+    draw({ defaultKinds: CLASS_ONLY })
+    expect(screen.getByRole('button', { name: '全部' }).getAttribute('aria-pressed')).toBe('false')
+    await userEvent.click(screen.getByRole('button', { name: '全部' }))
+    const ids = lastData('setData').nodes.map((n) => n.id).sort()
+    expect(ids).toEqual(['a', 'b', 'c', 'd', 'i1', 'p'])
+    expect(screen.getByRole('button', { name: '全部' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('prevents emptying the canvas: the last active dimension stays on', async () => {
+    draw({ defaultKinds: CLASS_ONLY })
+    const g = lastG6() as MockGraph
+    await waitFor(() => expect(g.setData).toHaveBeenCalled())
+    const settled = g.setData.mock.calls.length
+    await userEvent.click(screen.getByRole('button', { name: '类' }))
+    expect(g.setData.mock.calls.length).toBe(settled)
+    expect(screen.getByRole('button', { name: '类' }).getAttribute('aria-pressed')).toBe('true')
   })
 
   it('hides the zoom controls when showControls is false', () => {

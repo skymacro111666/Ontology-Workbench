@@ -65,6 +65,7 @@ function meta(): OntologyMeta {
     classCount: 2,
     propertyCount: 0,
     axiomCount: 4,
+    instanceCount: 0,
     fileSizeBytes: 100,
     createdAt: '2026-08-21T00:00:00',
     fileHash: 'h',
@@ -159,9 +160,9 @@ describe('workspace overview mode', () => {
     const PROP = 'http://example.org/hasTopping'
     renderOverview(fetchFor(overview(false)))
     await waitFor(() => expect(canvasNodeIds()).toContain(DOG))
-    // The canvas defaults to 仅类 — properties stay off until asked for.
+    // The canvas defaults to classes-only — properties stay off until asked for.
     expect(canvasNodeIds()).not.toContain(PROP)
-    await userEvent.click(screen.getByRole('radio', { name: '全部' }))
+    await userEvent.click(screen.getByRole('button', { name: '全部' }))
     await waitFor(() => expect(lastSetDataNodeIds()).toContain(PROP))
   })
 

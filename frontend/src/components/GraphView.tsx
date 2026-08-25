@@ -13,8 +13,29 @@ export type GraphViewNode = GNode & {
   highlighted?: boolean
 }
 
-export type GraphViewFilter = 'all' | 'classes' | 'props'
-type Filter = GraphViewFilter
+/** Which node families the canvas shows — three independent dimensions the
+ *  user combines (e.g. 类 + 对象属性). Classes covers class/self/instance
+ *  kinds; properties split by ptype (untyped rdf:Property reads as object). */
+export type KindFilter = {
+  classes: boolean
+  objectProps: boolean
+  dataProps: boolean
+}
+
+/** Every dimension on — the neutral canvas default and the 全部 state. */
+export function allKinds(): KindFilter {
+  return { classes: true, objectProps: true, dataProps: true }
+}
+
+/** The kind keys currently on, for the multiple ToggleGroup's value prop. */
+const activeKindKeys = (k: KindFilter): string[] =>
+  (['classes', 'objectProps', 'dataProps'] as const).filter((key) => k[key])
+
+const kindsFromKeys = (keys: string[]): KindFilter => ({
+  classes: keys.includes('classes'),
+  objectProps: keys.includes('objectProps'),
+  dataProps: keys.includes('dataProps'),
+})
 
 /** Design tokens resolved to concrete colors — G6 draws on canvas, where CSS
  *  variables do not resolve, so values are read at (re)build time. */
@@ -195,20 +216,24 @@ export function toG6Edges(
     })
 }
 
-function visibleOf(nodes: GraphViewNode[], filter: Filter): GraphViewNode[] {
-  if (filter === 'all') return nodes
-  const want = (kind: string) => (filter === 'props' ? kind === 'property' : kind !== 'property')
-  return nodes.filter((n) => want(n.kind))
+function visibleOf(nodes: GraphViewNode[], kinds: KindFilter): GraphViewNode[] {
+  return nodes.filter((n) =>
+    n.kind !== 'property'
+      ? kinds.classes
+      : n.ptype === 'DatatypeProperty'
+        ? kinds.dataProps
+        : kinds.objectProps,
+  )
 }
 
 function buildData(
   nodes: GraphViewNode[],
   edges: GEdge[],
-  filter: Filter,
+  kinds: KindFilter,
   showLabels: boolean,
   t: CanvasTokens,
 ): GraphData {
-  const visible = visibleOf(nodes, filter)
+  const visible = visibleOf(nodes, kinds)
   const ids = new Map(visible.map((n) => [n.id, n.curie]))
   return {
     nodes: toG6Nodes(visible, t),
@@ -218,9 +243,9 @@ function buildData(
 
 /**
  * Shared graph canvas on G6 5.x: dagre hierarchy, edge semantics, label
- * toggle, type filter (spec §7.3). Label/filter controls render as an
- * in-canvas overlay by default; passing the controlled props (in pairs)
- * moves them to the caller's toolbar.
+ * toggle, kind filter (spec §7.3; 类/对象属性/数据属性 combine freely, 全部
+ * resets). Label/filter controls render as an in-canvas overlay by default;
+ * passing the controlled label props moves them to the caller's toolbar.
  */
 export default function GraphView({
   nodes,
@@ -232,9 +257,7 @@ export default function GraphView({
   showControls = true,
   showLabels: showLabelsProp,
   onShowLabelsChange,
-  typeFilter: typeFilterProp,
-  onTypeFilterChange,
-  defaultFilter: defaultFilterProp,
+  defaultKinds: defaultKindsProp,
 }: {
   nodes: GraphViewNode[]
   edges: GEdge[]
@@ -246,25 +269,20 @@ export default function GraphView({
   focusId?: string
   /** Whether the zoom/fit control cluster is rendered (default true). */
   showControls?: boolean
-  /** Initial uncontrolled filter (the canvas stays 'all'-neutral; callers
+  /** Initial uncontrolled kind filter (the canvas stays all-on; callers
    *  with class-only semantics — e.g. the overview — seed it here). */
-  defaultFilter?: Filter
+  defaultKinds?: KindFilter
   /** Controlled edge-label switch; pass with onShowLabelsChange. */
   showLabels?: boolean
   onShowLabelsChange?: (v: boolean) => void
-  /** Controlled node-kind filter; pass with onTypeFilterChange. */
-  typeFilter?: Filter
-  onTypeFilterChange?: (f: Filter) => void
 }) {
   const resolved = useTheme().resolved
   const [labelsFallback, setLabelsFallback] = useState(true)
-  const [filterFallback, setFilterFallback] = useState<Filter>(defaultFilterProp ?? 'all')
+  const [kinds, setKinds] = useState<KindFilter>(defaultKindsProp ?? allKinds())
   const [zoomPct, setZoomPct] = useState(100)
-  const external = onShowLabelsChange !== undefined || onTypeFilterChange !== undefined
+  const external = onShowLabelsChange !== undefined
   const showLabels = showLabelsProp ?? labelsFallback
   const setShowLabels = onShowLabelsChange ?? setLabelsFallback
-  const filter = typeFilterProp ?? filterFallback
-  const setFilter = onTypeFilterChange ?? setFilterFallback
 
   const containerRef = useRef<HTMLDivElement>(null)
   const graphRef = useRef<Graph | null>(null)
@@ -279,9 +297,9 @@ export default function GraphView({
   })
   // Latest state for the build effect (its deps are narrower than the state).
   // Updated in a render-following effect declared before everything else.
-  const stateRef = useRef({ nodes, edges, showLabels, filter, focusId })
+  const stateRef = useRef({ nodes, edges, showLabels, kinds, focusId })
   useEffect(() => {
-    stateRef.current = { nodes, edges, showLabels, filter, focusId }
+    stateRef.current = { nodes, edges, showLabels, kinds, focusId }
   })
 
   /** (Re)build the graph on data or theme change. The class toggle is
@@ -298,7 +316,7 @@ export default function GraphView({
       animation: false,
       theme: resolved,
       padding: [40, 40, 40, 40],
-      data: buildData(snap.nodes, snap.edges, snap.filter, snap.showLabels, t),
+      data: buildData(snap.nodes, snap.edges, snap.kinds, snap.showLabels, t),
       layout: LAYOUT,
       node: { type: (d: NodeData) => (d.data?.kind === 'instance' ? 'circle' : 'rect') },
       edge: { type: 'polyline' },
@@ -333,19 +351,19 @@ export default function GraphView({
     const g = graphRef.current
     if (!g) return
     const snap = stateRef.current
-    const ids = new Map(visibleOf(snap.nodes, snap.filter).map((n) => [n.id, n.curie]))
+    const ids = new Map(visibleOf(snap.nodes, snap.kinds).map((n) => [n.id, n.curie]))
     g.updateEdgeData(toG6Edges(snap.edges, ids, showLabels, readCanvasTokens()))
     void g.draw()
   }, [showLabels])
 
-  /** Type filter via setData (dagre is deterministic, so the view is stable). */
+  /** Kind filter via setData (dagre is deterministic, so the view is stable). */
   useEffect(() => {
     const g = graphRef.current
     if (!g) return
     const snap = stateRef.current
-    g.setData(buildData(snap.nodes, snap.edges, filter, snap.showLabels, readCanvasTokens()))
+    g.setData(buildData(snap.nodes, snap.edges, kinds, snap.showLabels, readCanvasTokens()))
     void g.render()
-  }, [filter])
+  }, [kinds])
 
   /** Focus follow: fit the focused entity without rebuilding the graph. */
   useEffect(() => {
@@ -416,18 +434,27 @@ export default function GraphView({
           <Toggle variant="outline" size="sm" pressed={showLabels} onPressedChange={setShowLabels}>
             标签
           </Toggle>
-          <ToggleGroup
-            type="single"
+          <Toggle
             variant="outline"
             size="sm"
-            value={filter}
+            pressed={kinds.classes && kinds.objectProps && kinds.dataProps}
+            onPressedChange={() => setKinds(allKinds())}
+          >
+            全部
+          </Toggle>
+          <ToggleGroup
+            type="multiple"
+            variant="outline"
+            size="sm"
+            value={activeKindKeys(kinds)}
             onValueChange={(v) => {
-              if (v) setFilter(v as Filter)
+              // Empty selection would blank the canvas — keep the last dimension.
+              if (v.length > 0) setKinds(kindsFromKeys(v))
             }}
           >
-            <ToggleGroupItem value="all">全部</ToggleGroupItem>
-            <ToggleGroupItem value="classes">仅类</ToggleGroupItem>
-            <ToggleGroupItem value="props">仅属性</ToggleGroupItem>
+            <ToggleGroupItem value="classes">类</ToggleGroupItem>
+            <ToggleGroupItem value="objectProps">对象</ToggleGroupItem>
+            <ToggleGroupItem value="dataProps">数据</ToggleGroupItem>
           </ToggleGroup>
         </div>
       )}

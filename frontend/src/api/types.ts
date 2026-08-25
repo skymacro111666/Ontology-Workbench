@@ -64,6 +64,8 @@ export interface TreeNode {
   label: LocalizedLabels
   type: string
   childrenCount: number
+  /** Direct named individuals of a class (sidebar badge). */
+  instanceCount?: number
 }
 
 /** One search result with the field that matched (GET /search). */
@@ -83,6 +85,8 @@ export interface GNode {
   kind: 'self' | 'class' | 'property' | 'instance' | string
   /** Direct named individuals of a class (overview badge data). */
   instanceCount?: number
+  /** Property subtype (ObjectProperty / DatatypeProperty) — canvas filter key. */
+  ptype?: string
 }
 
 /** Graph edge; kind encodes the relation (subClassOf / property / datatype / instance). */
@@ -109,6 +113,7 @@ export interface OntologySummary {
   classCount: number
   propertyCount: number
   axiomCount: number
+  instanceCount: number
   fileSizeBytes: number
   createdAt: string
 }

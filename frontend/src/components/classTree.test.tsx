@@ -9,8 +9,14 @@ import type { Envelope, OntologyMeta, TreeNode } from '../api/types'
 const THING = 'http://example.org/Thing'
 const ANIMAL = 'http://example.org/Animal'
 
-function node(eid: string, curie: string, childrenCount: number, type = 'Class'): TreeNode {
-  return { eid, curie, label: {}, type, childrenCount }
+function node(
+  eid: string,
+  curie: string,
+  childrenCount: number,
+  type = 'Class',
+  instanceCount = 0,
+): TreeNode {
+  return { eid, curie, label: {}, type, childrenCount, instanceCount }
 }
 
 function ok(data: unknown) {
@@ -28,6 +34,7 @@ const META: OntologyMeta = {
   classCount: 2,
   propertyCount: 2,
   axiomCount: 10,
+  instanceCount: 0,
   fileSizeBytes: 1024,
   createdAt: '2026-01-01T00:00:00Z',
   fileHash: 'h',
@@ -49,7 +56,7 @@ function stubFetch() {
       return ok([node(ANIMAL, 'ex:Animal', 1)])
     }
     if (u.endsWith('/tree')) {
-      return ok([node(THING, 'ex:Thing', 1), node('http://example.org/Solo', 'ex:Solo', 0)])
+      return ok([node(THING, 'ex:Thing', 1, 'Class', 3), node('http://example.org/Solo', 'ex:Solo', 0)])
     }
     throw new Error(`unmocked url: ${u}`)
   })
@@ -75,13 +82,17 @@ afterEach(() => {
 })
 
 describe('ClassTree', () => {
-  it('renders the roots with direct-subclass badges', async () => {
+  it('renders the roots with instance-count badges', async () => {
     const fetchMock = stubFetch()
     renderTree(fetchMock)
     expect(await screen.findByText('ex:Thing')).toBeTruthy()
     expect(screen.getByText('ex:Solo')).toBeTruthy()
-    // Thing has one child; Solo none, so exactly one badge shows.
-    expect(screen.getByTitle('直接子类数').textContent).toBe('1')
+    // Thing has 3 instances; Solo none, so exactly one badge shows.
+    const badge = screen.getByTitle('实例数')
+    expect(badge.textContent).toBe('3')
+    // The badge stands out with a solid primary background (canvas-consistent).
+    expect(badge.className.split(/\s+/)).toContain('bg-primary')
+    expect(badge.className.split(/\s+/)).toContain('text-primary-foreground')
     expect(fetchMock).toHaveBeenCalledWith('/api/ontologies/oid-1/tree', expect.anything())
   })
 
