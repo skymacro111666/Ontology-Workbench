@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
-import type { EntityIR, GNode, NodesEdges, PropRef, Ref, ReferencedRef } from '../api/types'
+import type { EntityIR, GNode, NodesEdges, Ref, ReferencedRef } from '../api/types'
 import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
 import { cn } from '@/lib/utils'
@@ -37,29 +37,6 @@ function ChipList({ refs }: { refs: Ref[] }) {
         <Chip key={r.eid} {...r} />
       ))}
     </div>
-  )
-}
-
-/** Compact property table (mockup mini): curie | 类型. */
-function MiniProps({ rows }: { rows: PropRef[] }) {
-  if (rows.length === 0) return <span className="text-ink-3 text-xs">无</span>
-  return (
-    <table className="w-full text-xs">
-      <thead>
-        <tr className="border-line border-b">
-          <th className="text-ink-3 px-1.5 py-1 text-left font-semibold">curie</th>
-          <th className="text-ink-3 px-1.5 py-1 text-left font-semibold">类型</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.eid} className="border-line border-b">
-            <td className="text-ink px-1.5 py-1 font-mono break-all">{r.curie}</td>
-            <td className="text-ink-2 px-1.5 py-1">{r.ptype}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   )
 }
 
@@ -233,9 +210,6 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
       </Section>
       <Section label="直接子类" count={ent.children.length}>
         <ChipList refs={ent.children} />
-      </Section>
-      <Section label="属性" count={ent.properties.length}>
-        <MiniProps rows={ent.properties} />
       </Section>
       <Section label="被引用" count={dirRefs(ent.referencedBy).length}>
         <BackRefChips refs={ent.referencedBy} />

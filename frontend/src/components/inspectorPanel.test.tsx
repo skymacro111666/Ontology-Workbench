@@ -112,16 +112,15 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('Dog en')).toBeTruthy()
     expect(screen.getByText('Dogs bark.')).toBeTruthy()
     // Parents/children/backrefs render as chips (label or local name — the
-    // full curie moved into the tooltip); props mini table carries curie + ptype.
+    // full curie moved into the tooltip).
     expect(screen.getByText('Animal').title).toBe('pizza:Animal')
     expect(screen.getByText('Corgi')).toBeTruthy()
-    expect(screen.getByText('pizza:hasOwner')).toBeTruthy()
-    expect(screen.getByText('ObjectProperty')).toBeTruthy()
     expect(screen.getByText('Kennel')).toBeTruthy()
-    // Section titles carry counts (competitor's Subclasses (3) pattern).
+    // Section titles carry counts (competitor's Subclasses (3) pattern); the
+    // props mini table is gone — 被引用's domain rows carry the same properties.
     expect(screen.getByText('父类 (1)')).toBeTruthy()
     expect(screen.getByText('直接子类 (1)')).toBeTruthy()
-    expect(screen.getByText('属性 (1)')).toBeTruthy()
+    expect(screen.queryByText(/属性 \(/)).toBeNull()
     expect(screen.getByText('被引用 (1)')).toBeTruthy()
   })
 
@@ -176,7 +175,7 @@ describe('InspectorPanel', () => {
   it('skips the instances section and fetch for non-class entities', async () => {
     const prop = { ...entity(), type: 'ObjectProperty' as const }
     const { fetchMock } = renderPanel(stubFetch(prop))
-    expect(await screen.findByText('pizza:hasOwner')).toBeTruthy()
+    expect(await screen.findByText('pizza:Dog')).toBeTruthy()
     expect(screen.queryByText(/^实例/)).toBeNull()
     expect(fetchMock.mock.calls.map(([u]) => String(u)).some((u) => u.endsWith('/instances'))).toBe(
       false,
