@@ -1,11 +1,11 @@
-"""Docs-site export endpoint: renders a stored ontology into static HTML."""
+"""Export endpoints: docs-site rendering and RDF re-serialization downloads."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
@@ -86,3 +86,44 @@ def export_ontology_site(
         output_dir=str(result.output_dir), page_count=result.page_count
     ).model_dump(by_alias=True)
     return respond(payload)
+
+
+# Query value -> (rdflib serializer, extension, media type).
+FILE_EXPORTS: dict[str, tuple[str, str, str]] = {
+    "turtle": ("turtle", ".ttl", "text/turtle"),
+    "json-ld": ("json-ld", ".jsonld", "application/ld+json"),
+    "rdf-xml": ("xml", ".rdf", "application/rdf+xml"),
+}
+
+
+@router.get("/{ontology_id}/export/file")
+def export_ontology_file(
+    ontology_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    format: str = Query(...),
+) -> dict:
+    """Re-serialize the stored ontology in the requested RDF format.
+
+    Envelope-carried (filename/mediaType/content) so the SPA downloads via
+    its authed fetch and turns the text into a Blob client-side — the
+    envelope contract stays intact for every endpoint.
+    """
+    spec = FILE_EXPORTS.get(format)
+    if spec is None:
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR,
+            "Unsupported export format",
+            f"Choose one of: {', '.join(FILE_EXPORTS)}.",
+        )
+    serializer, ext, media_type = spec
+    row = _owned(user, ontology_id, session)
+
+    store: LocalUserDirStore = request.app.state.store
+    data = store.read(Path(row.storage_path))
+    with ow_parse_seconds.labels(row.format).time():
+        graph = parse_graph(data, row.format)
+    content = graph.serialize(format=serializer)
+    filename = f"{Path(row.filename).stem}{ext}"
+    return respond({"filename": filename, "mediaType": media_type, "content": content})

@@ -1,4 +1,4 @@
-"""Export API: site rendering, duplicate-dir guard, default dir, 404s."""
+"""Export API: site rendering, file re-serialization, duplicate-dir guard, 404s."""
 
 import io
 import json
@@ -84,3 +84,40 @@ def test_export_unknown_ontology_is_404(client: TestClient) -> None:
     malformed = client.post("/api/ontologies/not-a-uuid/export/site", json={})
     assert malformed.status_code == 404
     assert malformed.json()["code"] == "NOT_FOUND"
+
+
+def test_export_file_reserializes_all_three_formats(client: TestClient) -> None:
+    """GET export/file converts the stored turtle into each target format."""
+    oid = _upload(client)
+
+    ttl = client.get(f"/api/ontologies/{oid}/export/file", params={"format": "turtle"})
+    assert ttl.status_code == 200
+    assert ttl.json()["data"]["filename"] == "mini.ttl"
+    assert ttl.json()["data"]["mediaType"] == "text/turtle"
+    assert "ex:A" in ttl.json()["data"]["content"]
+
+    jsonld = client.get(f"/api/ontologies/{oid}/export/file", params={"format": "json-ld"})
+    assert jsonld.status_code == 200
+    assert jsonld.json()["data"]["filename"] == "mini.jsonld"
+    # Round-trip: the JSON-LD payload parses back and still carries both classes.
+    graph = json.loads(jsonld.json()["data"]["content"])
+    ids = {e["@id"] for e in graph}
+    assert {"http://example.org/A", "http://example.org/B"} <= ids
+
+    rdf = client.get(f"/api/ontologies/{oid}/export/file", params={"format": "rdf-xml"})
+    assert rdf.status_code == 200
+    assert rdf.json()["data"]["filename"] == "mini.rdf"
+    assert "<rdf:RDF" in rdf.json()["data"]["content"]
+
+
+def test_export_file_rejects_unknown_format(client: TestClient) -> None:
+    """An unknown format is VALIDATION_ERROR with the choices as hint."""
+    oid = _upload(client)
+    r = client.get(f"/api/ontologies/{oid}/export/file", params={"format": "n3"})
+    assert r.status_code == 422
+    assert r.json()["code"] == "VALIDATION_ERROR"
+    assert "turtle" in r.json()["hint"]
+
+    missing = client.get(f"/api/ontologies/{uuid4()}/export/file", params={"format": "turtle"})
+    assert missing.status_code == 404
+    assert missing.json()["code"] == "NOT_FOUND"
