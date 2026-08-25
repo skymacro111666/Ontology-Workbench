@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import InspectorPanel from './InspectorPanel'
 import { useBrowseStore } from '../stores/browseStore'
-import type { Envelope, EntityIR } from '../api/types'
+import type { Envelope, EntityIR, NodesEdges } from '../api/types'
 
 const EID = 'http://example.org/Dog'
 const PARENT = 'http://example.org/Animal'
@@ -53,9 +53,12 @@ function okEnvelope(data: unknown) {
   } satisfies Envelope<unknown>)
 }
 
-function stubFetch(data: EntityIR = entity()) {
-  return vi.fn(async () =>
-    new Response(okEnvelope(data), { headers: { 'Content-Type': 'application/json' } }),
+function stubFetch(data: EntityIR = entity(), insts: NodesEdges = { nodes: [], edges: [] }) {
+  return vi.fn(async (url: string | URL) =>
+    new Response(
+      okEnvelope(String(url).endsWith('/instances') ? insts : data),
+      { headers: { 'Content-Type': 'application/json' } },
+    ),
   )
 }
 
@@ -114,6 +117,40 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('pizza:hasOwner')).toBeTruthy()
     expect(screen.getByText('ObjectProperty')).toBeTruthy()
     expect(screen.getByText('pizza:Kennel')).toBeTruthy()
+  })
+
+  it('lists a class\'s direct instances below the backrefs (label + curie rows)', async () => {
+    const insts: NodesEdges = {
+      nodes: [
+        { id: 'http://example.org/james', curie: 'hr:james-anderson', label: { en: 'James Anderson' }, kind: 'instance' },
+        { id: 'http://example.org/sofia', curie: 'hr:sofia-cruz', label: {}, kind: 'instance' },
+      ],
+      edges: [],
+    }
+    const { fetchMock } = renderPanel(stubFetch(entity(), insts))
+    expect(await screen.findByText('James Anderson')).toBeTruthy()
+    // Labeled instance shows both label and mono curie; labelless falls back to curie only.
+    expect(screen.getByText('hr:james-anderson')).toBeTruthy()
+    expect(screen.getByText('hr:sofia-cruz')).toBeTruthy()
+    // The panel hit the instances endpoint once, after the class loaded.
+    const urls = fetchMock.mock.calls.map(([u]) => String(u))
+    expect(urls.filter((u) => u.endsWith('/instances'))).toHaveLength(1)
+  })
+
+  it('shows 无 for a class without instances', async () => {
+    renderPanel()
+    expect(await screen.findByText('无')).toBeTruthy()
+    expect(screen.getByText('实例')).toBeTruthy()
+  })
+
+  it('skips the instances section and fetch for non-class entities', async () => {
+    const prop = { ...entity(), type: 'ObjectProperty' as const }
+    const { fetchMock } = renderPanel(stubFetch(prop))
+    expect(await screen.findByText('pizza:hasOwner')).toBeTruthy()
+    expect(screen.queryByText('实例')).toBeNull()
+    expect(fetchMock.mock.calls.map(([u]) => String(u)).some((u) => u.endsWith('/instances'))).toBe(
+      false,
+    )
   })
 
   it('truncates long comments to two lines', async () => {

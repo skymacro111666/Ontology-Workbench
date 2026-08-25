@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
-import type { EntityIR, PropRef, Ref, ReferencedRef } from '../api/types'
+import type { EntityIR, GNode, NodesEdges, PropRef, Ref, ReferencedRef } from '../api/types'
 import { useBrowseStore } from '../stores/browseStore'
 
 /** Clickable entity chip (mockup linklist): soft primary pill, mono curie;
@@ -68,6 +68,26 @@ function BackRefChips({ refs }: { refs: ReferencedRef[] }) {
   )
 }
 
+/** Instance rows: human label + mono curie — plain rows, not chips, because
+ *  individuals have no detail page (selecting one dead-ends on the
+ *  external-entity note). Same direct-instances scope as the canvas badge. */
+function InstanceRows({ nodes }: { nodes: GNode[] }) {
+  if (nodes.length === 0) return <span className="text-ink-3 text-xs">无</span>
+  return (
+    <div className="flex flex-col gap-1">
+      {nodes.map((n) => {
+        const label = Object.values(n.label)[0]
+        return (
+          <div key={n.id} className="flex items-baseline justify-between gap-2 text-xs">
+            <span className="text-ink font-medium">{label ?? n.curie}</span>
+            {label && <span className="text-ink-3 font-mono break-all">{n.curie}</span>}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function Section({ label, children }: { label: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-1.5">
@@ -86,6 +106,18 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
     queryKey: ['entity', oid, eid],
     queryFn: () =>
       api.get<EntityIR>(`/api/ontologies/${oid}/entities/${encodeURIComponent(eid as string)}`),
+    retry: false,
+  })
+
+  /** Instances join only for classes (same endpoint as the canvas badge). */
+  const isClass = ent?.type === 'Class'
+  const { data: insts, isError: instsError } = useQuery({
+    enabled: isClass,
+    queryKey: ['instances', oid, eid],
+    queryFn: () =>
+      api.get<NodesEdges>(
+        `/api/ontologies/${oid}/entities/${encodeURIComponent(eid as string)}/instances`,
+      ),
     retry: false,
   })
 
@@ -156,6 +188,17 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
       <Section label="被引用">
         <BackRefChips refs={ent.referencedBy} />
       </Section>
+      {ent.type === 'Class' && (
+        <Section label="实例">
+          {instsError ? (
+            <span className="text-ink-3 text-xs">加载失败</span>
+          ) : insts ? (
+            <InstanceRows nodes={insts.nodes} />
+          ) : (
+            <span className="text-ink-3 text-xs">加载中…</span>
+          )}
+        </Section>
+      )}
     </div>
   )
 }
