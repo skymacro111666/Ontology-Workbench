@@ -279,10 +279,12 @@ describe('toG6Edges', () => {
 
   it('labels edges only when enabled — property edges by local name, not kind', () => {
     const st = (e: { style?: Record<string, unknown> }) => e.style ?? {}
-    expect(toG6Edges(edges, all, true, TOKENS).map((e) => st(e).labelText)).toEqual([
+    const withInstance = [...edges, { source: 'i1', target: 'a', kind: 'instance' }]
+    expect(toG6Edges(withInstance, all, true, TOKENS).map((e) => st(e).labelText)).toEqual([
       'subClassOf',
       'hasTopping',
       'age',
+      'instance',
     ])
     expect(toG6Edges(edges, all, false, TOKENS).every((e) => st(e).labelText === '')).toBe(true)
   })
@@ -302,6 +304,10 @@ describe('toG6Nodes', () => {
     // Highlighted: 2px primary border, bold label — no star.
     expect(by('a').style).toMatchObject({ stroke: '#4f46e5', lineWidth: 2, labelFontWeight: 700 })
     expect(by('a').style.labelText).toBe('A')
+    // Instance nodes prefer their human label, falling back to the local name.
+    expect(by('i1').style.labelText).toBe('rex')
+    const named = toG6Nodes([...NODES, { id: 'i2', curie: 'ex:fido', label: { en: 'Fido' }, kind: 'instance' }], TOKENS)
+    expect(named.find((n) => n.id === 'i2')?.style?.labelText).toBe('Fido')
     // Property node: dashed violet border.
     expect(by('p').style).toMatchObject({ stroke: '#8b5cf6', lineDash: [4, 3] })
     // Plain class: solid grey border, no dash, no badge.

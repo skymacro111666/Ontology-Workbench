@@ -119,7 +119,10 @@ export function toG6Nodes(nodes: GraphViewNode[], t: CanvasTokens): NodeData[] {
   return nodes.map((n) => {
     const isProperty = n.kind === 'property'
     const focused = !!n.highlighted
-    const name = localName(n.curie)
+    // Instances display their human name when labeled; everything else (and
+    // unlabeled instances) falls back to the curie's local name.
+    const human = Object.values(n.label ?? {})[0]
+    const name = n.kind === 'instance' ? (human ?? localName(n.curie)) : localName(n.curie)
     if (n.kind === 'instance') {
       return {
         id: n.id,
@@ -183,11 +186,14 @@ export function toG6Edges(
     .filter((e) => visible.has(e.source) && visible.has(e.target))
     .map((e, i) => {
       const v = edgeVisualFor(e.kind, t)
-      // Property edges label with the property they point at (local name —
-      // prefix stripped, like node labels); subClassOf keeps the relation
-      // word, the target is just a parent.
+      // Edge labels: relation words for attach edges (subClassOf, instance),
+      // the target property's local name for property edges.
       const label =
-        e.kind === 'subClassOf' ? 'subClassOf' : localName(visible.get(e.target) ?? e.kind)
+        e.kind === 'subClassOf'
+          ? 'subClassOf'
+          : e.kind === 'instance'
+            ? 'instance'
+            : localName(visible.get(e.target) ?? e.kind)
       // Attach edges (subClassOf child→parent, instance→class) are swapped:
       // dagre TB places a datum's source above its target, so swapping puts
       // parents above children and instances below their class. The arrow
