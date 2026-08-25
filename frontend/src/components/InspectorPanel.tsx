@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
-import type { EntityIR, GNode, NodesEdges, Ref, ReferencedRef } from '../api/types'
+import type { CounterpartRef, EntityIR, GNode, NodesEdges, Ref, ReferencedRef } from '../api/types'
 import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
 import { cn } from '@/lib/utils'
@@ -51,11 +51,34 @@ function refName(r: Ref): string {
   return Object.values(r.label ?? {})[0] ?? localName(r.curie)
 }
 
+/** The axiom's far end: declared entities navigate on click (dotted
+ *  underline marks it interactive); external IRIs stay plain text —
+ *  they have no detail page to land on. */
+function Counterpart({ counterpart, arrow }: { counterpart: CounterpartRef; arrow: string }) {
+  const setSelected = useBrowseStore((s) => s.setSelected)
+  return (
+    <span className="text-ink-3 font-mono break-all">
+      {arrow}{' '}
+      {counterpart.declared ? (
+        <button
+          type="button"
+          title={counterpart.curie}
+          onClick={() => setSelected(counterpart.eid)}
+          className="text-ink-2 hover:text-primary cursor-pointer underline decoration-dotted underline-offset-2"
+        >
+          {refName(counterpart)}
+        </button>
+      ) : (
+        refName(counterpart)
+      )}
+    </span>
+  )
+}
+
 /** Backref rows grouped by relation direction (competitor's relationship
  *  usage): each row pairs the referencing entity with the axiom's far end
  *  (`works in → Department` for a domain ref, `reviewed by ← Manager` for
- *  a range ref); the counterpart stays plain text — external IRIs have no
- *  detail page to land on. */
+ *  a range ref). */
 function BackRefChips({ refs }: { refs: ReferencedRef[] }) {
   const domains = refs.filter((r) => r.relation === 'rdfs:domain')
   const ranges = refs.filter((r) => r.relation === 'rdfs:range')
@@ -69,11 +92,7 @@ function BackRefChips({ refs }: { refs: ReferencedRef[] }) {
         {list.map((r) => (
           <div key={r.eid} className="flex flex-wrap items-baseline gap-x-1.5 text-xs">
             <Chip {...r} />
-            {r.counterpart && (
-              <span className="text-ink-3 font-mono break-all">
-                {arrow} {refName(r.counterpart)}
-              </span>
-            )}
+            {r.counterpart && <Counterpart counterpart={r.counterpart} arrow={arrow} />}
           </div>
         ))}
       </div>

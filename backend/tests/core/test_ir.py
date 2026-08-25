@@ -120,6 +120,27 @@ def test_ir_prefixes_only_used_namespaces() -> None:
     assert "brick" not in ir.prefixes and "csvw" not in ir.prefixes
 
 
+def test_ir_counterpart_declared_flag() -> None:
+    """Counterparts mark declared far ends (clickable) vs external IRIs."""
+    ttl = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+ex:Dog a owl:Class .
+ex:Animal a owl:Class .
+ex:likes a owl:ObjectProperty ; rdfs:domain ex:Dog ; rdfs:range ex:Animal .
+ex:barks a owl:DatatypeProperty ; rdfs:domain ex:Dog ; rdfs:range xsd:boolean .
+"""
+    g = rdflib.Graph().parse(data=ttl, format="turtle")
+    ir = build_ir(g)
+    dog = ir.entities["http://example.org/Dog"]
+    refs = {r.curie: r for r in dog.referenced_by}
+    assert refs["ex:likes"].counterpart is not None
+    assert refs["ex:likes"].counterpart.declared is True  # owl:Class in-graph
+    assert refs["ex:barks"].counterpart is not None
+    assert refs["ex:barks"].counterpart.declared is False  # xsd:boolean external
+
+
 def test_ir_referenced_by_relations() -> None:
     """Domain/range axioms link classes and properties in both directions."""
     g = rdflib.Graph().parse(data=MINI, format="turtle")
@@ -132,6 +153,7 @@ def test_ir_referenced_by_relations() -> None:
     dog_likes = next(r for r in dog.referenced_by if r.curie == "ex:likes")
     assert dog_likes.counterpart is not None
     assert dog_likes.counterpart.curie == "ex:Animal"
+    assert dog_likes.counterpart.declared is True
     likes = ir.entities["http://example.org/likes"]
     # and likes is referenced by the classes its axioms point at
     prop_refs = {(r.curie, r.relation) for r in likes.referenced_by}

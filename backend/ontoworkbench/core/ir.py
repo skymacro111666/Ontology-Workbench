@@ -29,6 +29,16 @@ class PropRef(Ref):
     ptype: str
 
 
+class CounterpartRef(Ref):
+    """An axiom's far end, flagged for the UI.
+
+    Declared entities have a detail page to navigate to; external IRIs
+    (xsd datatypes, foreign vocabulary) render as plain text.
+    """
+
+    declared: bool = False
+
+
 class ReferencedRef(Ref):
     """Reverse reference carrying the axiom relating the two entities.
 
@@ -37,7 +47,7 @@ class ReferencedRef(Ref):
     """
 
     relation: str = ""
-    counterpart: Ref | None = None
+    counterpart: CounterpartRef | None = None
 
 
 class Axiom(BaseModel):
@@ -172,14 +182,20 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
                     props_by_class.setdefault(c, []).append(p)
                     classes_by_prop.setdefault(p, []).append((c, relation))
 
+    # Declared entities (own classes and properties): the far ends the UI
+    # may link into; everything else is external vocabulary.
+    declared_uris = set(classes) | set(props)
+
     def _referenced(uri: URIRef, is_class: bool, children: list[Ref]) -> list[ReferencedRef]:
         """Entities whose axioms mention uri: subclassers and domain/range peers."""
 
-        def _counterpart(prop: URIRef, relation: str) -> Ref | None:
+        def _counterpart(prop: URIRef, relation: str) -> CounterpartRef | None:
             """The axiom's far end: range of prop for a domain ref, vice versa."""
             other = RDFS.range if relation == "rdfs:domain" else RDFS.domain
             far = next((o for o in graph.objects(prop, other) if isinstance(o, URIRef)), None)
-            return _ref(graph, far) if far is not None else None
+            if far is None:
+                return None
+            return CounterpartRef(**_ref(graph, far).model_dump(), declared=far in declared_uris)
 
         refs = {
             r.eid: ReferencedRef(eid=r.eid, curie=r.curie, label=r.label, relation="subClassOf")

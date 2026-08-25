@@ -130,9 +130,15 @@ describe('InspectorPanel', () => {
       // pizza:Kennel — rdfs:domain, far end = the property's range class.
       {
         ...ent.referencedBy[0],
-        counterpart: { eid: 'http://example.org/Dept', curie: 'pizza:Dept', label: {} },
+        counterpart: { eid: 'http://example.org/Dept', curie: 'pizza:Dept', label: {}, declared: true },
       },
-      { eid: 'http://example.org/Leads', curie: 'pizza:leads', label: { en: 'Leads' }, relation: 'rdfs:range' },
+      {
+        eid: 'http://example.org/Leads',
+        curie: 'pizza:leads',
+        label: { en: 'Leads' },
+        relation: 'rdfs:range',
+        counterpart: { eid: 'http://www.w3.org/2001/XMLSchema#decimal', curie: 'xsd:decimal', label: {}, declared: false },
+      },
       { eid: 'http://example.org/Puppy', curie: 'pizza:Puppy', label: {}, relation: 'subClassOf' },
     ]
     renderPanel(stubFetch(ent))
@@ -145,7 +151,13 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('Leads').title).toBe('pizza:leads')
     // Domain rows pair the ref with the axiom's far end (→ range class);
     // untyped refs show no arrow.
-    expect(screen.getByText('→ Dept')).toBeTruthy()
+    const dept = screen.getByText('Dept')
+    expect(dept.parentElement?.textContent).toBe('→ Dept')
+    // Declared counterparts navigate on click (dotted-underline button);
+    // external IRIs (xsd:*) stay plain text.
+    expect(screen.getByText('← decimal').tagName).toBe('SPAN')
+    await userEvent.click(dept)
+    expect(useBrowseStore.getState().selectedEid).toBe('http://example.org/Dept')
   })
 
   it('lists a class\'s direct instances below the backrefs (label + curie rows)', async () => {
