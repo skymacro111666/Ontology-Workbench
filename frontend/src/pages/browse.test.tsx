@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Browse from './Browse'
 import { useBrowseStore } from '../stores/browseStore'
+import { useUiStore } from '../stores/uiStore'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { lastG6, resetG6 } from '../test/g6Mock'
 import type { Envelope, EntityIR, NodesEdges, OntologyMeta } from '../api/types'
@@ -78,6 +79,8 @@ function stubFetch() {
     const u = String(url)
     let data: unknown
     if (u.includes('/overview')) data = overview()
+    else if (u.includes('/source'))
+      data = { filename: 'pizza.ttl', format: 'turtle', content: '@prefix pizza: <…> .\n' }
     else if (u.includes('/tree')) data = []
     else if (u.includes(encodeURIComponent(ANIMAL))) data = animal()
     else if (u.includes('/entities/')) data = dog()
@@ -121,6 +124,7 @@ function renderBrowse(
 
 beforeEach(() => {
   useBrowseStore.setState({ selectedEid: null, revealEid: null })
+  useUiStore.setState({ browseView: 'graph' })
   resetG6()
 })
 
@@ -151,6 +155,25 @@ describe('Browse workspace (overview-only)', () => {
     expect(screen.getByText('99 类')).toBeTruthy()
     expect(screen.getByText('42 实例')).toBeTruthy()
     expect(screen.getByText('解析 OK · 1.2s')).toBeTruthy()
+  })
+
+  it('Zone 2 defaults to the graph view and swaps to source on browseView=text', async () => {
+    const { unmount } = renderBrowse(stubFetch())
+    // Graph default: the mocked G6 canvas is built, no source pane.
+    await waitFor(() => expect(lastG6()).not.toBeNull())
+    // The resident inspector column is present (empty-state copy shows).
+    expect(await screen.findByText('在树或图中选择一个实体')).toBeTruthy()
+    unmount()
+    cleanup()
+    resetG6()
+
+    useUiStore.setState({ browseView: 'text' })
+    renderBrowse(stubFetch())
+    expect(await screen.findByText('pizza.ttl')).toBeTruthy()
+    // The text pane replaces the canvas — no G6 instance this time.
+    expect(lastG6()).toBeFalsy()
+    // Text mode drops the inspector column so the source reads wider.
+    expect(screen.queryByText('在树或图中选择一个实体')).toBeNull()
   })
 
   it('canvas node click selects through reveal and walks the tree', async () => {

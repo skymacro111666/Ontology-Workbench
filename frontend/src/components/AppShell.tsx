@@ -1,15 +1,16 @@
-import { LogOutIcon } from 'lucide-react'
+import { FileTextIcon, LogOutIcon, Share2Icon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { LAST_OID_KEY, useAuth } from '../auth/AuthContext'
-import { useUiStore } from '../stores/uiStore'
+import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { useTheme } from '../theme/ThemeProvider'
 import { cn } from '@/lib/utils'
 import CommandPalette from './CommandPalette'
 import ImportDialog from './ImportDialog'
 import OntologySwitcher from './OntologySwitcher'
 import { Button } from '@/components/ui/button'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +29,8 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const { user, logout } = useAuth()
   const { theme, setTheme } = useTheme()
   const setImportOpen = useUiStore((s) => s.setImportOpen)
+  const browseView = useUiStore((s) => s.browseView)
+  const setBrowseView = useUiStore((s) => s.setBrowseView)
 
   /** Open an oid-scoped route; block with a toast until an ontology is chosen. */
   const openLast = (prefix: string) => {
@@ -98,6 +101,28 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               <DropdownMenuItem onSelect={() => openLast('/export')}>导出文档站</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Workspace-only content switch: graph canvas vs source text. */}
+          {isWorkspace && (
+            <ToggleGroup
+              type="single"
+              variant="outline"
+              size="sm"
+              value={browseView}
+              onValueChange={(v) => {
+                if (v) setBrowseView(v as BrowseView)
+              }}
+            >
+              <ToggleGroupItem value="graph">
+                <Share2Icon aria-hidden="true" />
+                图形
+              </ToggleGroupItem>
+              <ToggleGroupItem value="text">
+                <FileTextIcon aria-hidden="true" />
+                文本
+              </ToggleGroupItem>
+            </ToggleGroup>
+          )}
 
           <button
             type="button"

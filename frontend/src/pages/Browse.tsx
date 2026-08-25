@@ -6,8 +6,11 @@ import type { OntologyMeta } from '../api/types'
 import ClassTree from '../components/ClassTree'
 import GraphOverview from '../components/GraphOverview'
 import InspectorPanel from '../components/InspectorPanel'
+import SourceView from '../components/SourceView'
 import { useBrowseStore } from '../stores/browseStore'
+import { useUiStore } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 /** Parse duration for the status bar: "870ms" under a second, "1.2s" above. */
 function formatParseMs(ms: number): string {
@@ -24,6 +27,7 @@ export default function Browse() {
   const focusParam = sp.get('focus')
   const selectedEid = useBrowseStore((s) => s.selectedEid)
   const setSelected = useBrowseStore((s) => s.setSelected)
+  const browseView = useUiStore((s) => s.browseView)
   // Deep links (?eid=… or the redirected /graph focus param) preselect.
   useEffect(() => {
     const target = focusParam ?? eidParam
@@ -61,21 +65,34 @@ export default function Browse() {
     return <div className="text-ink-3 py-16 text-center text-sm">加载中…</div>
   }
   return (
-    <div className="grid h-full min-h-0 grid-cols-[264px_1fr_312px] grid-rows-[1fr_30px]">
+    <div
+      className={cn(
+        'grid h-full min-h-0 grid-rows-[1fr_30px]',
+        // Text mode drops the inspector column so the source reads wider.
+        browseView === 'graph' ? 'grid-cols-[264px_1fr_312px]' : 'grid-cols-[264px_1fr]',
+      )}
+    >
       {/* Zone 1: class tree */}
       <aside className="border-line min-h-0 overflow-hidden border-r p-2">
         <ClassTree oid={oid} />
       </aside>
 
-      {/* Zone 2: whole-ontology canvas with in-canvas controls */}
+      {/* Zone 2: whole-ontology canvas (graph) or source text (text),
+       *  per the topbar's 图形/文本 switch (spec: single content view). */}
       <section aria-label="内容区" className="border-line min-h-0 border-r p-1">
-        <GraphOverview oid={oid} focus={selectedEid} />
+        {browseView === 'graph' ? (
+          <GraphOverview oid={oid} focus={selectedEid} />
+        ) : (
+          <SourceView oid={oid} />
+        )}
       </section>
 
-      {/* Zone 3: resident inspector */}
-      <aside className="min-h-0 overflow-hidden p-2">
-        <InspectorPanel oid={oid} eid={selectedEid} />
-      </aside>
+      {/* Zone 3: resident inspector (graph mode only) */}
+      {browseView === 'graph' && (
+        <aside className="min-h-0 overflow-hidden p-2">
+          <InspectorPanel oid={oid} eid={selectedEid} />
+        </aside>
+      )}
       {/* Zone 4: status bar (mockup: breathing gaps, no dot separators) */}
       <footer className="border-line bg-panel text-ink-3 row-start-2 col-span-full flex items-center gap-3.5 border-t px-3.5 text-[11.5px]">
         <span className="font-mono">{meta.filename}</span>
