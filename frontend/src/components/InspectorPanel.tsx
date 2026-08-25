@@ -142,9 +142,9 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto px-4 pt-3.5 pb-3">
       <div className="flex flex-col gap-3">
-        {/* mockup head: Inspector microlabel + type pill */}
+        {/* mockup head: panel microlabel + type pill */}
         <div className="flex items-center justify-between">
-          <span className="microlabel">Inspector</span>
+          <span className="microlabel">实体详情</span>
           <span className="bg-primary-soft border-primary-border text-primary rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide">
             {ent.type.toUpperCase()}
           </span>
