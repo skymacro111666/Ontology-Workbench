@@ -169,6 +169,25 @@ def test_overview_property_nodes_carry_ptype(client: TestClient) -> None:
     assert ptypes["ex:Dog"] is None
 
 
+def test_source_endpoint_serves_raw_file(client: TestClient) -> None:
+    """GET /source serves the stored file verbatim (text view data)."""
+    oid = _upload(client)
+    src = client.get(f"/api/ontologies/{oid}/source").json()["data"]
+    assert src["filename"] == "mini.ttl"
+    assert src["format"] == "turtle"
+    # Verbatim upload bytes — prefixes and triples round-trip untouched.
+    assert src["content"] == MINI.decode()
+
+
+def test_source_unknown_ontology_is_404(client: TestClient) -> None:
+    """A random UUID yields the uniform NOT_FOUND envelope."""
+    import uuid
+
+    r = client.get(f"/api/ontologies/{uuid.uuid4()}/source")
+    assert r.status_code == 404
+    assert r.json()["code"] == "NOT_FOUND"
+
+
 def test_unknown_ontology_is_404(client: TestClient) -> None:
     """A random UUID yields the uniform NOT_FOUND envelope."""
     import uuid

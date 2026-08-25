@@ -48,10 +48,8 @@ def _camel(value: Any) -> Any:
     return value
 
 
-def _owned(
-    request: Request, user: User, ontology_id: str, session: Session
-) -> tuple[Ontology, Indexes]:
-    """Resolve an owned ontology and its (cached) indexes; uniform 404 otherwise."""
+def _owned_row(user: User, ontology_id: str, session: Session) -> Ontology:
+    """Resolve an owned ontology row; uniform 404 otherwise (no parsing)."""
     try:
         oid = UUID(ontology_id)
     except ValueError:
@@ -59,6 +57,14 @@ def _owned(
     row = OntologyRepository(session).get_owned(user.id, oid)
     if not row:
         raise ApiError(ErrorCode.NOT_FOUND, "No such ontology")
+    return row
+
+
+def _owned(
+    request: Request, user: User, ontology_id: str, session: Session
+) -> tuple[Ontology, Indexes]:
+    """Resolve an owned ontology and its (cached) indexes; uniform 404 otherwise."""
+    row = _owned_row(user, ontology_id, session)
     return row, request.app.state.cache.indexes_for(row, _loader(request))
 
 
@@ -134,6 +140,20 @@ def overview(
     """Bounded whole-graph view."""
     _, ix = _owned(request, user, ontology_id, session)
     return respond(_camel(ix.overview()))
+
+
+@router.get("/{ontology_id}/source")
+def source(
+    ontology_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """The ontology's source text, verbatim (workspace text view)."""
+    row = _owned_row(user, ontology_id, session)
+    store: LocalUserDirStore = request.app.state.store
+    content = store.read(Path(row.storage_path)).decode("utf-8", errors="replace")
+    return respond({"filename": row.filename, "format": row.format, "content": content})
 
 
 @router.get("/{ontology_id}/search")
