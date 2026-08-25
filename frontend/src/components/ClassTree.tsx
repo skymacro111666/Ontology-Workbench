@@ -31,6 +31,26 @@ function matchesTerm(n: TreeRow, term: string): boolean {
   return Object.values(n.label ?? {}).some((v) => v.toLowerCase().includes(t))
 }
 
+/** Property-kind pill after the name: OP primary-tinted (matches the
+ *  canvas's object-property edge color), DP neutral slate (canvas draws
+ *  datatype edges in ink-3). Classes and untyped properties show none. */
+function KindPill({ type }: { type: string }) {
+  if (type !== 'ObjectProperty' && type !== 'DatatypeProperty') return null
+  const op = type === 'ObjectProperty'
+  return (
+    <span
+      className={cn(
+        'shrink-0 rounded-full border px-1.5 text-[10px] leading-4 font-semibold',
+        op
+          ? 'bg-primary-soft border-primary-border text-primary'
+          : 'bg-panel-2 border-line text-ink-2',
+      )}
+    >
+      {op ? 'OP' : 'DP'}
+    </span>
+  )
+}
+
 /** One row: chevron + curie + instance-count badge (solid primary pill,
  *  white with primary border when the row is selected). */
 function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
@@ -73,6 +93,7 @@ function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
       >
         {localName(node.data.curie)}
       </span>
+      <KindPill type={node.data.type} />
       {(node.data.instanceCount ?? 0) > 0 && (
         <span
           title="实例数"

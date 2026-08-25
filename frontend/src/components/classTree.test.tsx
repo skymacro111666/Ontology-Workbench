@@ -98,6 +98,9 @@ describe('ClassTree', () => {
     // The badge stands out with a solid primary background (canvas-consistent).
     expect(badge.className.split(/\s+/)).toContain('bg-primary')
     expect(badge.className.split(/\s+/)).toContain('text-primary-foreground')
+    // Class rows carry no property-kind pill.
+    expect(screen.queryByText('OP')).toBeNull()
+    expect(screen.queryByText('DP')).toBeNull()
     expect(fetchMock).toHaveBeenCalledWith('/api/ontologies/oid-1/tree', expect.anything())
   })
 
@@ -151,7 +154,7 @@ describe('ClassTree', () => {
     expect(screen.getByText('Thing')).toBeTruthy()
   })
 
-  it('lists properties on the __props__ tab', async () => {
+  it('lists properties on the __props__ tab, OP/DP kind pills after the name', async () => {
     const fetchMock = stubFetch()
     renderTree(fetchMock)
     expect(await screen.findByText('Thing')).toBeTruthy()
@@ -160,6 +163,9 @@ describe('ClassTree', () => {
 
     expect(await screen.findByText('hasTopping')).toBeTruthy()
     expect(screen.getByText('hasName')).toBeTruthy()
+    // Object vs datatype properties tag apart (OP primary, DP neutral).
+    expect(screen.getByText('OP').className).toContain('text-primary')
+    expect(screen.getByText('DP').className).toContain('text-ink-2')
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/ontologies/oid-1/tree?parent=__props__',
       expect.anything(),
