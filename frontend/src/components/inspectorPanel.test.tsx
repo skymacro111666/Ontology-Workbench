@@ -111,12 +111,35 @@ describe('InspectorPanel', () => {
     // Label badge: "value lang" pill (mockup §7.2).
     expect(screen.getByText('Dog en')).toBeTruthy()
     expect(screen.getByText('Dogs bark.')).toBeTruthy()
-    // Parents/children/backrefs render as chips; props mini table carries curie + ptype.
-    expect(screen.getByText('pizza:Animal')).toBeTruthy()
-    expect(screen.getByText('pizza:Corgi')).toBeTruthy()
+    // Parents/children/backrefs render as chips (label or local name — the
+    // full curie moved into the tooltip); props mini table carries curie + ptype.
+    expect(screen.getByText('Animal').title).toBe('pizza:Animal')
+    expect(screen.getByText('Corgi')).toBeTruthy()
     expect(screen.getByText('pizza:hasOwner')).toBeTruthy()
     expect(screen.getByText('ObjectProperty')).toBeTruthy()
-    expect(screen.getByText('pizza:Kennel')).toBeTruthy()
+    expect(screen.getByText('Kennel')).toBeTruthy()
+    // Section titles carry counts (competitor's Subclasses (3) pattern).
+    expect(screen.getByText('父类 (1)')).toBeTruthy()
+    expect(screen.getByText('直接子类 (1)')).toBeTruthy()
+    expect(screen.getByText('属性 (1)')).toBeTruthy()
+    expect(screen.getByText('被引用 (1)')).toBeTruthy()
+  })
+
+  it('groups backrefs by domain/range, dropping the subclass duplicates', async () => {
+    const ent = entity()
+    ent.referencedBy = [
+      ...ent.referencedBy, // pizza:Kennel — rdfs:domain
+      { eid: 'http://example.org/Leads', curie: 'pizza:leads', label: { en: 'Leads' }, relation: 'rdfs:range' },
+      { eid: 'http://example.org/Puppy', curie: 'pizza:Puppy', label: {}, relation: 'subClassOf' },
+    ]
+    renderPanel(stubFetch(ent))
+    expect(await screen.findByText('作为定义域 (1)')).toBeTruthy()
+    expect(screen.getByText('作为值域 (1)')).toBeTruthy()
+    // subClassOf backrefs duplicate 直接子类 — they drop out of 被引用.
+    expect(screen.queryByText('Puppy')).toBeNull()
+    expect(screen.getByText('被引用 (2)')).toBeTruthy()
+    // Labeled refs show the human name; the curie rides in the tooltip.
+    expect(screen.getByText('Leads').title).toBe('pizza:leads')
   })
 
   it('lists a class\'s direct instances below the backrefs (label + curie rows)', async () => {
@@ -140,14 +163,14 @@ describe('InspectorPanel', () => {
   it('shows 无 for a class without instances', async () => {
     renderPanel()
     expect(await screen.findByText('无')).toBeTruthy()
-    expect(screen.getByText('实例')).toBeTruthy()
+    expect(screen.getByText('实例 (0)')).toBeTruthy()
   })
 
   it('skips the instances section and fetch for non-class entities', async () => {
     const prop = { ...entity(), type: 'ObjectProperty' as const }
     const { fetchMock } = renderPanel(stubFetch(prop))
     expect(await screen.findByText('pizza:hasOwner')).toBeTruthy()
-    expect(screen.queryByText('实例')).toBeNull()
+    expect(screen.queryByText(/^实例/)).toBeNull()
     expect(fetchMock.mock.calls.map(([u]) => String(u)).some((u) => u.endsWith('/instances'))).toBe(
       false,
     )
@@ -162,10 +185,10 @@ describe('InspectorPanel', () => {
 
   it('chip click selects that entity (parent and backref)', async () => {
     renderPanel()
-    await screen.findByText('pizza:Animal')
-    await userEvent.click(screen.getByText('pizza:Animal'))
+    await screen.findByText('Animal')
+    await userEvent.click(screen.getByText('Animal'))
     expect(useBrowseStore.getState().selectedEid).toBe(PARENT)
-    await userEvent.click(screen.getByText('pizza:Kennel'))
+    await userEvent.click(screen.getByText('Kennel'))
     expect(useBrowseStore.getState().selectedEid).toBe('http://example.org/Kennel')
   })
 

@@ -2,19 +2,28 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { api } from '../api/client'
 import type { EntityIR, GNode, NodesEdges, PropRef, Ref, ReferencedRef } from '../api/types'
+import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
+import { cn } from '@/lib/utils'
 
-/** Clickable entity chip (mockup linklist): soft primary pill, mono curie;
- *  selecting navigates the whole workspace along. */
-function Chip({ eid, curie }: Ref) {
+/** Clickable entity chip (mockup linklist): soft primary pill; the human
+ *  label when present, the local curie name otherwise — the full curie
+ *  rides along in the tooltip. Selecting navigates the workspace along. */
+function Chip({ eid, curie, label }: Ref) {
   const setSelected = useBrowseStore((s) => s.setSelected)
+  const human = Object.values(label ?? {})[0]
   return (
     <button
       type="button"
+      title={curie}
       onClick={() => setSelected(eid)}
-      className="bg-primary-soft border-primary-border text-primary hover:bg-panel rounded-ctl font-mono text-xs border px-2 py-0.5 transition-colors break-all"
+      className={cn(
+        'bg-primary-soft border-primary-border text-primary hover:bg-panel rounded-ctl border px-2 py-0.5 text-xs transition-colors',
+        human ? '' : 'font-mono',
+        'break-all',
+      )}
     >
-      {curie}
+      {human ?? localName(curie)}
     </button>
   )
 }
@@ -54,16 +63,35 @@ function MiniProps({ rows }: { rows: PropRef[] }) {
   )
 }
 
-/** Backref chips: who mentions this entity (relation kept as the title). */
+/** Domain/range backrefs — the ones 被引用 groups; subClassOf backrefs
+ *  duplicate 直接子类 above, so they drop out of the section entirely. */
+function dirRefs(refs: ReferencedRef[]): ReferencedRef[] {
+  return refs.filter((r) => r.relation !== 'subClassOf')
+}
+
+/** Backref chips grouped by relation direction (competitor's relationship
+ *  usage): properties/classes tied through rdfs:domain vs rdfs:range. */
 function BackRefChips({ refs }: { refs: ReferencedRef[] }) {
-  if (refs.length === 0) return <span className="text-ink-3 text-xs">无</span>
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {refs.map((r) => (
-        <span key={r.eid} title={r.relation}>
-          <Chip {...r} />
+  const domains = refs.filter((r) => r.relation === 'rdfs:domain')
+  const ranges = refs.filter((r) => r.relation === 'rdfs:range')
+  if (domains.length + ranges.length === 0) return <span className="text-ink-3 text-xs">无</span>
+  const group = (title: string, list: ReferencedRef[]) =>
+    list.length > 0 && (
+      <div className="flex flex-col gap-1.5">
+        <span className="text-ink-3 text-[11px]">
+          {title} ({list.length})
         </span>
-      ))}
+        <div className="flex flex-wrap gap-1.5">
+          {list.map((r) => (
+            <Chip key={r.eid} {...r} />
+          ))}
+        </div>
+      </div>
+    )
+  return (
+    <div className="flex flex-col gap-2">
+      {group('作为定义域', domains)}
+      {group('作为值域', ranges)}
     </div>
   )
 }
@@ -88,10 +116,21 @@ function InstanceRows({ nodes }: { nodes: GNode[] }) {
   )
 }
 
-function Section({ label, children }: { label: string; children: ReactNode }) {
+function Section({
+  label,
+  count,
+  children,
+}: {
+  label: string
+  count?: number
+  children: ReactNode
+}) {
   return (
     <section className="flex flex-col gap-1.5">
-      <span className="microlabel">{label}</span>
+      <span className="microlabel">
+        {label}
+        {count !== undefined && ` (${count})`}
+      </span>
       {children}
     </section>
   )
@@ -176,20 +215,20 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
         )}
       </div>
 
-      <Section label="父类">
+      <Section label="父类" count={ent.parents.length}>
         <ChipList refs={ent.parents} />
       </Section>
-      <Section label="直接子类">
+      <Section label="直接子类" count={ent.children.length}>
         <ChipList refs={ent.children} />
       </Section>
-      <Section label="属性">
+      <Section label="属性" count={ent.properties.length}>
         <MiniProps rows={ent.properties} />
       </Section>
-      <Section label="被引用">
+      <Section label="被引用" count={dirRefs(ent.referencedBy).length}>
         <BackRefChips refs={ent.referencedBy} />
       </Section>
       {ent.type === 'Class' && (
-        <Section label="实例">
+        <Section label="实例" count={insts?.nodes.length}>
           {instsError ? (
             <span className="text-ink-3 text-xs">加载失败</span>
           ) : insts ? (

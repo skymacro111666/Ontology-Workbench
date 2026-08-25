@@ -145,7 +145,7 @@ describe('Browse workspace (overview-only)', () => {
     expect(screen.getByRole('button', { name: '属性' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '命名空间' })).toBeTruthy()
     // Zone 2: whole-ontology canvas nodes (Animal also chips in the inspector).
-    expect(screen.getAllByText('pizza:Animal').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Animal').length).toBeGreaterThanOrEqual(1)
     // Zone 3: resident inspector shows the selected entity's URI block.
     expect(screen.getByText(EID).closest('pre')).toBeTruthy()
     // Label badge: "value lang" pill (mockup §7.2).
