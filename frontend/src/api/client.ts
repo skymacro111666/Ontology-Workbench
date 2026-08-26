@@ -74,6 +74,12 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     }),
+  put: <T>(url: string, body?: unknown) =>
+    request<T>(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
   del: <T>(url: string) => request<T>(url, { method: 'DELETE' }),
   upload: async <T>(file: File) => {
     const form = new FormData()
