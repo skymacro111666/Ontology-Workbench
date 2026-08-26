@@ -31,11 +31,11 @@ def upgrade() -> None:
         sa.Column(
             "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False
         ),
-        sa.PrimaryKeyConstraint("ontology_id", name=sa.text("pk_ontology_layouts")),
+        sa.PrimaryKeyConstraint("ontology_id", name=op.f("pk_ontology_layouts")),
         sa.ForeignKeyConstraint(
-            "ontology_id",
-            "ontologies.id",
-            name=sa.text("fk_ontology_layouts_ontology_id_ontologies"),
+            ["ontology_id"],
+            ["ontologies.id"],
+            name=op.f("fk_ontology_layouts_ontology_id_ontologies"),
             ondelete="CASCADE",
         ),
     )
