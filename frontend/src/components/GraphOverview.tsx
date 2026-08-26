@@ -1,9 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
 import type { NodesEdges } from '../api/types'
 import { useBrowseStore } from '../stores/browseStore'
 import GraphView, { type GraphViewNode } from './GraphView'
+import type { Pt } from './layoutPositions'
 import { Button } from '@/components/ui/button'
 
 /** Whole-ontology overview canvas — the workspace's single content view;
@@ -19,11 +21,36 @@ export default function GraphOverview({
   focus?: string | null
 }) {
   const reveal = useBrowseStore((s) => s.reveal)
+  const queryClient = useQueryClient()
   const { data, isError, error, refetch } = useQuery({
     queryKey: ['overview', oid],
     queryFn: () => api.get<NodesEdges>(`/api/ontologies/${oid}/overview`),
     retry: false,
   })
+  /** Saved canvas positions gate the mount: rendering before they arrive
+   *  would auto-layout first and then never rebuild onto the saved spots. */
+  const { data: layoutData, isPending: layoutPending } = useQuery({
+    queryKey: ['layout', oid],
+    queryFn: () => api.get<{ positions: Record<string, Pt> }>(`/api/ontologies/${oid}/layout`),
+    retry: false,
+  })
+  const saveLayout = useMutation({
+    mutationFn: (positions: Record<string, Pt>) =>
+      api.put(`/api/ontologies/${oid}/layout`, { positions }),
+    onError: () => toast.error('布局保存失败，稍后自动重试拖动即可'),
+  })
+  /** Remount nonce: bumping after 重排 forces GraphView back to the auto
+   *  pipeline with a clean positionsRef. */
+  const [layoutKey, setLayoutKey] = useState(0)
+  const resetLayout = async () => {
+    try {
+      await api.del(`/api/ontologies/${oid}/layout`)
+    } catch {
+      // Reset is best-effort: an already-empty row is fine.
+    }
+    queryClient.setQueryData(['layout', oid], { positions: {} })
+    setLayoutKey((k) => k + 1)
+  }
 
   /** Revealed instances per class eid (badge toggle), null while loading. */
   const [revealed, setRevealed] = useState<Record<string, NodesEdges | null>>({})
@@ -82,7 +109,7 @@ export default function GraphOverview({
       </div>
     )
   }
-  if (!data) {
+  if (!data || layoutPending) {
     return <div className="text-ink-3 py-16 text-center text-sm">加载中…</div>
   }
 
@@ -98,12 +125,16 @@ export default function GraphOverview({
       )}
       <div className="min-h-0 flex-1">
         <GraphView
+          key={layoutKey}
           nodes={nodes}
           edges={edges}
           focusId={focus ?? undefined}
           onSelect={reveal}
           onBadgeClick={(eid) => void toggleInstances(eid)}
           defaultKinds={{ classes: true, objectProps: false, dataProps: false }}
+          savedPositions={layoutData?.positions}
+          onLayoutChange={(positions) => saveLayout.mutate(positions)}
+          onResetLayout={() => void resetLayout()}
         />
       </div>
     </div>

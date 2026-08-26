@@ -14,6 +14,9 @@ import { vi } from 'vitest'
 export class MockGraph {
   options: Record<string, unknown>
   handlers: Record<string, (e: unknown) => void> = {}
+  /** What getNodeData() returns when set (layout/drag results); falls back
+   *  to the constructor data (which carries no coordinates in jsdom). */
+  nodeData: { id: string; style?: Record<string, unknown> }[] = []
   render = vi.fn(async () => {})
   draw = vi.fn(async () => {})
   fitView = vi.fn(async () => {})
@@ -23,6 +26,11 @@ export class MockGraph {
   setData = vi.fn()
   updateEdgeData = vi.fn()
   destroy = vi.fn()
+  getNodeData = vi.fn(function (this: MockGraph) {
+    return this.nodeData.length
+      ? this.nodeData
+      : ((this.options.data as { nodes?: unknown[] })?.nodes ?? [])
+  })
   /** Every instance ever built in this test file (reset via `resetG6()`). */
   static instances: MockGraph[] = []
   constructor(options: Record<string, unknown>) {

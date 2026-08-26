@@ -3,6 +3,7 @@ import { Graph } from '@antv/g6'
 import type { EdgeData, GraphData, IPointerEvent, NodeData } from '@antv/g6'
 import type { GEdge, GNode } from '../api/types'
 import { localName } from '../lib/localName'
+import { assignFallbackPositions, type Pt } from './layoutPositions'
 import { useTheme } from '../theme/ThemeProvider'
 import { Toggle } from '@/components/ui/toggle'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -269,6 +270,9 @@ export default function GraphView({
   showLabels: showLabelsProp,
   onShowLabelsChange,
   defaultKinds: defaultKindsProp,
+  savedPositions,
+  onLayoutChange,
+  onResetLayout,
 }: {
   nodes: GraphViewNode[]
   edges: GEdge[]
@@ -286,6 +290,13 @@ export default function GraphView({
   /** Controlled edge-label switch; pass with onShowLabelsChange. */
   showLabels?: boolean
   onShowLabelsChange?: (v: boolean) => void
+  /** Saved canvas positions (GET /layout); non-empty switches the canvas
+   *  from the auto pipeline to explicit coordinates. */
+  savedPositions?: Record<string, Pt>
+  /** Debounced whole-map report after drags / layout captures. */
+  onLayoutChange?: (positions: Record<string, Pt>) => void
+  /** 重排 handler — resets to the automatic layout (DELETE /layout). */
+  onResetLayout?: () => void
 }) {
   const resolved = useTheme().resolved
   const [labelsFallback, setLabelsFallback] = useState(true)
@@ -297,6 +308,10 @@ export default function GraphView({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const graphRef = useRef<Graph | null>(null)
+  /** Authoritative node positions this mount knows about: seeded from
+   *  savedPositions, backfilled from the layout engine, updated by drags. */
+  const positionsRef = useRef<Record<string, Pt>>({})
+  const saveTimerRef = useRef<number | undefined>(undefined)
   // onSelect through a ref so the build effect never re-runs for a new callback.
   const onSelectRef = useRef(onSelect)
   useEffect(() => {
@@ -306,12 +321,30 @@ export default function GraphView({
   useEffect(() => {
     onBadgeClickRef.current = onBadgeClick
   })
+  const onLayoutChangeRef = useRef(onLayoutChange)
+  useEffect(() => {
+    onLayoutChangeRef.current = onLayoutChange
+  })
   // Latest state for the build effect (its deps are narrower than the state).
   // Updated in a render-following effect declared before everything else.
   const stateRef = useRef({ nodes, edges, showLabels, kinds, focusId })
   useEffect(() => {
     stateRef.current = { nodes, edges, showLabels, kinds, focusId }
   })
+
+  /** Read the engine's current coordinates into positionsRef (after a
+   *  layout pass or a drag) and schedule the debounced whole-map report. */
+  const captureAndSchedule = (graph: Graph) => {
+    for (const nd of graph.getNodeData() as { id: string; style?: { x?: number; y?: number } }[]) {
+      const { x, y } = nd.style ?? {}
+      if (typeof x === 'number' && typeof y === 'number') positionsRef.current[nd.id] = { x, y }
+    }
+    if (!onLayoutChangeRef.current) return
+    window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = window.setTimeout(() => {
+      onLayoutChangeRef.current?.({ ...positionsRef.current })
+    }, 800)
+  }
 
   /** (Re)build the graph on data or theme change. The class toggle is
    *  idempotent with ThemeProvider's own and guards first-paint ordering. */
@@ -321,14 +354,32 @@ export default function GraphView({
     document.documentElement.classList.toggle('dark', resolved === 'dark')
     const t = readCanvasTokens()
     const snap = stateRef.current
+    // Saved positions switch the canvas off the auto pipeline: every node
+    // needs an explicit spot, unvisited ones get deterministic fallbacks.
+    const seeded: Record<string, Pt> = savedPositions ?? {}
+    const useSaved = Object.keys(seeded).length > 0
+    if (useSaved) {
+      positionsRef.current = assignFallbackPositions(snap.nodes, snap.edges, seeded)
+    } else {
+      positionsRef.current = {}
+    }
+    const data = buildData(snap.nodes, snap.edges, snap.kinds, snap.showLabels, t)
+    if (useSaved) {
+      for (const nd of data.nodes ?? []) {
+        const p = positionsRef.current[nd.id]
+        if (p) nd.style = { ...nd.style, x: p.x, y: p.y }
+      }
+    }
     const graph = new Graph({
       container: el,
       autoResize: true,
       animation: false,
       theme: resolved,
       padding: [40, 40, 40, 40],
-      data: buildData(snap.nodes, snap.edges, snap.kinds, snap.showLabels, t),
-      layout: LAYOUT,
+      data,
+      // `false` (skip layout, use data x/y) is valid at runtime but missing
+      // from G6's LayoutOptions type — see render()'s !options.layout branch.
+      layout: (useSaved ? false : LAYOUT) as unknown as typeof LAYOUT,
       node: { type: (d: NodeData) => (d.data?.kind === 'instance' ? 'circle' : 'rect') },
       edge: { type: 'polyline' },
       behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element'],
@@ -345,17 +396,33 @@ export default function GraphView({
       else onSelectRef.current?.(id)
     })
 
+    // A finished drag persists the whole map (debounced).
+    graph.on('node:dragend', () => captureAndSchedule(graph))
+
     void graph.render().then(() => {
+      if (!useSaved) {
+        // Auto pipeline: capture what dagre/rank-wrap computed so a later
+        // drag saves the full map, not just the dragged node.
+        for (const nd of graph.getNodeData() as {
+          id: string
+          style?: { x?: number; y?: number }
+        }[]) {
+          const { x, y } = nd.style ?? {}
+          if (typeof x === 'number' && typeof y === 'number')
+            positionsRef.current[nd.id] = { x, y }
+        }
+      }
       if (snap.focusId) void graph.focusElement(snap.focusId)
       else void graph.fitView()
       setZoomPct(Math.round(graph.getZoom() * 100))
     })
 
     return () => {
+      window.clearTimeout(saveTimerRef.current)
       graph.destroy()
       graphRef.current = null
     }
-  }, [nodes, edges, resolved])
+  }, [nodes, edges, resolved, savedPositions])
 
   /** Edge-label toggle without rebuilding (keeps dragged positions). */
   useEffect(() => {
@@ -367,12 +434,24 @@ export default function GraphView({
     void g.draw()
   }, [showLabels])
 
-  /** Kind filter via setData (dagre is deterministic, so the view is stable). */
+  /** Kind filter via setData. In saved mode the newly visible nodes need
+   *  positions too (deterministic fallbacks); in auto mode dagre reruns. */
   useEffect(() => {
     const g = graphRef.current
     if (!g) return
     const snap = stateRef.current
-    g.setData(buildData(snap.nodes, snap.edges, kinds, snap.showLabels, readCanvasTokens()))
+    const seeded = positionsRef.current
+    const useSaved = Object.keys(seeded).length > 0
+    const data = buildData(snap.nodes, snap.edges, kinds, snap.showLabels, readCanvasTokens())
+    if (useSaved) {
+      const full = assignFallbackPositions(snap.nodes, snap.edges, seeded)
+      positionsRef.current = full
+      for (const nd of data.nodes ?? []) {
+        const p = full[nd.id]
+        if (p) nd.style = { ...nd.style, x: p.x, y: p.y }
+      }
+    }
+    g.setData(data)
     void g.render()
   }, [kinds])
 
@@ -418,6 +497,11 @@ export default function GraphView({
           <button type="button" className={ctlBtn} onClick={() => void fit()}>
             适配
           </button>
+          {onResetLayout && (
+            <button type="button" className={ctlBtn} onClick={onResetLayout}>
+              重排
+            </button>
+          )}
         </div>
       )}
 

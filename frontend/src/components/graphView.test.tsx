@@ -329,3 +329,52 @@ describe('toG6Nodes', () => {
     expect(inst.style.radius).toBeUndefined()
   })
 })
+
+describe('GraphView saved layout', () => {
+  it('disables the auto pipeline and injects coordinates when positions are saved', () => {
+    draw({ savedPositions: { a: { x: 10, y: 20 }, b: { x: 30, y: 40 } } })
+    const g = lastG6()!
+    expect(g.options.layout).toBe(false)
+    const { nodes } = lastData()
+    expect(nodes.find((n) => n.id === 'a')?.style.x).toBe(10)
+    expect(nodes.find((n) => n.id === 'b')?.style.y).toBe(40)
+    // Unsaved nodes get deterministic fallbacks: c (child of a) beside a.
+    expect(nodes.find((n) => n.id === 'c')?.style).toMatchObject({ x: 250, y: 20 })
+  })
+
+  it('keeps the layout pipeline and injects no coordinates when nothing is saved', () => {
+    draw()
+    expect(Array.isArray(lastG6()!.options.layout)).toBe(true)
+    expect(lastData().nodes.find((n) => n.id === 'a')?.style.x).toBeUndefined()
+  })
+
+  it('debounces drag-end into a whole-map onLayoutChange', () => {
+    vi.useFakeTimers()
+    try {
+      const onLayoutChange = vi.fn()
+      draw({ onLayoutChange })
+      const g = lastG6()!
+      // Simulate the layout engine having placed nodes (real G6 does this).
+      g.nodeData = NODES.map((n, i) => ({ id: n.id, style: { x: i * 100, y: 50 } }))
+      g.handlers['node:dragend']({})
+      expect(onLayoutChange).not.toHaveBeenCalled()
+      vi.advanceTimersByTime(800)
+      expect(onLayoutChange).toHaveBeenCalledTimes(1)
+      const arg = onLayoutChange.mock.lastCall?.[0] as Record<string, { x: number }>
+      expect(Object.keys(arg).sort()).toEqual(['a', 'b', 'c', 'd', 'i1', 'p'])
+      expect(arg.a).toEqual({ x: 0, y: 50 })
+      expect(arg.p).toEqual({ x: 300, y: 50 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('renders the 重排 escape hatch only when onResetLayout is wired', async () => {
+    draw()
+    expect(screen.queryByText('重排')).toBeNull()
+    const onResetLayout = vi.fn()
+    draw({ onResetLayout })
+    await userEvent.click(screen.getByText('重排'))
+    expect(onResetLayout).toHaveBeenCalledTimes(1)
+  })
+})

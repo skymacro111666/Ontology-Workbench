@@ -137,7 +137,8 @@ describe('Browse workspace (overview-only)', () => {
   it('renders all four zones: tree tabs, canvas, resident inspector, statusbar', async () => {
     useBrowseStore.setState({ selectedEid: EID })
     renderBrowse(stubFetch())
-    expect(await screen.findAllByText('pizza:Dog')).toBeTruthy()
+    // Inspector title shows the bare local name (curie in its tooltip).
+    expect(await screen.findAllByText('Dog')).toBeTruthy()
 
     // Zone 1: class-tree pill tabs (canvas filter also has a 类 toggle —
     // the sidebar tab is the one with the 属性 sibling tab).
