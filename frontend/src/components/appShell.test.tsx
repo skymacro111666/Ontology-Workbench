@@ -21,7 +21,13 @@ vi.mock('../api/client', () => ({
 // the shared uiStore's opened dialog) would leak into any later test.
 afterEach(() => {
   cleanup()
-  useUiStore.setState({ browseView: 'graph', importOpen: false })
+  useUiStore.setState({
+    browseView: 'graph',
+    importOpen: false,
+    sourceDirty: false,
+    pendingView: null,
+    sourceSaveFn: null,
+  })
 })
 
 it('renders nav, opens import dialog, logs out', async () => {
@@ -117,4 +123,50 @@ it('workspace topbar switches the browse view mode through the store', async () 
 
   await userEvent.click(graph)
   expect(useUiStore.getState().browseView).toBe('graph')
+})
+
+it('guards switching away from dirty text view', async () => {
+  const saveFn = vi.fn(async () => true)
+  useUiStore.setState({
+    browseView: 'text',
+    sourceDirty: true,
+    sourceSaveFn: saveFn,
+    pendingView: null,
+  })
+  shell('/browse/oid-1')
+
+  // Cancel keeps the text view.
+  await userEvent.click(screen.getByRole('radio', { name: /图形/ }))
+  expect(await screen.findByRole('alertdialog')).toBeTruthy()
+  await userEvent.click(screen.getByRole('button', { name: '取消' }))
+  expect(useUiStore.getState().browseView).toBe('text')
+  expect(useUiStore.getState().pendingView).toBeNull()
+
+  // Discard switches without saving.
+  await userEvent.click(screen.getByRole('radio', { name: /图形/ }))
+  await userEvent.click(await screen.findByRole('button', { name: '放弃并切换' }))
+  expect(useUiStore.getState().browseView).toBe('graph')
+
+  // Save-and-switch calls the registered save; success switches.
+  useUiStore.setState({ browseView: 'text' })
+  await userEvent.click(screen.getByRole('radio', { name: /图形/ }))
+  await userEvent.click(await screen.findByRole('button', { name: '保存并切换' }))
+  await waitFor(() => expect(useUiStore.getState().browseView).toBe('graph'))
+  expect(saveFn).toHaveBeenCalledTimes(1)
+
+  // A failing save keeps the text view (error surfaces in SourceView).
+  const failFn = vi.fn(async () => false)
+  useUiStore.setState({ browseView: 'text', sourceSaveFn: failFn })
+  await userEvent.click(screen.getByRole('radio', { name: /文本/ }))
+  await userEvent.click(screen.getByRole('radio', { name: /图形/ }))
+  await userEvent.click(await screen.findByRole('button', { name: '保存并切换' }))
+  await waitFor(() => expect(failFn).toHaveBeenCalledTimes(1))
+  expect(useUiStore.getState().browseView).toBe('text')
+})
+
+it('switches freely when the text view is clean', async () => {
+  shell('/browse/oid-1')
+  await userEvent.click(screen.getByRole('radio', { name: /文本/ }))
+  expect(useUiStore.getState().browseView).toBe('text')
+  expect(screen.queryByRole('alertdialog')).toBeNull()
 })

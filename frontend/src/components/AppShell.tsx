@@ -13,6 +13,16 @@ import OntologySwitcher from './OntologySwitcher'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -40,6 +50,17 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const setImportOpen = useUiStore((s) => s.setImportOpen)
   const browseView = useUiStore((s) => s.browseView)
   const setBrowseView = useUiStore((s) => s.setBrowseView)
+  const pendingView = useUiStore((s) => s.pendingView)
+  const setPendingView = useUiStore((s) => s.setPendingView)
+
+  /** View switch with a dirty-text guard: route through the dialog. */
+  const switchView = (v: BrowseView) => {
+    if (browseView === 'text' && v !== 'text' && useUiStore.getState().sourceDirty) {
+      setPendingView(v)
+      return
+    }
+    setBrowseView(v)
+  }
 
   /** Open an oid-scoped route; block with a toast until an ontology is chosen. */
   const openLast = (prefix: string) => {
@@ -143,7 +164,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               size="sm"
               value={browseView}
               onValueChange={(v) => {
-                if (v) setBrowseView(v as BrowseView)
+                if (v) switchView(v as BrowseView)
               }}
             >
               <ToggleGroupItem value="graph">
@@ -197,6 +218,46 @@ export default function AppShell({ children }: { children?: ReactNode }) {
 
       <ImportDialog />
       <CommandPalette />
+
+      {/* Dirty-text switch guard: save / discard the edits before leaving. */}
+      <AlertDialog
+        open={pendingView !== null}
+        onOpenChange={(o) => {
+          if (!o) setPendingView(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>未保存的修改</AlertDialogTitle>
+            <AlertDialogDescription>
+              文本视图有未保存的修改，切换前请选择保留方式。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingView) setBrowseView(pendingView)
+                setPendingView(null)
+              }}
+            >
+              放弃并切换
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => {
+                const target = pendingView
+                void (async () => {
+                  const saved = (await useUiStore.getState().sourceSaveFn?.()) ?? true
+                  setPendingView(null)
+                  if (saved && target) setBrowseView(target)
+                })()
+              }}
+            >
+              保存并切换
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
