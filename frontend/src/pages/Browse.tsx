@@ -4,6 +4,7 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import { ApiErr, api } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import ClassTree from '../components/ClassTree'
+import EntityDialogs from '../components/EntityDialogs'
 import GraphOverview from '../components/GraphOverview'
 import InspectorPanel from '../components/InspectorPanel'
 import SourceView from '../components/SourceView'
@@ -105,6 +106,9 @@ export default function Browse() {
           {meta.parseMs != null ? `解析 OK · ${formatParseMs(meta.parseMs)}` : '解析 OK'}
         </span>
       </footer>
+
+      {/* A2 canvas-editing dialogs (right-click menu opens one). */}
+      <EntityDialogs oid={oid} />
     </div>
   )
 }

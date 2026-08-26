@@ -8,6 +8,7 @@ beforeEach(() => {
     sourceSaveFn: null,
     browseView: 'graph',
     importOpen: false,
+    entityDialog: null,
   })
 })
 
@@ -25,5 +26,17 @@ describe('uiStore source-editing fields', () => {
     await expect(useUiStore.getState().sourceSaveFn?.()).resolves.toBe(true)
     useUiStore.getState().registerSourceSave(null)
     expect(useUiStore.getState().sourceSaveFn).toBeNull()
+  })
+})
+
+describe('uiStore entity-dialog state (A2)', () => {
+  it('opens a dialog by mode and closes with null', () => {
+    useUiStore.getState().setEntityDialog({ mode: 'subclass', parent: 'http://ex/Dog' })
+    expect(useUiStore.getState().entityDialog).toEqual({
+      mode: 'subclass',
+      parent: 'http://ex/Dog',
+    })
+    useUiStore.getState().setEntityDialog(null)
+    expect(useUiStore.getState().entityDialog).toBeNull()
   })
 })

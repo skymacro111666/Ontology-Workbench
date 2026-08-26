@@ -3,10 +3,85 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
 import type { NodesEdges } from '../api/types'
+import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
+import { useUiStore } from '../stores/uiStore'
+import GraphContextMenu, { type MenuItem } from './GraphContextMenu'
 import GraphView, { type GraphViewNode } from './GraphView'
 import type { Pt } from './layoutPositions'
 import { Button } from '@/components/ui/button'
+
+/** Menu rows for a right-click report: blank area offers creation, a class
+ *  node additionally offers subclass/edit/delete, property nodes the
+ *  property edit set (competitor parity, spec §4). */
+function menuItems(
+  menu: { targetId?: string; kind?: string; curie?: string },
+  setEntityDialog: (s: {
+    mode: 'class' | 'subclass' | 'objectProperty' | 'dataProperty' | 'editClass' | 'editProperty' | 'delete'
+    parent?: string
+    eid?: string
+  }) => void,
+  _close: () => void,
+): MenuItem[] {
+  if (!menu.targetId) {
+    return [
+      { key: 'class', label: '＋ 新建类', onSelect: () => setEntityDialog({ mode: 'class' }) },
+      {
+        key: 'objectProperty',
+        label: '＋ 新建对象属性',
+        onSelect: () => setEntityDialog({ mode: 'objectProperty' }),
+      },
+      {
+        key: 'dataProperty',
+        label: '＋ 新建数据属性',
+        onSelect: () => setEntityDialog({ mode: 'dataProperty' }),
+      },
+    ]
+  }
+  if (menu.kind === 'property') {
+    return [
+      {
+        key: 'edit',
+        label: '编辑属性',
+        onSelect: () => setEntityDialog({ mode: 'editProperty', eid: menu.targetId }),
+      },
+      {
+        key: 'delete',
+        label: `删除 ${menu.curie ? localName(menu.curie) : ''}`,
+        danger: true,
+        onSelect: () => setEntityDialog({ mode: 'delete', eid: menu.targetId }),
+      },
+    ]
+  }
+  return [
+    {
+      key: 'subclass',
+      label: '新建子类',
+      onSelect: () => setEntityDialog({ mode: 'subclass', parent: menu.targetId }),
+    },
+    {
+      key: 'objectProperty',
+      label: '新建对象属性（domain 预填）',
+      onSelect: () => setEntityDialog({ mode: 'objectProperty', parent: menu.targetId }),
+    },
+    {
+      key: 'dataProperty',
+      label: '新建数据属性（domain 预填）',
+      onSelect: () => setEntityDialog({ mode: 'dataProperty', parent: menu.targetId }),
+    },
+    {
+      key: 'edit',
+      label: '编辑类',
+      onSelect: () => setEntityDialog({ mode: 'editClass', eid: menu.targetId }),
+    },
+    {
+      key: 'delete',
+      label: `删除 ${menu.curie ? localName(menu.curie) : ''}`,
+      danger: true,
+      onSelect: () => setEntityDialog({ mode: 'delete', eid: menu.targetId }),
+    },
+  ]
+}
 
 /** Whole-ontology overview canvas — the workspace's single content view;
  *  degrades to the top 3 levels past 5000 entities (spec §7.5). Label switch
@@ -21,7 +96,16 @@ export default function GraphOverview({
   focus?: string | null
 }) {
   const reveal = useBrowseStore((s) => s.reveal)
+  const setEntityDialog = useUiStore((s) => s.setEntityDialog)
   const queryClient = useQueryClient()
+  /** Open canvas context menu: blank-area or node right-click report. */
+  const [menu, setMenu] = useState<{
+    x: number
+    y: number
+    targetId?: string
+    kind?: string
+    curie?: string
+  } | null>(null)
   const { data, isError, error, refetch } = useQuery({
     queryKey: ['overview', oid],
     queryFn: () => api.get<NodesEdges>(`/api/ontologies/${oid}/overview`),
@@ -123,7 +207,7 @@ export default function GraphOverview({
           本体超过 5000 实体，仅显示顶层 3 层（共 {data.totalCount}）
         </div>
       )}
-      <div className="min-h-0 flex-1">
+      <div className="relative min-h-0 flex-1">
         <GraphView
           key={layoutKey}
           nodes={nodes}
@@ -135,7 +219,16 @@ export default function GraphOverview({
           savedPositions={layoutData?.positions}
           onLayoutChange={(positions) => saveLayout.mutate(positions)}
           onResetLayout={() => void resetLayout()}
+          onContextMenu={(info) => setMenu(info)}
         />
+        {menu && (
+          <GraphContextMenu
+            x={menu.x}
+            y={menu.y}
+            onClose={() => setMenu(null)}
+            items={menuItems(menu, setEntityDialog, () => setMenu(null))}
+          />
+        )}
       </div>
     </div>
   )

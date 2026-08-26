@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Envelope, NodesEdges } from '../api/types'
+import { useUiStore } from '../stores/uiStore'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { lastG6, resetG6 } from '../test/g6Mock'
 import GraphOverview from './GraphOverview'
@@ -64,6 +65,7 @@ function draw(fetchMock: ReturnType<typeof stubFetch>) {
 beforeEach(() => {
   resetG6()
   savedBody = undefined
+  useUiStore.setState({ entityDialog: null })
 })
 
 afterEach(() => {
@@ -111,6 +113,31 @@ describe('GraphOverview layout persistence', () => {
     expect(fetchMock.mock.calls.some(([u, i]) => String(u).endsWith('/layout') && i?.method === 'DELETE')).toBe(
       true,
     )
+  })
+})
+
+describe('GraphOverview context menu', () => {
+  it('opens create menu on blank right-click and routes 新建子类 to the store', async () => {
+    draw(stubFetch())
+    await waitForGraph()
+    const g = lastG6()!
+    g.handlers['canvas:contextmenu']({ client: { x: 10, y: 12 }, preventDefault: vi.fn() })
+    expect(await screen.findByRole('menu')).toBeTruthy()
+    expect(screen.getByText('＋ 新建类')).toBeTruthy()
+    expect(screen.getByText('＋ 新建对象属性')).toBeTruthy()
+
+    g.handlers['node:contextmenu']({
+      target: { id: 'a' },
+      originalTarget: null,
+      client: { x: 10, y: 12 },
+      preventDefault: vi.fn(),
+    })
+    await screen.findByText('新建子类')
+    await userEvent.click(screen.getByText('新建子类'))
+    expect(useUiStore.getState().entityDialog).toEqual({
+      mode: 'subclass',
+      parent: 'a',
+    })
   })
 })
 

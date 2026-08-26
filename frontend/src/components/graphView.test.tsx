@@ -378,3 +378,35 @@ describe('GraphView saved layout', () => {
     expect(onResetLayout).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('GraphView context menu reporting', () => {
+  it('reports node right-clicks with container-relative coordinates', () => {
+    const onContextMenu = vi.fn()
+    draw({ onContextMenu })
+    const g = lastG6()!
+    const preventDefault = vi.fn()
+    g.handlers['node:contextmenu']({
+      target: { id: 'b' },
+      originalTarget: null,
+      client: { x: 30, y: 40 },
+      preventDefault,
+    })
+    expect(preventDefault).toHaveBeenCalled()
+    expect(onContextMenu).toHaveBeenCalledWith(
+      expect.objectContaining({ targetId: 'b', kind: 'class', curie: 'ex:B' }),
+    )
+    const info = onContextMenu.mock.lastCall?.[0] as { x: number; y: number }
+    expect(typeof info.x).toBe('number')
+    expect(typeof info.y).toBe('number')
+  })
+
+  it('reports blank-canvas right-clicks without a target', () => {
+    const onContextMenu = vi.fn()
+    draw({ onContextMenu })
+    const g = lastG6()!
+    g.handlers['canvas:contextmenu']({ client: { x: 5, y: 6 }, preventDefault: vi.fn() })
+    expect(onContextMenu).toHaveBeenCalledWith(
+      expect.objectContaining({ targetId: undefined }),
+    )
+  })
+})

@@ -273,6 +273,7 @@ export default function GraphView({
   savedPositions,
   onLayoutChange,
   onResetLayout,
+  onContextMenu,
 }: {
   nodes: GraphViewNode[]
   edges: GEdge[]
@@ -297,6 +298,14 @@ export default function GraphView({
   onLayoutChange?: (positions: Record<string, Pt>) => void
   /** 重排 handler — resets to the automatic layout (DELETE /layout). */
   onResetLayout?: () => void
+  /** Right-click report for the canvas context menu (blank or node). */
+  onContextMenu?: (info: {
+    x: number
+    y: number
+    targetId?: string
+    kind?: string
+    curie?: string
+  }) => void
 }) {
   const resolved = useTheme().resolved
   const [labelsFallback, setLabelsFallback] = useState(true)
@@ -324,6 +333,10 @@ export default function GraphView({
   const onLayoutChangeRef = useRef(onLayoutChange)
   useEffect(() => {
     onLayoutChangeRef.current = onLayoutChange
+  })
+  const onContextMenuRef = useRef(onContextMenu)
+  useEffect(() => {
+    onContextMenuRef.current = onContextMenu
   })
   // Latest state for the build effect (its deps are narrower than the state).
   // Updated in a render-following effect declared before everything else.
@@ -398,6 +411,35 @@ export default function GraphView({
 
     // A finished drag persists the whole map (debounced).
     graph.on('node:dragend', () => captureAndSchedule(graph))
+
+    // Right-click feeds the canvas context menu (blank vs node target).
+    const reportContextMenu = (e: unknown, targetId?: string) => {
+      const evt = e as {
+        client?: { x: number; y: number }
+        preventDefault?: () => void
+      }
+      evt.preventDefault?.()
+      const rect = containerRef.current?.getBoundingClientRect()
+      const byId = targetId ? snap.nodes.find((nd) => nd.id === targetId) : undefined
+      onContextMenuRef.current?.({
+        x: (evt.client?.x ?? 0) - (rect?.left ?? 0),
+        y: (evt.client?.y ?? 0) - (rect?.top ?? 0),
+        targetId: byId?.id,
+        kind: byId?.kind,
+        curie: byId?.curie,
+      })
+    }
+    graph.on('canvas:contextmenu', (e) => reportContextMenu(e))
+    graph.on('node:contextmenu', (e) => {
+      const evt = e as IPointerEvent & { originalTarget?: HitShape | null }
+      const id = evt.target ? (evt.target as unknown as { id: string }).id : undefined
+      // Badge hits are instance reveals, not entity menus.
+      if (!id || hitBadge(evt.originalTarget, evt.target)) {
+        evt.preventDefault?.()
+        return
+      }
+      reportContextMenu(e, id)
+    })
 
     void graph.render().then(() => {
       if (!useSaved) {

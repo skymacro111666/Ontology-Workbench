@@ -7,6 +7,24 @@ export type BrowseView = 'graph' | 'text'
  *  resolves true when the edit was saved, false when it failed. */
 export type SourceSaveFn = () => Promise<boolean>
 
+/** What the A2 entity dialogs are editing (canvas right-click opens one). */
+export type EntityDialogMode =
+  | 'class'
+  | 'subclass'
+  | 'objectProperty'
+  | 'dataProperty'
+  | 'editClass'
+  | 'editProperty'
+  | 'delete'
+
+export interface EntityDialogState {
+  mode: EntityDialogMode
+  /** Right-clicked class: pre-fills subclass parent / property domain. */
+  parent?: string
+  /** Entity IRI for the edit modes. */
+  eid?: string
+}
+
 /** Cross-component UI state (import dialog flag, workspace view mode). */
 export const useUiStore = create<{
   importOpen: boolean
@@ -19,6 +37,8 @@ export const useUiStore = create<{
   setPendingView: (view: BrowseView | null) => void
   sourceSaveFn: SourceSaveFn | null
   registerSourceSave: (fn: SourceSaveFn | null) => void
+  entityDialog: EntityDialogState | null
+  setEntityDialog: (s: EntityDialogState | null) => void
 }>((set) => ({
   importOpen: false,
   setImportOpen: (importOpen) => set({ importOpen }),
@@ -30,4 +50,6 @@ export const useUiStore = create<{
   setPendingView: (pendingView) => set({ pendingView }),
   sourceSaveFn: null,
   registerSourceSave: (sourceSaveFn) => set({ sourceSaveFn }),
+  entityDialog: null,
+  setEntityDialog: (entityDialog) => set({ entityDialog }),
 }))
