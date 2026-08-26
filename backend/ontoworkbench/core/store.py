@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 from uuid import UUID
 
@@ -23,7 +24,12 @@ class LocalUserDirStore:
         return self.root / str(user_id) / "ontologies" / str(ontology_id)
 
     def save(self, user_id: UUID, ontology_id: UUID, filename: str, data: bytes) -> Path:
-        """Write bytes under a fresh ontology dir; return final path."""
+        """Write bytes under a fresh ontology dir; return final path.
+
+        The write lands on a sibling .tmp first and is swapped in with
+        os.replace — same-directory rename, atomic on POSIX — so a crash
+        midway never leaves a half-written ontology file.
+        """
         if Path(filename).name != filename:
             raise CoreError(
                 "VALIDATION_ERROR",
@@ -33,7 +39,9 @@ class LocalUserDirStore:
         d = self._dir(user_id, ontology_id)
         d.mkdir(parents=True, exist_ok=True)
         p = d / filename
-        p.write_bytes(data)
+        tmp = p.with_name(filename + ".tmp")
+        tmp.write_bytes(data)
+        os.replace(tmp, p)
         return p
 
     def read(self, storage_path: Path) -> bytes:

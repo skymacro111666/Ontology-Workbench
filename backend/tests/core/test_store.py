@@ -40,3 +40,14 @@ def test_save_rejects_path_traversal(tmp_path) -> None:
         with pytest.raises(CoreError) as exc:
             store.save(uuid4(), uuid4(), bad, b"x")
         assert exc.value.code == "VALIDATION_ERROR"
+
+
+def test_save_overwrites_atomically(tmp_path) -> None:
+    """Re-saving the same oid+filename replaces content and leaves no tmp file."""
+    store = LocalUserDirStore(tmp_path)
+    uid, oid = uuid4(), uuid4()
+    first = store.save(uid, oid, "a.ttl", b"one")
+    second = store.save(uid, oid, "a.ttl", b"twelve")
+    assert first == second
+    assert first.read_bytes() == b"twelve"
+    assert [f.name for f in first.parent.iterdir()] == ["a.ttl"]
