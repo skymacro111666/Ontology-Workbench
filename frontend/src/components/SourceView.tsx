@@ -1,12 +1,15 @@
-import { useQuery } from '@tanstack/react-query'
-import { useEffect, useRef } from 'react'
-import { EditorState } from '@codemirror/state'
-import { EditorView, lineNumbers } from '@codemirror/view'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
+import { EditorState, Prec } from '@codemirror/state'
+import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language'
 import { xml } from '@codemirror/lang-xml'
 import { turtle } from '@codemirror/legacy-modes/mode/turtle'
 import { tags as t } from '@lezer/highlight'
 import { ApiErr, api } from '../api/client'
+import type { OntologyMeta } from '../api/types'
+import { useUiStore } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
 
 /** /source payload: the stored ontology file, verbatim. */
@@ -14,6 +17,7 @@ interface SourcePayload {
   filename: string
   format: string
   content: string
+  fileHash: string
 }
 
 /** Ontology format → editor language. Turtle/N3 share the Turtle grammar;
@@ -53,17 +57,61 @@ const editorHighlight = HighlightStyle.define([
   { tag: t.variableName, color: 'var(--color-ink)' },
 ])
 
-/** Read-only CodeMirror over the ontology source (workspace text view).
- *  Read-only now; the editor groundwork (line numbers, highlighting,
- *  viewport rendering) is what the future edit mode builds on. */
+/** Editable CodeMirror over the ontology source (workspace text view):
+ *  dirty = doc differs from the loaded baseline; saving PUTs the doc with
+ *  the baseline fileHash as the optimistic lock. */
 export default function SourceView({ oid }: { oid: string }) {
   const holderRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+  /** Loaded baseline: dirty === doc !== baseline. */
+  const baselineRef = useRef('')
+  /** fileHash the baseline was loaded under (PUT optimistic lock). */
+  const baseHashRef = useRef('')
+  /** Mirror of dirty for stable closures (keymap, registered save). */
+  const dirtyRef = useRef(false)
+  const [dirty, setDirty] = useState(false)
+  const setSourceDirty = useUiStore((s) => s.setSourceDirty)
+  const queryClient = useQueryClient()
   const { data, isError, error, refetch } = useQuery({
     queryKey: ['source', oid],
     queryFn: () => api.get<SourcePayload>(`/api/ontologies/${oid}/source`),
     retry: false,
   })
+
+  const markDirty = (d: boolean) => {
+    dirtyRef.current = d
+    setDirty(d)
+    setSourceDirty(d)
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: (content: string) =>
+      api.put<OntologyMeta>(`/api/ontologies/${oid}/source`, {
+        content,
+        baseFileHash: baseHashRef.current,
+      }),
+    onSuccess: (meta, content) => {
+      toast.success('已保存')
+      baselineRef.current = content
+      baseHashRef.current = meta.fileHash
+      markDirty(false)
+      void queryClient.invalidateQueries()
+    },
+  })
+
+  /** Single save path for button, Mod-s, and the switch-guard dialog. */
+  const save = async (): Promise<boolean> => {
+    const view = viewRef.current
+    if (!view || !dirtyRef.current || saveMutation.isPending) return false
+    try {
+      await saveMutation.mutateAsync(view.state.doc.toString())
+      return true
+    } catch {
+      return false // rendered by the error paths (Task 7)
+    }
+  }
+  const saveRef = useRef(save)
+  saveRef.current = save
 
   useEffect(() => {
     const el = holderRef.current
@@ -77,16 +125,30 @@ export default function SourceView({ oid }: { oid: string }) {
           lineNumbers(),
           editorTheme,
           syntaxHighlighting(editorHighlight),
-          // Wrap long lines at the .cm-content max-width cap instead of
-          // horizontal scrolling; CM's wrap mode also breaks unbroken runs
-          // (long IRIs) via overflow-wrap: anywhere.
           EditorView.lineWrapping,
-          EditorState.readOnly.of(true),
-          EditorView.editable.of(false),
+          Prec.highest(
+            keymap.of([
+              {
+                key: 'Mod-s',
+                preventDefault: true,
+                run: () => {
+                  void saveRef.current()
+                  return true
+                },
+              },
+            ]),
+          ),
+          EditorView.updateListener.of((u) => {
+            if (u.docChanged)
+              markDirty(u.state.doc.toString() !== baselineRef.current)
+          }),
           ...(language ? [language] : []),
         ],
       }),
     })
+    baselineRef.current = data.content
+    baseHashRef.current = data.fileHash
+    markDirty(false)
     viewRef.current = view
     return () => {
       view.destroy()
@@ -122,6 +184,21 @@ export default function SourceView({ oid }: { oid: string }) {
         <span className="border-line text-ink-2 rounded-ctl border px-1.5 py-0.5 text-[10px]">
           {data.format}
         </span>
+        {dirty && (
+          <>
+            <span className="text-amber-600 dark:text-amber-400" aria-live="polite">
+              ● 未保存
+            </span>
+            <Button
+              size="sm"
+              className="ml-auto h-6 px-2 text-xs"
+              disabled={saveMutation.isPending}
+              onClick={() => void saveRef.current()}
+            >
+              保存
+            </Button>
+          </>
+        )}
       </div>
       <div
         ref={holderRef}

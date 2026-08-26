@@ -26,3 +26,15 @@ class ResizeObserverStub implements ResizeObserver {
   disconnect(): void {}
 }
 globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
+
+// jsdom's Range has no geometry (no layout engine); CodeMirror's measure
+// pass reads getClientRects on ranges and would crash on it. Empty rects
+// let CM fall back to its built-in default metrics.
+if (!Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = function (): DOMRectList {
+    return [] as unknown as DOMRectList
+  }
+  Range.prototype.getBoundingClientRect = function (): DOMRect {
+    return new DOMRect(0, 0, 0, 0)
+  }
+}

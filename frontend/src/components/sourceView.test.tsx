@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Envelope } from '../api/types'
+import { useUiStore } from '../stores/uiStore'
 import SourceView, { languageFor } from './SourceView'
 
 /* CodeMirror 6 runs headless under jsdom (no layout needed for mount), so
@@ -29,11 +30,13 @@ const PAYLOAD = {
   filename: 'mini.ttl',
   format: 'turtle',
   content: '@prefix ex: <http://example.org/> .\nex:A a owl:Class .\n',
+  fileHash: 'hash-1',
 }
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  useUiStore.setState({ sourceDirty: false, sourceSaveFn: null, pendingView: null })
 })
 
 describe('languageFor', () => {
@@ -91,5 +94,50 @@ describe('SourceView', () => {
     fail = false
     await userEvent.click(screen.getByRole('button', { name: '重试' }))
     expect(await screen.findByText('mini.ttl')).toBeTruthy()
+  })
+
+  it('is editable and tracks dirtiness with a save affordance', async () => {
+    const fetchMock = vi.fn(async () => ok(PAYLOAD))
+    const { container } = renderView(fetchMock)
+    await screen.findByText('mini.ttl')
+    // Editable: CM content is a live editable region (no cm-readonly).
+    const content = container.querySelector('.cm-content') as HTMLElement
+    expect(content.getAttribute('contenteditable')).toBeTruthy()
+
+    await userEvent.click(content)
+    await userEvent.keyboard('ex:Extra a owl:Class .')
+    expect(screen.getByText('● 未保存')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy()
+  })
+
+  it('saves via PUT with content+baseFileHash, then clears dirt', async () => {
+    let putBody: { content: string; baseFileHash: string } | undefined
+    const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        putBody = JSON.parse(String(init.body))
+        return ok({ id: 'oid-1', fileHash: 'hash-2' })
+      }
+      return ok(PAYLOAD)
+    })
+    const { container } = renderView(fetchMock)
+    await screen.findByText('mini.ttl')
+    const content = container.querySelector('.cm-content') as HTMLElement
+    await userEvent.click(content)
+    // jsdom has no layout, so the click cannot place the caret by geometry
+    // (it collapses to the content start). Move it to the doc end — the
+    // browser equivalent of clicking after the last character.
+    document.getSelection()?.selectAllChildren(content)
+    document.getSelection()?.collapseToEnd()
+    await userEvent.keyboard('x')
+
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(putBody?.baseFileHash).toBe('hash-1'))
+    expect(putBody?.content.endsWith('x')).toBe(true)
+    // Dirt cleared + the invalidateQueries() refetch re-reads /source.
+    await waitFor(() => expect(screen.queryByText('● 未保存')).toBeNull())
+    const sourceGets = fetchMock.mock.calls.filter(
+      ([u, i]) => String(u).endsWith('/source') && !i?.method,
+    )
+    expect(sourceGets.length).toBeGreaterThanOrEqual(2)
   })
 })
