@@ -103,7 +103,11 @@ afterEach(() => {
 describe('InspectorPanel', () => {
   it('renders the compact summary: type badge, curie, URI, labels, chips, props, backrefs', async () => {
     renderPanel()
-    expect(await screen.findByText('pizza:Dog')).toBeTruthy()
+    // Title shows the bare local name; the full curie moves into the hover
+    // tooltip (same convention as the chips), the URI block keeps the eid.
+    const title = await screen.findByText('Dog')
+    expect(title.title).toBe('pizza:Dog')
+    expect(screen.queryByText('pizza:Dog')).toBeNull()
     // Type renders as an "OWL CLASS"-style uppercase pill (mockup).
     expect(screen.getByText('CLASS').className).toContain('rounded-full')
     // URI renders as a code block.
@@ -187,7 +191,7 @@ describe('InspectorPanel', () => {
   it('skips the instances section and fetch for non-class entities', async () => {
     const prop = { ...entity(), type: 'ObjectProperty' as const }
     const { fetchMock } = renderPanel(stubFetch(prop))
-    expect(await screen.findByText('pizza:Dog')).toBeTruthy()
+    expect(await screen.findByText('Dog')).toBeTruthy()
     expect(screen.queryByText(/^实例/)).toBeNull()
     expect(fetchMock.mock.calls.map(([u]) => String(u)).some((u) => u.endsWith('/instances'))).toBe(
       false,

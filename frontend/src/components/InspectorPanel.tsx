@@ -197,7 +197,9 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
             {ent.type.toUpperCase()}
           </span>
         </div>
-        <h3 className="text-primary font-mono text-sm font-bold break-all">{ent.curie}</h3>
+        <h3 className="text-primary font-mono text-sm font-bold break-all" title={ent.curie}>
+          {localName(ent.curie)}
+        </h3>
         <Section label="URI">
           <pre className="text-ink bg-panel-2 border-line rounded-ctl inline-block max-w-full border p-1.5 px-2 font-mono text-xs break-all whitespace-pre-wrap">
             {ent.eid}
