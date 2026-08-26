@@ -74,7 +74,7 @@ class SourceUpdate(CamelModel):
     base_file_hash: str
 
 
-def _title_of(graph, filename: str) -> str:
+def title_of(graph, filename: str) -> str:
     """dc:title of the owl:Ontology node, else the filename stem."""
     for ont in graph.subjects(RDF.type, OWL.Ontology):
         title = graph.value(ont, DCTERMS.title)
@@ -83,7 +83,7 @@ def _title_of(graph, filename: str) -> str:
     return filename.rsplit(".", 1)[0]
 
 
-def _meta(row: Ontology) -> dict[str, Any]:
+def meta_of(row: Ontology) -> dict[str, Any]:
     """Assemble the camelCase OntologyMeta payload for a row."""
     prefixes = (row.stats_json or {}).get("prefixes", {})
     parse_ms = (row.stats_json or {}).get("parse_ms")
@@ -147,7 +147,7 @@ def _import_bytes(
     row = repos.create(
         user.id,
         id=oid,
-        title=_title_of(graph, filename),
+        title=title_of(graph, filename),
         filename=filename,
         storage_path=str(path),
         format=fmt,
@@ -183,7 +183,7 @@ async def upload_ontology(
         raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
     filename = file.filename or "upload"
     row = _import_bytes(request, user, session, filename, data)
-    return respond(_meta(row))
+    return respond(meta_of(row))
 
 
 @router.get("/ontologies")
@@ -210,7 +210,7 @@ def get_meta(
     row = OntologyRepository(session).get_owned(user.id, oid) if oid else None
     if not row:
         raise ApiError(ErrorCode.NOT_FOUND, "No such ontology")
-    return respond(_meta(row))
+    return respond(meta_of(row))
 
 
 @router.put("/ontologies/{ontology_id}/source")
@@ -257,7 +257,7 @@ def replace_source(
     row = (
         repos.update(
             row.id,
-            title=_title_of(graph, row.filename),
+            title=title_of(graph, row.filename),
             class_count=ir.counts.class_count,
             property_count=ir.counts.property_count,
             axiom_count=ir.counts.axiom_count,
@@ -270,7 +270,7 @@ def replace_source(
     )  # update() of an owned row cannot miss; keep mypy happy
     cache: OntologyCache = request.app.state.cache
     cache.indexes_for(row, lambda r: build_indexes(ir))
-    return respond(_meta(row))
+    return respond(meta_of(row))
 
 
 @router.delete("/ontologies/{ontology_id}")
@@ -311,9 +311,9 @@ def import_sample(
     data = store.read(sample)
     existing = OntologyRepository(session).find_by_filename(user.id, sample.name)
     if existing:
-        return respond(_meta(existing))
+        return respond(meta_of(existing))
     row = _import_bytes(request, user, session, sample.name, data)
-    return respond(_meta(row))
+    return respond(meta_of(row))
 
 
 def _to_uuid(value: str) -> UUID:

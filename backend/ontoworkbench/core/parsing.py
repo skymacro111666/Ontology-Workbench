@@ -56,6 +56,14 @@ def parse_graph(data: bytes, fmt: str) -> rdflib.Graph:
     return g
 
 
+def serialize_graph(graph: rdflib.Graph, fmt: str) -> bytes:
+    """Serialize a Graph back to bytes in the stored format (A2 writes)."""
+    try:
+        return graph.serialize(format=_RDFFORMAT[fmt]).encode("utf-8")
+    except Exception as exc:
+        raise ParseError("PARSE_FAILED", f"Serialization error: {exc}") from exc
+
+
 def timed_parse(data: bytes, fmt: str) -> tuple[rdflib.Graph, float]:
     """parse_graph plus wall-clock duration in milliseconds (for meta)."""
     start = time.perf_counter()
