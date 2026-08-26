@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language'
+import { search, searchKeymap } from '@codemirror/search'
 import { xml } from '@codemirror/lang-xml'
 import { turtle } from '@codemirror/legacy-modes/mode/turtle'
 import { tags as t } from '@lezer/highlight'
@@ -53,6 +54,56 @@ const editorTheme = EditorView.theme({
     color: 'var(--color-ink-3)',
     border: 'none',
     borderRight: '1px solid var(--color-line)',
+  },
+  /* Search panel (official extension) themed with project tokens so it
+     follows the light/dark switch like the rest of the editor. */
+  '& .cm-panels': {
+    backgroundColor: 'var(--color-panel)',
+    color: 'var(--color-ink-2)',
+    borderColor: 'var(--color-line)',
+  },
+  '.cm-panel.cm-search': {
+    fontFamily: 'var(--font-sans)',
+    fontSize: '12px',
+    padding: '6px 8px',
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: '4px 6px',
+  },
+  '.cm-panel.cm-search .cm-textfield': {
+    fontFamily: 'var(--font-mono)',
+    fontSize: '12px',
+    padding: '2px 6px',
+    width: '11em',
+    border: '1px solid var(--color-line)',
+    borderRadius: 'var(--radius-ctl)',
+    backgroundColor: 'var(--color-background)',
+    color: 'var(--color-ink)',
+  },
+  '.cm-panel.cm-search .cm-button': {
+    fontFamily: 'var(--font-sans)',
+    fontSize: '11px',
+    padding: '2px 8px',
+    cursor: 'pointer',
+    border: '1px solid var(--color-line)',
+    borderRadius: 'var(--radius-ctl)',
+    backgroundColor: 'var(--color-panel-2)',
+    color: 'var(--color-ink-2)',
+  },
+  '.cm-panel.cm-search label': {
+    color: 'var(--color-ink-3)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+  },
+  '.cm-searchMatch': {
+    backgroundColor: 'var(--color-primary-soft)',
+    outline: '1px solid var(--color-primary-border)',
+  },
+  '.cm-searchMatch-selected': {
+    backgroundColor: 'var(--color-primary-soft)',
+    outline: '2px solid var(--color-primary)',
   },
 })
 
@@ -169,6 +220,9 @@ export default function SourceView({ oid }: { oid: string }) {
           editorTheme,
           syntaxHighlighting(editorHighlight),
           EditorView.lineWrapping,
+          // Find/replace panel (Mod-f) — official extension, themed below.
+          search({ top: true }),
+          keymap.of(searchKeymap),
           Prec.highest(
             keymap.of([
               {

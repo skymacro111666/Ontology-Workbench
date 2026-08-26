@@ -231,6 +231,40 @@ describe('SourceView', () => {
     expect(lines.join('\n')).toContain('ex:Local')
   })
 
+  it('offers find/replace via the search panel and routes edits into the dirty pipeline', async () => {
+    const fetchMock = vi.fn(async () => ok(PAYLOAD))
+    const { container } = renderView(fetchMock)
+    await screen.findByText('mini.ttl')
+    const content = container.querySelector('.cm-content') as HTMLElement
+    content.focus()
+    // Mod-f opens the official CM search panel (find + replace + options).
+    await userEvent.keyboard('{Control>}f{/Control}')
+    const panel = container.querySelector('.cm-panel.cm-search')
+    expect(panel).toBeTruthy()
+    const find = panel?.querySelector('input[name="search"]') as HTMLInputElement
+    expect(find).toBeTruthy()
+
+    // Typing a query highlights matches (CM only decorates the viewport, so
+    // jsdom shows a subset — assert presence, not the full count).
+    await userEvent.type(find, 'owl:Class')
+    await waitFor(() =>
+      expect(container.querySelectorAll('.cm-searchMatch').length).toBeGreaterThanOrEqual(1),
+    )
+
+    // Replace All rewrites the doc and trips the existing dirty pipeline.
+    const replace = panel?.querySelector('input[name="replace"]') as HTMLInputElement
+    await userEvent.type(replace, 'owl:Thing')
+    await userEvent.click(panel?.querySelector('button[name="replaceAll"]') as HTMLButtonElement)
+    expect(screen.getByText('● 未保存')).toBeTruthy()
+    const text = [...container.querySelectorAll('.cm-line')].map((l) => l.textContent).join('\n')
+    expect(text).toContain('a owl:Thing .')
+    expect(text).not.toContain('owl:Class')
+
+    // Close button dismisses the panel.
+    await userEvent.click(panel?.querySelector('button[name="close"]') as HTMLButtonElement)
+    expect(container.querySelector('.cm-panel.cm-search')).toBeNull()
+  })
+
   it('warns on beforeunload while dirty and clears store state on unmount', async () => {
     const fetchMock = vi.fn(async () => ok(PAYLOAD))
     const { container } = renderView(fetchMock)
