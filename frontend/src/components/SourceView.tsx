@@ -4,10 +4,11 @@ import { toast } from 'sonner'
 import { EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language'
-import { search, searchKeymap } from '@codemirror/search'
+import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 import { xml } from '@codemirror/lang-xml'
 import { turtle } from '@codemirror/legacy-modes/mode/turtle'
 import { tags as t } from '@lezer/highlight'
+import { SearchIcon } from 'lucide-react'
 import { ApiErr, api } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import { useUiStore } from '../stores/uiStore'
@@ -307,19 +308,29 @@ export default function SourceView({ oid }: { oid: string }) {
           {data.format}
         </span>
         {dirty && (
-          <>
-            <span className="text-amber-600 dark:text-amber-400" aria-live="polite">
-              ● 未保存
-            </span>
-            <Button
-              size="sm"
-              className="ml-auto h-6 px-2 text-xs"
-              disabled={saveMutation.isPending}
-              onClick={() => void saveRef.current()}
-            >
-              保存
-            </Button>
-          </>
+          <span className="text-amber-600 dark:text-amber-400" aria-live="polite">
+            ● 未保存
+          </span>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          className="ml-auto h-6 gap-1 px-2 text-xs"
+          title="查找/替换（Ctrl+F）"
+          onClick={() => viewRef.current && openSearchPanel(viewRef.current)}
+        >
+          <SearchIcon className="size-3" aria-hidden="true" />
+          搜索
+        </Button>
+        {dirty && (
+          <Button
+            size="sm"
+            className="h-6 px-2 text-xs"
+            disabled={saveMutation.isPending}
+            onClick={() => void saveRef.current()}
+          >
+            保存
+          </Button>
         )}
       </div>
       {parseErr && (

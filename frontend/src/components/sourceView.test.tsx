@@ -265,6 +265,16 @@ describe('SourceView', () => {
     expect(container.querySelector('.cm-panel.cm-search')).toBeNull()
   })
 
+  it('opens the search panel from the toolbar button (no keyboard needed)', async () => {
+    const fetchMock = vi.fn(async () => ok(PAYLOAD))
+    const { container } = renderView(fetchMock)
+    await screen.findByText('mini.ttl')
+    await userEvent.click(screen.getByRole('button', { name: /搜索/ }))
+    const panel = container.querySelector('.cm-panel.cm-search')
+    expect(panel).toBeTruthy()
+    expect(panel?.querySelector('input[name="search"]')).toBeTruthy()
+  })
+
   it('warns on beforeunload while dirty and clears store state on unmount', async () => {
     const fetchMock = vi.fn(async () => ok(PAYLOAD))
     const { container } = renderView(fetchMock)
