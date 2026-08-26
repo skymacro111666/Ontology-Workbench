@@ -11,6 +11,16 @@ import { ApiErr, api } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import { useUiStore } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 /** /source payload: the stored ontology file, verbatim. */
 interface SourcePayload {
@@ -97,7 +107,24 @@ export default function SourceView({ oid }: { oid: string }) {
       markDirty(false)
       void queryClient.invalidateQueries()
     },
+    onError: (e) => {
+      if (!(e instanceof ApiErr && (e.code === 'PARSE_FAILED' || e.code === 'EDIT_CONFLICT')))
+        toast.error(e instanceof ApiErr ? e.message : '保存失败，请稍后重试')
+    },
   })
+
+  const err = saveMutation.error
+  const parseErr = err instanceof ApiErr && err.code === 'PARSE_FAILED' ? err : null
+  const conflict = err instanceof ApiErr && err.code === 'EDIT_CONFLICT'
+
+  /** Conflict dialog "reload": drop local edits, refetch the server version. */
+  const reloadFromServer = () => {
+    saveMutation.reset()
+    markDirty(false)
+    dirtyRef.current = false
+    baselineRef.current = viewRef.current?.state.doc.toString() ?? baselineRef.current
+    void refetch()
+  }
 
   /** Single save path for button, Mod-s, and the switch-guard dialog. */
   const save = async (): Promise<boolean> => {
@@ -200,11 +227,41 @@ export default function SourceView({ oid }: { oid: string }) {
           </>
         )}
       </div>
+      {parseErr && (
+        <div
+          role="alert"
+          className="border-line bg-panel text-ink rounded-ctl flex shrink-0 flex-col gap-0.5 border px-3 py-2 text-xs"
+        >
+          <span className="text-amber-600 dark:text-amber-400 font-medium">
+            解析失败：{parseErr.message}
+          </span>
+          {parseErr.hint && <span className="text-ink-3">{parseErr.hint}</span>}
+        </div>
+      )}
       <div
         ref={holderRef}
         className="border-line bg-panel rounded-ctl min-h-0 flex-1 overflow-auto border"
         aria-label="本体源码"
       />
+      <AlertDialog
+        open={conflict}
+        onOpenChange={(o) => {
+          if (!o) saveMutation.reset()
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>文件已在别处更新</AlertDialogTitle>
+            <AlertDialogDescription>
+              源文件在你编辑期间被保存过新版本。重新加载会丢弃本地修改。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => saveMutation.reset()}>继续编辑</AlertDialogCancel>
+            <AlertDialogAction onClick={reloadFromServer}>重新加载</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

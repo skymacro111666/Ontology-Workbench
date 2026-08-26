@@ -16,6 +16,13 @@ function ok(data: unknown) {
   )
 }
 
+function err(code: string, message: string, hint: string | null) {
+  return new Response(
+    JSON.stringify({ code, message, data: null, hint, request_id: 'r' }),
+    { headers: { 'Content-Type': 'application/json' } },
+  )
+}
+
 function renderView(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -139,5 +146,60 @@ describe('SourceView', () => {
       ([u, i]) => String(u).endsWith('/source') && !i?.method,
     )
     expect(sourceGets.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('shows an inline parse error and keeps the edits', async () => {
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT')
+        return err('PARSE_FAILED', 'Syntax error: line 2', 'Fix the syntax and retry.')
+      return ok(PAYLOAD)
+    })
+    const { container } = renderView(fetchMock)
+    await screen.findByText('mini.ttl')
+    const content = container.querySelector('.cm-content') as HTMLElement
+    await userEvent.click(content)
+    await userEvent.keyboard('x')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Syntax error: line 2')
+    expect(screen.getByText(/Fix the syntax/)).toBeTruthy()
+    // Edits kept: still dirty, still one character more.
+    expect(screen.getByText('● 未保存')).toBeTruthy()
+  })
+
+  it('offers reload-or-continue on EDIT_CONFLICT', async () => {
+    // A conflict means the server has a NEWER version — after reload the
+    // editor must render it (not the stale GET payload: structural sharing
+    // would keep the old data reference and skip the rebuild).
+    const serverV2 = '@prefix ex: <http://example.org/> .\nex:B a owl:Class .\n'
+    let reloaded = false
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT')
+        return err('EDIT_CONFLICT', 'The file changed since it was loaded', null)
+      if (reloaded) return ok({ ...PAYLOAD, content: serverV2, fileHash: 'hash-2' })
+      return ok(PAYLOAD)
+    })
+    const { container } = renderView(fetchMock)
+    await screen.findByText('mini.ttl')
+    const content = container.querySelector('.cm-content') as HTMLElement
+    await userEvent.click(content)
+    await userEvent.keyboard('x')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(await screen.findByRole('alertdialog')).toBeTruthy()
+
+    // Continue editing: dialog closes, local edits survive.
+    await userEvent.click(screen.getByRole('button', { name: '继续编辑' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(container.querySelector('.cm-content')?.textContent).toContain('x')
+
+    // Reload: local edits are discarded, the server's new version is rendered.
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    await screen.findByRole('alertdialog')
+    reloaded = true
+    await userEvent.click(screen.getByRole('button', { name: '重新加载' }))
+    await waitFor(() => {
+      const lines = [...container.querySelectorAll('.cm-line')].map((l) => l.textContent)
+      expect(lines).toEqual(serverV2.split('\n'))
+    })
   })
 })
