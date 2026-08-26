@@ -92,3 +92,21 @@ class Ontology(Base):
         DateTimeTZ, server_default=func.now(), onupdate=_now
     )
     owner: Mapped[User] = relationship(back_populates="ontologies")
+
+
+class OntologyLayout(Base):
+    """Canvas node positions for one ontology: pure UI state, no RDF meaning.
+
+    One row per ontology holding the full {eid: {x, y}} map — writes are
+    whole-map overwrites (last-write-wins, no optimistic lock).
+    """
+
+    __tablename__ = "ontology_layouts"
+
+    ontology_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ontologies.id", ondelete="CASCADE"), primary_key=True
+    )
+    positions: Mapped[dict[str, Any]] = mapped_column(StatsJSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTimeTZ, server_default=func.now(), onupdate=_now
+    )

@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ontoworkbench.db.models import Ontology, User
+from ontoworkbench.db.models import Ontology, OntologyLayout, User
 
 
 class UserRepository:
@@ -187,4 +187,57 @@ class OntologyRepository:
         o = self.get(ontology_id)
         if o:
             self._s.delete(o)
+            self._s.commit()
+
+
+class LayoutRepository:
+    """Access to ontology_layouts: whole-map canvas position storage."""
+
+    def __init__(self, session: Session) -> None:
+        """Initialize the repository with a SQLAlchemy session.
+
+        Args:
+            session: SQLAlchemy database session.
+        """
+        self._s = session
+
+    def get(self, ontology_id: UUID) -> OntologyLayout | None:
+        """Get the layout row for an ontology.
+
+        Args:
+            ontology_id: UUID of the ontology.
+
+        Returns:
+            OntologyLayout if saved, None otherwise.
+        """
+        return self._s.get(OntologyLayout, ontology_id)
+
+    def upsert(self, ontology_id: UUID, positions: dict) -> OntologyLayout:
+        """Overwrite the whole position map for an ontology (no merge).
+
+        Args:
+            ontology_id: UUID of the ontology.
+            positions: Full {eid: {x, y}} map.
+
+        Returns:
+            The saved OntologyLayout row.
+        """
+        row = self.get(ontology_id)
+        if row:
+            row.positions = positions
+        else:
+            row = OntologyLayout(ontology_id=ontology_id, positions=positions)
+            self._s.add(row)
+        self._s.commit()
+        return row
+
+    def delete(self, ontology_id: UUID) -> None:
+        """Drop the layout row for an ontology (reset to auto layout).
+
+        Args:
+            ontology_id: UUID of the ontology.
+        """
+        row = self.get(ontology_id)
+        if row:
+            self._s.delete(row)
             self._s.commit()

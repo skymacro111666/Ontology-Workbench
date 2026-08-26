@@ -16,7 +16,7 @@ from ontoworkbench.core.ir import build_ir
 from ontoworkbench.core.parsing import sniff_format, timed_parse
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
-from ontoworkbench.db.repositories import OntologyRepository
+from ontoworkbench.db.repositories import LayoutRepository, OntologyRepository
 from ontoworkbench.db.session import get_session
 from ontoworkbench.observability.metrics import ow_parse_seconds, ow_uploads_total
 from ontoworkbench.server.cache import OntologyCache
@@ -292,6 +292,7 @@ def delete_ontology(
     store: LocalUserDirStore = request.app.state.store
     store.delete(user.id, UUID(str(row.id)))
     repos.delete(row.id)
+    LayoutRepository(session).delete(row.id)
     cache: OntologyCache = request.app.state.cache
     cache.drop(str(row.id))
     return respond(None)
@@ -318,3 +319,77 @@ def import_sample(
 def _to_uuid(value: str) -> UUID:
     """Parse a path parameter as UUID; ValueError when malformed."""
     return UUID(value)
+
+
+class LayoutPosition(CamelModel):
+    """One node position in canvas pixels."""
+
+    x: float
+    y: float
+
+
+class LayoutUpdate(CamelModel):
+    """Whole-map position overwrite; keys are entity IRIs (eids)."""
+
+    positions: dict[str, LayoutPosition]
+
+
+MAX_LAYOUT_NODES = 5000
+
+
+def _owned(user: User, session: Session, ontology_id: str) -> Ontology:
+    """Resolve an owned ontology row or raise the shared 404."""
+    try:
+        oid = _to_uuid(ontology_id)
+    except ValueError:
+        raise ApiError(ErrorCode.NOT_FOUND, "No such ontology") from None
+    row = OntologyRepository(session).get_owned(user.id, oid)
+    if not row:
+        raise ApiError(ErrorCode.NOT_FOUND, "No such ontology")
+    return row
+
+
+@router.get("/ontologies/{ontology_id}/layout")
+def get_layout(
+    ontology_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Saved canvas positions; empty map when never saved (not an error)."""
+    row = _owned(user, session, ontology_id)
+    saved = LayoutRepository(session).get(row.id)
+    raw = saved.positions if saved else {}
+    positions = {k: {"x": v["x"], "y": v["y"]} for k, v in (raw or {}).items()}
+    return respond({"positions": positions})
+
+
+@router.put("/ontologies/{ontology_id}/layout")
+def put_layout(
+    ontology_id: str,
+    body: LayoutUpdate,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Overwrite the whole position map (last-write-wins, no file involved)."""
+    row = _owned(user, session, ontology_id)
+    if len(body.positions) > MAX_LAYOUT_NODES:
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR,
+            f"Too many positions: {len(body.positions)} > {MAX_LAYOUT_NODES}",
+        )
+    LayoutRepository(session).upsert(
+        row.id, {k: {"x": v.x, "y": v.y} for k, v in body.positions.items()}
+    )
+    return respond({"positions": {k: {"x": v.x, "y": v.y} for k, v in body.positions.items()}})
+
+
+@router.delete("/ontologies/{ontology_id}/layout")
+def delete_layout(
+    ontology_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Reset to the automatic layout by dropping the saved positions."""
+    row = _owned(user, session, ontology_id)
+    LayoutRepository(session).delete(row.id)
+    return respond(None)
