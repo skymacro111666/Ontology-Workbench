@@ -153,7 +153,14 @@ def source(
     row = _owned_row(user, ontology_id, session)
     store: LocalUserDirStore = request.app.state.store
     content = store.read(Path(row.storage_path)).decode("utf-8", errors="replace")
-    return respond({"filename": row.filename, "format": row.format, "content": content})
+    return respond(
+        {
+            "filename": row.filename,
+            "format": row.format,
+            "content": content,
+            "fileHash": row.file_hash,
+        }
+    )
 
 
 @router.get("/{ontology_id}/search")
