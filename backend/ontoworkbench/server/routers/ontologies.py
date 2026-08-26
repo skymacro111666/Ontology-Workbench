@@ -67,6 +67,13 @@ class OntologySummary(CamelModel):
     created_at: str
 
 
+class SourceUpdate(CamelModel):
+    """PUT /source body: full new text + the file hash it was based on."""
+
+    content: str
+    base_file_hash: str
+
+
 def _title_of(graph, filename: str) -> str:
     """dc:title of the owl:Ontology node, else the filename stem."""
     for ont in graph.subjects(RDF.type, OWL.Ontology):
@@ -203,6 +210,66 @@ def get_meta(
     row = OntologyRepository(session).get_owned(user.id, oid) if oid else None
     if not row:
         raise ApiError(ErrorCode.NOT_FOUND, "No such ontology")
+    return respond(_meta(row))
+
+
+@router.put("/ontologies/{ontology_id}/source")
+def replace_source(
+    ontology_id: str,
+    body: SourceUpdate,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Parse-validate, then atomically replace the stored source file.
+
+    Optimistic lock: base_file_hash must match the row, else 409 with the
+    file untouched. Parse failures keep the file untouched (400 envelope
+    via the ParseError handler). Write order is file-then-row: a row-update
+    failure self-heals in the cache (mtime moved), the reverse would pin
+    stale indexes.
+    """
+    try:
+        oid = _to_uuid(ontology_id)
+    except ValueError:
+        raise ApiError(ErrorCode.NOT_FOUND, "No such ontology") from None
+    row = OntologyRepository(session).get_owned(user.id, oid) if oid else None
+    if not row:
+        raise ApiError(ErrorCode.NOT_FOUND, "No such ontology")
+
+    data = body.content.encode("utf-8")
+    if len(data) > MAX_UPLOAD:
+        ow_uploads_total.labels("too_large").inc()
+        raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
+    if body.base_file_hash != row.file_hash:
+        raise ApiError(
+            ErrorCode.EDIT_CONFLICT,
+            "The file changed since it was loaded",
+            "Reload the source and reapply your edits on top.",
+        )
+    with ow_parse_seconds.labels(row.format).time():
+        graph, parse_ms = timed_parse(data, row.format)
+    ir = build_ir(graph)
+
+    store: LocalUserDirStore = request.app.state.store
+    store.save(user.id, UUID(str(row.id)), row.filename, data)
+    repos = OntologyRepository(session)
+    row = (
+        repos.update(
+            row.id,
+            title=_title_of(graph, row.filename),
+            class_count=ir.counts.class_count,
+            property_count=ir.counts.property_count,
+            axiom_count=ir.counts.axiom_count,
+            instance_count=ir.counts.individual_count,
+            stats_json={"prefixes": ir.prefixes, "parse_ms": round(parse_ms, 1)},
+            file_size_bytes=len(data),
+            file_hash=LocalUserDirStore.file_hash(data),
+        )
+        or row
+    )  # update() of an owned row cannot miss; keep mypy happy
+    cache: OntologyCache = request.app.state.cache
+    cache.indexes_for(row, lambda r: build_indexes(ir))
     return respond(_meta(row))
 
 
