@@ -1,5 +1,7 @@
 """Repository behaviour tests (in-memory sqlite)."""
 
+from uuid import uuid4
+
 import pytest
 from sqlalchemy.orm import Session
 
@@ -47,3 +49,15 @@ def test_ontology_owner_isolation(session: Session) -> None:
     assert repos.get_owned(b.id, o.id) is None  # invisible to others
     assert repos.get_owned(a.id, o.id).filename == "pizza.ttl"
     assert repos.find_by_filename(a.id, "pizza.ttl").id == o.id
+
+
+def test_ontology_update_fields(session: Session) -> None:
+    """update() changes columns and persists; unknown id returns None."""
+    users = UserRepository(session)
+    repos = OntologyRepository(session)
+    u = users.create("alice", "x")
+    o = repos.create(u.id, filename="f.ttl", storage_path="p", format="turtle", file_hash="h1")
+    updated = repos.update(o.id, file_hash="h2", class_count=5)
+    assert updated is not None and updated.file_hash == "h2" and updated.class_count == 5
+    assert repos.get(o.id).file_hash == "h2"  # 持久化,不只是内存对象
+    assert repos.update(uuid4(), file_hash="x") is None

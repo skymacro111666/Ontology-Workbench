@@ -102,6 +102,24 @@ class OntologyRepository:
         self._s.commit()
         return o
 
+    def update(self, ontology_id: UUID, **fields: object) -> Ontology | None:
+        """Update fields of an ontology row by id; None when unknown.
+
+        Args:
+            ontology_id: UUID of the ontology to update.
+            **fields: Column values to set (file_hash, class_count, ...).
+
+        Returns:
+            The updated Ontology, or None when the id does not exist.
+        """
+        o = self.get(ontology_id)
+        if not o:
+            return None
+        for key, value in fields.items():
+            setattr(o, key, value)
+        self._s.commit()
+        return o
+
     def list_by_owner(self, owner_user_id: UUID) -> list[Ontology]:
         """List all ontologies owned by a user, ordered by creation date (newest first).
 
