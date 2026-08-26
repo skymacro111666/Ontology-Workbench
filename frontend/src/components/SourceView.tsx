@@ -140,9 +140,25 @@ export default function SourceView({ oid }: { oid: string }) {
   const saveRef = useRef(save)
   saveRef.current = save
 
+  /** (Re)build the editor when data changes — but NEVER clobber local edits:
+   *  a background refetch (focus / invalidateQueries) while dirty keeps the
+   *  current view; a clean view adopts the server text only when it moved on.
+   *  No cleanup here on purpose — a cleanup would destroy the view before
+   *  this effect reruns and the guard below could never fire. Unmount
+   *  teardown lives in its own effect. */
   useEffect(() => {
     const el = holderRef.current
     if (!el || !data) return
+    const existing = viewRef.current
+    if (existing) {
+      if (dirtyRef.current) return // never clobber local edits
+      if (existing.state.doc.toString() === data.content) {
+        baseHashRef.current = data.fileHash // same text, fresh hash
+        return
+      }
+      existing.destroy() // clean + server moved on: adopt it
+      viewRef.current = null
+    }
     const language = languageFor(data.format)
     const view = new EditorView({
       parent: el,
@@ -177,11 +193,36 @@ export default function SourceView({ oid }: { oid: string }) {
     baseHashRef.current = data.fileHash
     markDirty(false)
     viewRef.current = view
-    return () => {
-      view.destroy()
-      viewRef.current = null
-    }
   }, [data])
+
+  /** Unmount teardown: destroy the editor (data-effect rebuilds are guarded
+   *  above, so only unmounting destroys a live view). */
+  useEffect(
+    () => () => {
+      viewRef.current?.destroy()
+      viewRef.current = null
+    },
+    [],
+  )
+
+  /** Warn before leaving the page with unsaved edits. */
+  useEffect(() => {
+    if (!dirty) return
+    const handler = (e: BeforeUnloadEvent) => e.preventDefault()
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [dirty])
+
+  /** Expose save/dirty to the switch-guard dialog (Task 9); release on
+   *  unmount or oid switch. */
+  useEffect(() => {
+    const { registerSourceSave } = useUiStore.getState()
+    registerSourceSave(() => saveRef.current())
+    return () => {
+      useUiStore.getState().registerSourceSave(null)
+      useUiStore.getState().setSourceDirty(false)
+    }
+  }, [oid])
 
   if (isError) {
     const missing = error instanceof ApiErr && error.code === 'NOT_FOUND'

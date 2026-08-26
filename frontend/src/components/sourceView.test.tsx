@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -26,11 +26,12 @@ function err(code: string, message: string, hint: string | null) {
 function renderView(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const utils = render(
     <QueryClientProvider client={qc}>
       <SourceView oid="oid-1" />
     </QueryClientProvider>,
   )
+  return { ...utils, qc }
 }
 
 const PAYLOAD = {
@@ -149,7 +150,7 @@ describe('SourceView', () => {
   })
 
   it('shows an inline parse error and keeps the edits', async () => {
-    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
       if (init?.method === 'PUT')
         return err('PARSE_FAILED', 'Syntax error: line 2', 'Fix the syntax and retry.')
       return ok(PAYLOAD)
@@ -173,7 +174,7 @@ describe('SourceView', () => {
     // would keep the old data reference and skip the rebuild).
     const serverV2 = '@prefix ex: <http://example.org/> .\nex:B a owl:Class .\n'
     let reloaded = false
-    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+    const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
       if (init?.method === 'PUT')
         return err('EDIT_CONFLICT', 'The file changed since it was loaded', null)
       if (reloaded) return ok({ ...PAYLOAD, content: serverV2, fileHash: 'hash-2' })
@@ -201,5 +202,51 @@ describe('SourceView', () => {
       const lines = [...container.querySelectorAll('.cm-line')].map((l) => l.textContent)
       expect(lines).toEqual(serverV2.split('\n'))
     })
+  })
+
+  it('never clobbers local edits on a background refetch', async () => {
+    // A background refetch (focus/invalidate) resolving with a NEWER server
+    // version must not replace the editor doc while it has local edits.
+    let generation = 0
+    const fetchMock = vi.fn(async () =>
+      ok(
+        generation === 0
+          ? PAYLOAD
+          : { ...PAYLOAD, content: 'server moved on\n', fileHash: 'hash-2' },
+      ),
+    )
+    const { container, qc } = renderView(fetchMock)
+    await screen.findByText('mini.ttl')
+    const content = container.querySelector('.cm-content') as HTMLElement
+    await userEvent.click(content)
+    await userEvent.keyboard('ex:Local a owl:Class .')
+    generation = 1
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: ['source', 'oid-1'] })
+    })
+    // react-query notifies observers via setTimeout(0) — yield a macrotask
+    // so the fresh data actually reaches the component before asserting.
+    await new Promise((r) => setTimeout(r, 10))
+    const lines = [...container.querySelectorAll('.cm-line')].map((l) => l.textContent)
+    expect(lines.join('\n')).toContain('ex:Local')
+  })
+
+  it('warns on beforeunload while dirty and clears store state on unmount', async () => {
+    const fetchMock = vi.fn(async () => ok(PAYLOAD))
+    const { container } = renderView(fetchMock)
+    await screen.findByText('mini.ttl')
+    const content = container.querySelector('.cm-content') as HTMLElement
+    await userEvent.click(content)
+    await userEvent.keyboard('x')
+    expect(useUiStore.getState().sourceDirty).toBe(true)
+    expect(useUiStore.getState().sourceSaveFn).toBeTruthy()
+
+    const evt = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(evt)
+    expect(evt.defaultPrevented).toBe(true)
+
+    cleanup()
+    expect(useUiStore.getState().sourceDirty).toBe(false)
+    expect(useUiStore.getState().sourceSaveFn).toBeNull()
   })
 })
