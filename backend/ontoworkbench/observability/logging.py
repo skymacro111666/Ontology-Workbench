@@ -12,30 +12,37 @@ from pathlib import Path
 import structlog
 
 
-class AlembicJsonFilter(logging.Filter):
-    """Re-encode third-party alembic lines as the app's JSON envelope.
+class JsonEnvelopeFilter(logging.Filter):
+    """Re-encode third-party plain-text lines as the app's JSON envelope.
 
-    Alembic logs plain strings through stdlib logging; the app's JSON shape
-    comes from structlog's processor chain, which alembic never enters.
-    Attached at handler level (logger-level filters miss records propagating
-    from child loggers like ``alembic.runtime.migration``); a marker flag
-    keeps the wrap idempotent when both handlers share one filter instance.
+    Libraries like alembic and uvicorn log plain strings through stdlib
+    logging; the app's JSON shape comes from structlog's processor chain,
+    which they never enter. Attached at handler level (logger-level filters
+    miss records propagating from child loggers like
+    ``alembic.runtime.migration``); a marker flag keeps the wrap idempotent
+    when both handlers share one filter instance.
     """
 
-    def __init__(self, event: str) -> None:
-        """Remember the envelope's event tag (e.g. ``db.migrate``)."""
+    def __init__(self, events: dict[str, str]) -> None:
+        """Map logger-name prefixes (e.g. ``alembic``) to event tags."""
         super().__init__()
-        self.event = event
+        self.events = events
+
+    def _event_for(self, name: str) -> str | None:
+        """Return the event tag for a logger name, or None if unmapped."""
+        for prefix, event in self.events.items():
+            if name == prefix or name.startswith(prefix + "."):
+                return event
+        return None
 
     def filter(self, record: logging.LogRecord) -> bool:
-        """Wrap alembic-origin records in-place; pass everything else through."""
-        if not (record.name == "alembic" or record.name.startswith("alembic.")):
-            return True
-        if getattr(record, "ow_json_wrapped", False):
+        """Wrap records from mapped logger families in-place; pass the rest."""
+        event = self._event_for(record.name)
+        if event is None or getattr(record, "ow_json_wrapped", False):
             return True
         payload = {
             "message": record.getMessage(),
-            "event": self.event,
+            "event": event,
             "level": record.levelname.lower(),
             "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         }
@@ -53,10 +60,10 @@ def setup_logging(log_dir: Path, level: str = "INFO") -> None:
     )
     # StreamHandler defaults to stderr; spec mandates stdout as the first sink
     stream = logging.StreamHandler(stream=sys.stdout)
-    alembic_json = AlembicJsonFilter("db.migrate")
+    envelope = JsonEnvelopeFilter({"alembic": "db.migrate", "uvicorn": "server.uvicorn"})
     for h in (stream, rotating):
         h.setFormatter(logging.Formatter("%(message)s"))
-        h.addFilter(alembic_json)
+        h.addFilter(envelope)
     logging.basicConfig(level=level.upper(), handlers=[stream, rotating], force=True)
     # Our JSON access log replaces these libraries' own request logging;
     # keep their non-request chatter below INFO so stdout stays clean.

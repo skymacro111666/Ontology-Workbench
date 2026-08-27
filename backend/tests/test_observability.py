@@ -1,9 +1,11 @@
-"""Alembic log lines must render in the app's JSON envelope (unified format)."""
+"""Third-party log lines must render in the app's JSON envelope (unified format)."""
 
 import json
 import logging
 
-from ontoworkbench.observability.logging import AlembicJsonFilter
+from ontoworkbench.observability.logging import JsonEnvelopeFilter
+
+FILTER = JsonEnvelopeFilter({"alembic": "db.migrate", "uvicorn": "server.uvicorn"})
 
 
 def make_record(name: str, msg: str, args: tuple | None = None) -> logging.LogRecord:
@@ -21,9 +23,8 @@ def make_record(name: str, msg: str, args: tuple | None = None) -> logging.LogRe
 
 def test_alembic_records_wrapped_as_json_envelope() -> None:
     """Records from alembic loggers come out as one JSON envelope line."""
-    f = AlembicJsonFilter("db.migrate")
     rec = make_record("alembic.runtime.migration", "Context impl %s.", ("SQLiteImpl",))
-    assert f.filter(rec) is True
+    assert FILTER.filter(rec) is True
 
     payload = json.loads(rec.getMessage())  # args cleared → getMessage is plain JSON
     assert payload["message"] == "Context impl SQLiteImpl."
@@ -32,19 +33,34 @@ def test_alembic_records_wrapped_as_json_envelope() -> None:
     assert "timestamp" in payload
 
 
-def test_non_alembic_records_left_alone() -> None:
-    """Records from other loggers keep their message untouched."""
-    f = AlembicJsonFilter("db.migrate")
+def test_uvicorn_records_wrapped_as_json_envelope() -> None:
+    """Lifecycle lines from uvicorn.error get the server.uvicorn event tag."""
+    rec = make_record("uvicorn.error", "Uvicorn running on http://127.0.0.1:8734")
+    assert FILTER.filter(rec) is True
+
+    payload = json.loads(rec.getMessage())
+    assert payload["message"] == "Uvicorn running on http://127.0.0.1:8734"
+    assert payload["event"] == "server.uvicorn"
+
+
+def test_unmapped_records_left_alone() -> None:
+    """Records from loggers outside the mapping keep their message untouched."""
     rec = make_record("ow.access", "http.request")
-    assert f.filter(rec) is True
+    assert FILTER.filter(rec) is True
     assert rec.getMessage() == "http.request"
+
+
+def test_prefix_must_not_swallow_similar_names() -> None:
+    """A logger merely starting with a mapped prefix text is not matched."""
+    rec = make_record("uvicornx.core", "looks like uvicorn but is not")
+    assert FILTER.filter(rec) is True
+    assert rec.getMessage() == "looks like uvicorn but is not"
 
 
 def test_no_double_wrap_when_handler_chain_sees_record_twice() -> None:
     """Two handlers share one filter instance; wrap happens exactly once."""
-    f = AlembicJsonFilter("db.migrate")
     rec = make_record("alembic.runtime.migration", "Running upgrade 0002 -> 0003")
-    f.filter(rec)
+    FILTER.filter(rec)
     once = rec.getMessage()
-    f.filter(rec)
+    FILTER.filter(rec)
     assert rec.getMessage() == once
