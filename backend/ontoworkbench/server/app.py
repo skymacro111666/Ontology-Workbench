@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,7 +17,11 @@ from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.observability.accesslog import access_log_middleware
 from ontoworkbench.observability.logging import setup_logging
 from ontoworkbench.observability.metrics import configure_metrics
-from ontoworkbench.observability.middleware import request_id_ctx, request_id_middleware
+from ontoworkbench.observability.middleware import (
+    request_id_ctx,
+    request_id_middleware,
+    user_id_ctx,
+)
 from ontoworkbench.server.cache import OntologyCache
 from ontoworkbench.server.envelope import HTTP_OF, ApiError, ErrorCode, error_body, respond
 from ontoworkbench.server.routers import auth as auth_router
@@ -25,6 +30,10 @@ from ontoworkbench.server.routers import entities as entities_router
 from ontoworkbench.server.routers import export as export_router
 from ontoworkbench.server.routers import ontologies as ontologies_router
 from ontoworkbench.server.staticfiles import SPAStaticFiles
+
+# Error-path logger: every failed request leaves a machine-readable trace
+# (the access log line only carries the status code, never the reason).
+_errlog = structlog.get_logger("ow.errors")
 
 # Local development origins (vite dev server); the built SPA is same-origin.
 _LOCAL_DEV_ORIGINS = [
@@ -86,6 +95,16 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
 
     @app.exception_handler(ApiError)
     async def on_api_error(request: Request, exc: ApiError) -> JSONResponse:
+        _errlog.warning(
+            "http.error",
+            code=exc.code,
+            message=exc.message,
+            hint=exc.hint,
+            method=request.method,
+            path=request.url.path,
+            request_id=request_id_ctx.get(),
+            user_id=user_id_ctx.get(),
+        )
         return JSONResponse(
             status_code=HTTP_OF[exc.code],
             content=error_body(exc.code, exc.message, exc.hint),
@@ -94,6 +113,16 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     @app.exception_handler(CoreError)
     async def on_core_error(request: Request, exc: CoreError) -> JSONResponse:
         code = ErrorCode(str(exc.code))
+        _errlog.warning(
+            "http.error",
+            code=code,
+            message=exc.message,
+            hint=exc.hint,
+            method=request.method,
+            path=request.url.path,
+            request_id=request_id_ctx.get(),
+            user_id=user_id_ctx.get(),
+        )
         return JSONResponse(
             status_code=HTTP_OF[code],
             content=error_body(code, exc.message, exc.hint),
@@ -123,6 +152,16 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     async def on_unexpected(request: Request, exc: Exception) -> JSONResponse:
         # ServerErrorMiddleware bypasses our middleware, so the request-id
         # header must be set here to keep header/body/log ids identical
+        _errlog.error(
+            "http.error",
+            code="INTERNAL_ERROR",
+            message=str(exc),
+            method=request.method,
+            path=request.url.path,
+            request_id=request_id_ctx.get(),
+            user_id=user_id_ctx.get(),
+            exc_info=True,
+        )
         response = JSONResponse(
             status_code=500,
             content=error_body(ErrorCode.INTERNAL_ERROR, "Internal Server Error"),
