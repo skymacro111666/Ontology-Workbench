@@ -9,7 +9,7 @@
 [![English](https://img.shields.io/badge/English-current-blue)](README.en.md)
 [![简体中文](https://img.shields.io/badge/简体中文-README-gray)](../../README.md)
 
-[Features](#-features) · [Get Started](#-get-started) · [Tour](#-tour) · [Engineering](#️-engineering--observability) · [Comparison](#-comparison) · [Limitations](#-known-limitations) · [License](#-license)
+[Features](#-features) · [Get Started](#-get-started) · [Tour](#-tour) · [License](#-license)
 
 </div>
 
@@ -30,7 +30,7 @@ A self-hosted, open-source workbench for OWL ontologies — an "IDE for ontologi
 ### Option 1: Docker (recommended)
 
 ```bash
-git clone https://github.com/<you>/ontology-workbench.git
+git clone https://github.com/skymacro111666/ontology-workbench.git
 cd ontology-workbench
 docker compose up -d --build
 ```
@@ -42,7 +42,7 @@ Open `http://127.0.0.1:8734`. Data lives in the project-local `./data` and `./lo
 Prerequisites: Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/); Node.js ≥ 22 with npm.
 
 ```bash
-git clone https://github.com/<you>/ontology-workbench.git
+git clone https://github.com/skymacro111666/ontology-workbench.git
 cd ontology-workbench
 
 # 1) backend deps
@@ -118,30 +118,6 @@ Deploy the output to GitHub Pages or any static server; a non-empty target is re
 <!-- screenshot placeholder: assets/README/screenshots/home.png -->
 
 Drag-and-drop Turtle (`.ttl`), RDF-XML (`.owl` / `.rdf`) or JSON-LD (`.jsonld`), up to 150MB per file, format sniffed by extension and content; **Pizza / Wine / FOAF** samples load with one click.
-
-## 🛠️ Engineering & observability
-
-- **CLI trio**: `ow serve` (single process, API + SPA) / `ow import PATH` (server-side import) / `ow export-site ID` (headless export) — all scriptable, CI-ready
-- **Auth**: JWT bearer; argon2id password hashing; 7-day tokens
-- **Observability**: structlog JSON lines (stdout + file, daily rotation); Prometheus metrics at `GET /metrics`; per-request `X-Request-ID` across response header, body and logs; failed requests leave a structured `http.error` log line
-
-## ⚔️ Comparison
-
-| Dimension | Ontology Workbench | [Competitor A](https://competitor-a.example) | Competitor B |
-|------|--------------------|--------------------|--------------------|
-| Self-hosted & privacy | ✅ self-hosted, data stays on your server | ❌ hosted, ontologies uploaded to a third party | ✅ runs in-browser, data local |
-| License | ✅ Apache-2.0 (auditable / commercial / contributable) | ❌ closed source (hosted free, desktop paid) | ⚠️ BSL 1.1 (production use restricted until 2030) |
-| Ontology editing | ✅ canvas + source editing (optimistic locks) | ✅ form-based | ✅ form-based |
-| Docs-site export | ✅ one-click static site for GitHub Pages | ❌ none | ❌ none |
-| CLI / CI | ✅ `ow import` / `ow export-site` + `/metrics` | ❌ none | ❌ none |
-| Stack | FastAPI + rdflib + SQLite/PG; React 19 + Radix UI + Tailwind + G6 | closed hosted | Streamlit + rdflib |
-
-## 🐘 Known limitations
-
-- **Single user**: the multi-user backend skeleton exists; management UI is planned for v0.2.0
-- **OWL entities only**: `owl:Class` / `owl:ObjectProperty` / `owl:DatatypeProperty` are rendered; a pure SKOS ontology yields an empty tree (SKOS support is on the roadmap)
-- **Axiom-level editing**: editing covers entities and common axioms (parents / domain / range; complex restrictions are preserved verbatim) — axiom-level editing is on the roadmap
-- **Large ontologies**: uploads > 50MB warn but proceed; overviews > 500 nodes degrade to the top 3 levels
 
 ## 📄 License
 

@@ -9,7 +9,7 @@
 [![简体中文](https://img.shields.io/badge/简体中文-当前-blue)](README.md)
 [![English](https://img.shields.io/badge/English-README-gray)](assets/README/README.en.md)
 
-[特性](#-特性亮点) · [快速开始](#-快速开始) · [功能巡礼](#-功能巡礼) · [工程化](#️-工程化与可观测性) · [对比](#-与竞品对比) · [已知限制](#-已知限制) · [许可证](#-许可证)
+[特性](#-特性亮点) · [快速开始](#-快速开始) · [功能巡礼](#-功能巡礼) · [许可证](#-许可证)
 
 </div>
 
@@ -30,7 +30,7 @@
 ### 方式一:Docker(推荐)
 
 ```bash
-git clone https://github.com/<you>/ontology-workbench.git
+git clone https://github.com/skymacro111666/ontology-workbench.git
 cd ontology-workbench
 docker compose up -d --build
 ```
@@ -42,7 +42,7 @@ docker compose up -d --build
 前置:Python ≥ 3.11 与 [uv](https://docs.astral.sh/uv/);Node.js ≥ 22 与 npm。
 
 ```bash
-git clone https://github.com/<you>/ontology-workbench.git
+git clone https://github.com/skymacro111666/ontology-workbench.git
 cd ontology-workbench
 
 # 1) 后端依赖
@@ -121,29 +121,7 @@ G6 画布服务两种数据源:详情页的**局部邻居图**与全局**总览�
 
 拖拽上传 Turtle(`.ttl`)/ RDF-XML(`.owl` / `.rdf`)/ JSON-LD(`.jsonld`),单文件 ≤ 150MB,格式按扩展名 + 内容双重嗅探;内置 **Pizza / Wine / FOAF** 示例本体一键载入。
 
-## 🛠️ 工程化与可观测性
 
-- **CLI 三命令**:`ow serve`(单进程服务 API + SPA)/ `ow import PATH`(服务器端导入)/ `ow export-site ID`(无 UI 导出)——均可脚本化,直接进 CI
-- **认证**:JWT bearer;密码 argon2id 哈希;token 7 天有效
-- **可观测性**:structlog JSON lines(stdout + 文件双写,按天轮转);`GET /metrics` 暴露 Prometheus 指标;每请求 `X-Request-ID` 贯穿响应头、响应体与日志,错误请求留有 `http.error` 结构化日志
-
-## ⚔️ 与竞品对比
-
-| 维度 | Ontology Workbench | [Competitor A](https://competitor-a.example) | Competitor B |
-|------|--------------------|--------------------|--------------------|
-| 自托管与隐私 | ✅ 自托管,本体不出你的服务器 | ❌ 托管服务,本体上传第三方 | ✅ 浏览器端运行,数据本地 |
-| 许可证 | ✅ Apache-2.0(可审计 / 可商用 / 可贡献) | ❌ 闭源(托管免费,桌面版收费) | ⚠️ BSL 1.1(限制生产商用,2030 转 Apache 2.0) |
-| 本体编辑 | ✅ 画布编辑 + 源码编辑(乐观锁) | ✅ 表单编辑 | ✅ 表单编辑 |
-| 文档站导出 | ✅ 一键静态站,可直接部署 GitHub Pages | ❌ 无 | ❌ 无 |
-| CLI / CI 集成 | ✅ `ow import` / `ow export-site` + `/metrics` | ❌ 无 | ❌ 无 |
-| 技术栈 | FastAPI + rdflib + SQLite/PG;React 19 + Radix UI + Tailwind + G6 | 闭源托管 | Streamlit + rdflib |
-
-## 🐘 已知限制
-
-- **单用户**:多用户与数据隔离的后端骨架已就绪,管理界面规划于 v0.2.0
-- **仅渲染 OWL 实体**:只展示 `owl:Class` / `owl:ObjectProperty` / `owl:DatatypeProperty`;纯 SKOS 本体的类树为空,SKOS 支持在路线图上
-- **公理级编辑**:当前编辑覆盖实体与常用公理(父类 / domain / range / 基数等复杂公理保留原样),公理级编辑在路线图上
-- **大本体**:> 50MB 上传给警告但尝试解析;总览图 > 500 节点降级为顶层 3 层
 
 ## 📄 许可证
 
