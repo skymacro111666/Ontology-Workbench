@@ -16,12 +16,11 @@
 ## ✨ 特性亮点
 
 - **三区阅读工作区** —— 类树 / 属性 / 前缀侧栏 + 即时搜索 + 面包屑谱系,大本体虚拟滚动不卡顿
-- **实体详情三态视图** —— 详情 / 分屏 / 纯图一键切换,反向引用面板回答"谁在引用我"
-- **图可视化** —— G6 画布承载局部邻居图与全局总览,边按语义着色,节点位置拖拽后持久化
+- **实体详情双态视图** —— 详情 / 纯图一键切换
+- **图可视化** —— 画布承载局部邻居图与全局总览，边按语义着色，节点位置拖拽后持久化
 - **画布内编辑** —— 右键即可新建 / 编辑 / 删除类与属性,连反向引用一并清理,乐观锁防冲突
-- **源码编辑** —— CodeMirror 驱动的 Turtle 编辑器,搜索替换、脏态守卫、试解析后才落盘
+- **源码编辑** —— 集成编辑器，搜索替换、脏态守卫、试解析后才落盘
 - **一键文档站导出** —— 零外部依赖的静态站,扔给 GitHub Pages 即可发布
-- **工程化内核** —— JSON 结构化日志、Prometheus 指标、`ow` CLI 三命令,上传导出直接进 CI
 
 ## 🚀 快速开始
 
@@ -33,11 +32,11 @@ cd ontology-workbench
 docker compose up -d --build
 ```
 
-访问 `http://127.0.0.1:8734`。数据落在项目内 `./data` 与 `./logs`,容器重建不丢失;`OW_PORT=9000 docker compose up -d` 可换端口,`OW_JWT_SECRET` 不设则首次启动自动生成并存在 `data/jwt-secret`。
+访问 `http://127.0.0.1:8734`。数据保存在项目内 `./data` 与 `./logs`目录中,容器重建不丢失。`OW_PORT=9000 docker compose up -d` 可设置端口,`OW_JWT_SECRET` 不设则首次启动自动生成并保存在 `data/jwt-secret`。
 
 ### 方式二:源码部署
 
-前置:Python ≥ 3.11 与 [uv](https://docs.astral.sh/uv/);Node.js ≥ 22 与 npm。
+前置需求:Python≥3.11、uv、Node.js≥22和npm。
 
 ```bash
 git clone https://github.com/skymacro111666/ontology-workbench.git

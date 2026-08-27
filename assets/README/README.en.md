@@ -16,12 +16,11 @@
 ## ✨ Features
 
 - **Three-pane reading workspace** — class/property/prefix sidebar, instant search, breadcrumb lineage; virtualized tree keeps large ontologies smooth
-- **Three view modes per entity** — detail / split / graph, plus a back-reference panel answering "who references me"
-- **Graph visualization** — G6 canvas for local-neighbor and global-overview graphs, semantically colored edges, drag positions persisted server-side
+- **Two view modes per entity** — switch between detail and graph in one click
+- **Graph visualization** — canvas for local-neighbor and global-overview graphs, semantically colored edges, drag positions persisted server-side
 - **Canvas editing** — right-click to create/edit/delete classes and properties; back-references pruned with them; optimistic locking prevents conflicts
-- **Source editing** — CodeMirror-powered Turtle editor with find/replace, dirty-state guards, and parse-before-save
+- **Source editing** — built-in editor with find/replace, dirty-state guards, and parse-before-save
 - **One-click docs export** — a zero-dependency static site, ready for GitHub Pages
-- **Engineering core** — JSON structured logs, Prometheus metrics, and a scriptable `ow` CLI for CI
 
 ## 🚀 Get Started
 
@@ -33,11 +32,11 @@ cd ontology-workbench
 docker compose up -d --build
 ```
 
-Open `http://127.0.0.1:8734`. Data lives in the project-local `./data` and `./logs` directories and survives container rebuilds; `OW_PORT=9000 docker compose up -d` changes the port, and if `OW_JWT_SECRET` is unset a secret is generated once and kept in `data/jwt-secret`.
+Open `http://127.0.0.1:8734`. Data is kept in the project-local `./data` and `./logs` directories and survives container rebuilds. `OW_PORT=9000 docker compose up -d` sets the port; if `OW_JWT_SECRET` is unset a secret is generated on first start and saved in `data/jwt-secret`.
 
 ### Option 2: From source
 
-Prerequisites: Python ≥ 3.11 with [uv](https://docs.astral.sh/uv/); Node.js ≥ 22 with npm.
+Prerequisites: Python ≥ 3.11, uv, Node.js ≥ 22, and npm.
 
 ```bash
 git clone https://github.com/skymacro111666/ontology-workbench.git
