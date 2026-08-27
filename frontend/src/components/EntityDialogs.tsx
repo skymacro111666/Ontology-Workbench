@@ -37,8 +37,8 @@ const XSD_TYPES = [
 ] as const
 
 const LANGS = [
-  ['zh', '中文 (zh)'],
-  ['en', 'English (en)'],
+  ['zh', '中文'],
+  ['en', 'English'],
 ] as const
 
 const isCreate = (m: EntityDialogMode) => m === 'class' || m === 'subclass'
@@ -336,7 +336,7 @@ export default function EntityDialogs({ oid }: { oid: string }) {
                   value={lang}
                   onChange={(e) => setLang(e.target.value)}
                   aria-label="语言"
-                  className={`${fieldCls} w-28 shrink-0`}
+                  className={`${fieldCls} w-20 shrink-0`}
                 >
                   {LANGS.map(([v, l]) => (
                     <option key={v} value={v}>
