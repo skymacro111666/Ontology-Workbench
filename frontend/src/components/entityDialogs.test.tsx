@@ -136,6 +136,7 @@ describe('EntityDialogs', () => {
     expect(body).toMatchObject({
       name: 'Cat',
       prefix: 'ex',
+      label: { value: 'Cat', lang: null },
       parents: [DOG],
       baseFileHash: 'hash-1',
     })
@@ -164,19 +165,22 @@ describe('EntityDialogs', () => {
     expect(useUiStore.getState().entityDialog).not.toBeNull()
   })
 
-  it('edits an entity: label/comment PUT with only touched fields', async () => {
+  it('edits an entity: comment PUT, label untouched (no label UI)', async () => {
     const fetchMock = stubFetch()
     draw(fetchMock)
     useUiStore.getState().setEntityDialog({ mode: 'editClass', eid: DOG })
-    const label = await screen.findByLabelText(/标签/)
-    await userEvent.clear(label)
-    await userEvent.type(label, '汪')
+    const comment = await screen.findByLabelText(/描述/)
+    await userEvent.clear(comment)
+    await userEvent.type(comment, 'Good dog.')
     await userEvent.click(screen.getByRole('button', { name: /创建|保存/ }))
     await waitFor(() => expect(calls.put).toHaveLength(1))
     expect(calls.put[0].url).toBe(
       `/api/ontologies/${OID}/entities/${encodeURIComponent(DOG)}`,
     )
-    expect(calls.put[0].body).toMatchObject({ baseFileHash: 'hash-1' })
+    expect(calls.put[0].body).toMatchObject({ baseFileHash: 'hash-1', comment: 'Good dog.' })
+    // No label row: the request must not carry a label key at all.
+    expect(calls.put[0].body).not.toHaveProperty('label')
+    expect(screen.queryByLabelText(/标签/)).toBeNull()
   })
 
   it('deletes with prune and the lock in the query string', async () => {

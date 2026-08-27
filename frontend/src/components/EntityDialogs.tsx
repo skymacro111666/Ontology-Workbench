@@ -36,11 +36,6 @@ const XSD_TYPES = [
   ['http://www.w3.org/2000/01/rdf-schema#Literal', 'rdfs:Literal'],
 ] as const
 
-const LANGS = [
-  ['zh', '中文'],
-  ['en', 'English'],
-] as const
-
 const isCreate = (m: EntityDialogMode) => m === 'class' || m === 'subclass'
 const isProperty = (m: EntityDialogMode) => m === 'objectProperty' || m === 'dataProperty'
 const isEdit = (m: EntityDialogMode) => m === 'editClass' || m === 'editProperty'
@@ -130,8 +125,6 @@ export default function EntityDialogs({ oid }: { oid: string }) {
   const [prevOpen, setPrevOpen] = useState(false)
   const [name, setName] = useState('')
   const [prefix, setPrefix] = useState('ex')
-  const [lang, setLang] = useState('zh')
-  const [labelValue, setLabelValue] = useState('')
   const [comment, setComment] = useState('')
   const [picked, setPicked] = useState<string[]>([])
   const [range, setRange] = useState<string[]>([])
@@ -140,14 +133,11 @@ export default function EntityDialogs({ oid }: { oid: string }) {
     if (open && !prevOpen) {
       setName('')
       setPrefix(Object.keys(meta?.prefixes ?? { ex: '' })[0] ?? 'ex')
-      setLang('zh')
-      setLabelValue('')
       setComment('')
       setPicked(dialog?.parent ? [dialog.parent] : [])
       setRange([])
       setNameError(null)
       if (entity) {
-        setLabelValue(Object.values(entity.label ?? {})[0] ?? '')
         setComment(entity.comment ?? '')
         setPicked((entity.parents ?? []).map((p) => p.eid))
         setRange((entity.properties ?? []).length ? [] : [])
@@ -179,8 +169,9 @@ export default function EntityDialogs({ oid }: { oid: string }) {
   const mutation = useMutation({
     mutationFn: async () => {
       const fileHash = meta?.fileHash ?? ''
-      const label =
-        labelValue.trim() === '' ? null : { value: labelValue.trim(), lang: lang || null }
+      // No label UI (2026-08-27 user call): creates auto-label with the
+      // entity name as a plain literal; edits never touch existing labels.
+      const label = { value: name.trim(), lang: null }
       const cleanComment = comment.trim() === '' ? null : comment.trim()
       if (mode === 'class' || mode === 'subclass') {
         return api.post<{ entity: { eid: string } }>(`/api/ontologies/${oid}/classes`, {
@@ -206,8 +197,6 @@ export default function EntityDialogs({ oid }: { oid: string }) {
       }
       if (mode === 'editClass' || mode === 'editProperty') {
         const body: Record<string, unknown> = { baseFileHash: fileHash }
-        if (labelValue.trim() !== '') body.label = label
-        else body.label = null
         body.comment = cleanComment
         if (mode === 'editClass') body.parents = picked
         else {
@@ -322,30 +311,6 @@ export default function EntityDialogs({ oid }: { oid: string }) {
                 {nameError}
               </p>
             )}
-            <div className="grid grid-cols-[7rem_1fr] items-center gap-2">
-              <span className={labelCls}>标签</span>
-              <div className="flex gap-2">
-                <input
-                  value={labelValue}
-                  onChange={(e) => setLabelValue(e.target.value)}
-                  aria-label="标签"
-                  placeholder="显示名（可选）"
-                  className={fieldCls}
-                />
-                <select
-                  value={lang}
-                  onChange={(e) => setLang(e.target.value)}
-                  aria-label="语言"
-                  className={`${fieldCls} w-20 shrink-0`}
-                >
-                  {LANGS.map(([v, l]) => (
-                    <option key={v} value={v}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
             <div className="grid grid-cols-[7rem_1fr] items-start gap-2">
               <span className={labelCls}>描述</span>
               <textarea
