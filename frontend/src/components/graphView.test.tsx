@@ -354,8 +354,11 @@ describe('GraphView saved layout', () => {
       const onLayoutChange = vi.fn()
       draw({ onLayoutChange })
       const g = lastG6()!
-      // Simulate the layout engine having placed nodes (real G6 does this).
-      g.nodeData = NODES.map((n, i) => ({ id: n.id, style: { x: i * 100, y: 50 } }))
+      // Simulate rendered positions: G6 5.x keeps them on the element, not
+      // the data model (whose style.x stays stale after drags).
+      g.elementPositions = Object.fromEntries(
+        NODES.map((n, i) => [n.id, { x: i * 100, y: 50 }]),
+      )
       g.handlers['node:dragend']({})
       expect(onLayoutChange).not.toHaveBeenCalled()
       vi.advanceTimersByTime(800)

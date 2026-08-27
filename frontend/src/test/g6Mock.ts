@@ -17,6 +17,14 @@ export class MockGraph {
   /** What getNodeData() returns when set (layout/drag results); falls back
    *  to the constructor data (which carries no coordinates in jsdom). */
   nodeData: { id: string; style?: Record<string, unknown> }[] = []
+  /** Rendered coordinates per node id — mirrors G6 5.x, where drags update
+   *  the element position and the data model's style.x stays stale.
+   *  getElementPosition returns the real Point shape: a [x, y] tuple. */
+  elementPositions: Record<string, { x: number; y: number }> = {}
+  getElementPosition = vi.fn(function (this: MockGraph, id: string) {
+    const p = this.elementPositions[id] ?? { x: 0, y: 0 }
+    return [p.x, p.y] as [number, number]
+  })
   render = vi.fn(async () => {})
   draw = vi.fn(async () => {})
   fitView = vi.fn(async () => {})

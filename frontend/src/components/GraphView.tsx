@@ -346,11 +346,15 @@ export default function GraphView({
   })
 
   /** Read the engine's current coordinates into positionsRef (after a
-   *  layout pass or a drag) and schedule the debounced whole-map report. */
+   *  layout pass or a drag) and schedule the debounced whole-map report.
+   *  G6 5.x keeps rendered coords on the element — the data model's
+   *  style.x is NOT synced after drags (auto-laid-out nodes read 0). */
   const captureAndSchedule = (graph: Graph) => {
-    for (const nd of graph.getNodeData() as { id: string; style?: { x?: number; y?: number } }[]) {
-      const { x, y } = nd.style ?? {}
-      if (typeof x === 'number' && typeof y === 'number') positionsRef.current[nd.id] = { x, y }
+    for (const nd of graph.getNodeData() as { id: string }[]) {
+      // Point is [x, y] | [x, y, z] | Float32Array — index, don't destructure
+      // named fields.
+      const p = graph.getElementPosition(nd.id)
+      if (p) positionsRef.current[nd.id] = { x: p[0], y: p[1] }
     }
     if (!onLayoutChangeRef.current) return
     window.clearTimeout(saveTimerRef.current)

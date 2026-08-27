@@ -92,7 +92,7 @@ describe('GraphOverview layout persistence', () => {
       draw(stubFetch())
       await waitForGraph()
       const g = lastG6()!
-      g.nodeData = [{ id: 'a', style: { x: 42, y: 43 } }]
+      g.elementPositions = { a: { x: 42, y: 43 } }
       g.handlers['node:dragend']({})
       vi.advanceTimersByTime(800)
       await vi.advanceTimersByTimeAsync(0)
