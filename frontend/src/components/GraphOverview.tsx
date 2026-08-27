@@ -26,16 +26,6 @@ function menuItems(
   if (!menu.targetId) {
     return [
       { key: 'class', label: '＋ 新建类', onSelect: () => setEntityDialog({ mode: 'class' }) },
-      {
-        key: 'objectProperty',
-        label: '＋ 新建对象属性',
-        onSelect: () => setEntityDialog({ mode: 'objectProperty' }),
-      },
-      {
-        key: 'dataProperty',
-        label: '＋ 新建数据属性',
-        onSelect: () => setEntityDialog({ mode: 'dataProperty' }),
-      },
     ]
   }
   if (menu.kind === 'property') {
@@ -61,12 +51,12 @@ function menuItems(
     },
     {
       key: 'objectProperty',
-      label: '新建对象属性（domain 预填）',
+      label: '新建对象属性',
       onSelect: () => setEntityDialog({ mode: 'objectProperty', parent: menu.targetId }),
     },
     {
       key: 'dataProperty',
-      label: '新建数据属性（domain 预填）',
+      label: '新建数据属性',
       onSelect: () => setEntityDialog({ mode: 'dataProperty', parent: menu.targetId }),
     },
     {

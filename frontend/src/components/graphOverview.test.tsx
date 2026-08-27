@@ -124,7 +124,8 @@ describe('GraphOverview context menu', () => {
     g.handlers['canvas:contextmenu']({ client: { x: 10, y: 12 }, preventDefault: vi.fn() })
     expect(await screen.findByRole('menu')).toBeTruthy()
     expect(screen.getByText('＋ 新建类')).toBeTruthy()
-    expect(screen.getByText('＋ 新建对象属性')).toBeTruthy()
+    // Blank-canvas menu offers classes only (2026-08-27 user call).
+    expect(screen.queryByText('＋ 新建对象属性')).toBeNull()
 
     g.handlers['node:contextmenu']({
       target: { id: 'a' },
