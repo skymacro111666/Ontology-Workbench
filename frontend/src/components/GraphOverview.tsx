@@ -21,7 +21,6 @@ function menuItems(
     parent?: string
     eid?: string
   }) => void,
-  _close: () => void,
 ): MenuItem[] {
   if (!menu.targetId) {
     return [
@@ -216,7 +215,7 @@ export default function GraphOverview({
             x={menu.x}
             y={menu.y}
             onClose={() => setMenu(null)}
-            items={menuItems(menu, setEntityDialog, () => setMenu(null))}
+            items={menuItems(menu, setEntityDialog)}
           />
         )}
       </div>

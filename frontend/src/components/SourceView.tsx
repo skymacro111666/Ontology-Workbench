@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
@@ -140,11 +140,16 @@ export default function SourceView({ oid }: { oid: string }) {
     retry: false,
   })
 
-  const markDirty = (d: boolean) => {
-    dirtyRef.current = d
-    setDirty(d)
-    setSourceDirty(d)
-  }
+  /** Stable identity so the view-building effect can list it in deps
+   *  without rebuilding the editor on every render. */
+  const markDirty = useCallback(
+    (d: boolean) => {
+      dirtyRef.current = d
+      setDirty(d)
+      setSourceDirty(d)
+    },
+    [setSourceDirty],
+  )
 
   const saveMutation = useMutation({
     mutationFn: (content: string) =>
@@ -190,7 +195,10 @@ export default function SourceView({ oid }: { oid: string }) {
     }
   }
   const saveRef = useRef(save)
-  saveRef.current = save
+  // Latest-ref pattern: update after commit, not during render.
+  useEffect(() => {
+    saveRef.current = save
+  })
 
   /** (Re)build the editor when data changes — but NEVER clobber local edits:
    *  a background refetch (focus / invalidateQueries) while dirty keeps the
@@ -248,7 +256,7 @@ export default function SourceView({ oid }: { oid: string }) {
     baseHashRef.current = data.fileHash
     markDirty(false)
     viewRef.current = view
-  }, [data])
+  }, [data, markDirty])
 
   /** Unmount teardown: destroy the editor (data-effect rebuilds are guarded
    *  above, so only unmounting destroys a live view). */

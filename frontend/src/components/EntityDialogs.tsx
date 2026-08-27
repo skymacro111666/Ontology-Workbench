@@ -131,6 +131,10 @@ export default function EntityDialogs({ oid }: { oid: string }) {
   const [nameError, setNameError] = useState<string | null>(null)
   useEffect(() => {
     if (open && !prevOpen) {
+      // Derived-state reset on dialog open (the ImportDialog prevOpen
+      // pattern): fires once per open transition, so the cascading renders
+      // the rule fears cannot loop here.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setName('')
       setPrefix(Object.keys(meta?.prefixes ?? { ex: '' })[0] ?? 'ex')
       setComment('')
