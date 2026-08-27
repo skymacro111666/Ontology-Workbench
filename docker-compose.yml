@@ -1,0 +1,32 @@
+# Ontology Workbench — 一键启动:
+#   docker compose up -d --build
+# 数据落在项目内 ./data(SQLite 库 + 上传的本体文件)与 ./logs,容器重建不丢失。
+# 端口或密钥可覆盖:OW_PORT=9000 docker compose up -d
+#   OW_JWT_SECRET=... docker compose up -d   (不设则首次启动自动生成并存在 data/jwt-secret)
+services:
+  ow:
+    build: .
+    image: ontology-workbench:latest
+    ports:
+      - "${OW_PORT:-8734}:8734"
+    environment:
+      OW_DATA_DIR: /data
+      OW_LOG_DIR: /logs
+      # OW_JWT_SECRET 走进程环境即可,不需要在这里展开——显式设置优先于自动生成
+      OW_JWT_SECRET: ${OW_JWT_SECRET:-}
+    volumes:
+      - ./data:/data
+      - ./logs:/logs
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8734/api/auth/status')",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3

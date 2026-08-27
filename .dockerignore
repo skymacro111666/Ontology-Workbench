@@ -1,0 +1,29 @@
+# VCS / metadata
+.git
+.gitignore
+
+# Runtime data — never bake into the image
+data/
+logs/
+backend/ontoworkbench/data/
+backend/ontoworkbench/logs/
+backend/.env
+
+# Python build/test artifacts
+**/__pycache__/
+**/*.pyc
+**/.venv/
+.pytest_cache/
+.ruff_cache/
+.import_linter_cache/
+backend/htmlcov/
+
+# Node / frontend artifacts (dist is rebuilt in stage 1)
+**/node_modules/
+frontend/dist/
+
+# Docs and dev tooling not needed in the image
+docs/
+.idea/
+.vscode/
+CONVERSATION.md

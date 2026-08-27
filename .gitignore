@@ -3,6 +3,10 @@ backend/ontoworkbench/data/
 backend/ontoworkbench/logs/
 backend/.env
 
+# docker compose 挂载的项目内数据目录
+/data/
+/logs/
+
 # Python
 __pycache__/
 *.pyc
