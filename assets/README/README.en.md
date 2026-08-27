@@ -2,7 +2,7 @@
 
 # Ontology Workbench
 
-**Everything you need to explore, edit and publish ontologies — self-hosted, data local.**
+**A self-hosted, open-source ontology workbench — explore, edit, and publish ontologies**
 
 [![CI](../../../actions/workflows/ci.yml/badge.svg)](../../../actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](../../../LICENSE)
@@ -12,8 +12,6 @@
 [Features](#-features) · [Get Started](#-get-started) · [License](#-license)
 
 </div>
-
-**Ontology Workbench** is a self-hosted, open-source ontology workbench.
 
 ## ✨ Features
 

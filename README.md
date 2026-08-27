@@ -2,7 +2,7 @@
 
 # Ontology Workbench
 
-**探索、编辑、发布本体所需的一切——自托管,数据本地。**
+**自托管的开源本体工作台，探索、编辑、发布本体**
 
 [![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
@@ -12,8 +12,6 @@
 [特性](#-特性亮点) · [快速开始](#-快速开始) · [许可证](#-许可证)
 
 </div>
-
-**Ontology Workbench**是一个自托管的开源本体工作台。
 
 ## ✨ 特性亮点
 
