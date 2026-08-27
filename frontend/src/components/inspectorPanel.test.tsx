@@ -105,15 +105,16 @@ describe('InspectorPanel', () => {
     renderPanel()
     // Title shows the bare local name; the full curie moves into the hover
     // tooltip (same convention as the chips), the URI block keeps the eid.
-    const title = await screen.findByText('Dog')
+    const title = await screen.findByTitle('pizza:Dog')
     expect(title.title).toBe('pizza:Dog')
     expect(screen.queryByText('pizza:Dog')).toBeNull()
     // Type renders as an "OWL CLASS"-style uppercase pill (mockup).
     expect(screen.getByText('CLASS').className).toContain('rounded-full')
     // URI renders as a code block.
     expect(screen.getByText(EID).closest('pre')).toBeTruthy()
-    // Label badge: "value lang" pill (mockup §7.2).
-    expect(screen.getByText('Dog en')).toBeTruthy()
+    // Label badge: a single label shows the bare value (no lang suffix —
+    // the suffix only disambiguates multilingual labels).
+    expect(screen.getAllByText('Dog').length).toBe(2) // title + label chip
     expect(screen.getByText('Dogs bark.')).toBeTruthy()
     // Parents/children/backrefs render as chips (label or local name — the
     // full curie moved into the tooltip).
@@ -126,6 +127,14 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('直接子类 (1)')).toBeTruthy()
     expect(screen.queryByText(/属性 \(/)).toBeNull()
     expect(screen.getByText('被引用 (1)')).toBeTruthy()
+  })
+
+  it('suffixes labels with their language only when several coexist', async () => {
+    const ent = entity()
+    ent.label = { zh: '狗', en: 'Dog' }
+    renderPanel(stubFetch(ent))
+    expect(await screen.findByText('狗 (zh)')).toBeTruthy()
+    expect(screen.getByText('Dog (en)')).toBeTruthy()
   })
 
   it('groups backrefs by domain/range, dropping the subclass duplicates', async () => {
@@ -191,7 +200,7 @@ describe('InspectorPanel', () => {
   it('skips the instances section and fetch for non-class entities', async () => {
     const prop = { ...entity(), type: 'ObjectProperty' as const }
     const { fetchMock } = renderPanel(stubFetch(prop))
-    expect(await screen.findByText('Dog')).toBeTruthy()
+    expect(await screen.findByTitle('pizza:Dog')).toBeTruthy()
     expect(screen.queryByText(/^实例/)).toBeNull()
     expect(fetchMock.mock.calls.map(([u]) => String(u)).some((u) => u.endsWith('/instances'))).toBe(
       false,

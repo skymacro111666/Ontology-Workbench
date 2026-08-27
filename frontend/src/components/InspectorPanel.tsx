@@ -212,7 +212,11 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
                 <span
                   key={lang}
                   className="border-line text-ink-2 rounded-full border px-2 py-px text-[11px]"
-                >{`${value} ${lang}`}</span>
+                >
+                  {/* Lang suffix only disambiguates multilingual labels; a
+                      single label reads as the plain display name. */}
+                  {Object.keys(ent.label).length > 1 ? `${value} (${lang})` : value}
+                </span>
               ))}
             </div>
           </Section>
