@@ -15,6 +15,7 @@ import typer
 import uvicorn
 
 from ontoworkbench.config import Settings, ensure_env_file
+from ontoworkbench.observability.logging import setup_logging
 
 app = typer.Typer(help="Ontology Workbench — self-hosted ontology workbench.")
 
@@ -40,6 +41,10 @@ def _migrate(db_url: str, data_dir: Path) -> None:
     os.environ["OW_DB_URL"] = db_url
     cfg = AlembicConfig(str(BACKEND_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_ROOT / "migrations"))
+    # Keep alembic from applying alembic.ini's plain-text logging over the
+    # app's JSON sinks (env.py honors this switch); records still flow to
+    # the root handlers set up by setup_logging, wrapped as JSON.
+    cfg.attributes["no_logger"] = True
     alembic_command.upgrade(cfg, "head")
 
 
@@ -108,6 +113,9 @@ def serve(
         cli["log_dir"] = Path(log_dir)
     settings = _settings(cli)
 
+    # JSON sinks must exist before migrations run, or alembic's INFO lines
+    # hit a handler-less root logger and vanish (lastResort shows WARNING+).
+    setup_logging(settings.log_dir, settings.log_level)
     _migrate(settings.db_url, settings.data_dir)
     init_engine(settings.db_url)
 
@@ -152,6 +160,7 @@ def import_ontology(
     if data_dir:
         cli["data_dir"] = Path(data_dir)
     settings = _settings(cli)
+    setup_logging(settings.log_dir, settings.log_level)
     _migrate(settings.db_url, settings.data_dir)
     init_engine(settings.db_url)
 
@@ -223,6 +232,7 @@ def export_site_cmd(
     if data_dir:
         cli["data_dir"] = Path(data_dir)
     settings = _settings(cli)
+    setup_logging(settings.log_dir, settings.log_level)
     _migrate(settings.db_url, settings.data_dir)
     init_engine(settings.db_url)
 
