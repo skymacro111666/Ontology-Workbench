@@ -149,8 +149,8 @@ describe('Browse workspace (overview-only)', () => {
     expect(screen.getAllByText('Animal').length).toBeGreaterThanOrEqual(1)
     // Zone 3: resident inspector shows the selected entity's URI block.
     expect(screen.getByText(EID).closest('pre')).toBeTruthy()
-    // Label badge: "value lang" pill (mockup §7.2).
-    expect(screen.getAllByText('Dog en').length).toBeGreaterThanOrEqual(1)
+    // Label badge: a single label shows the bare value (no lang suffix).
+    expect(screen.getAllByText('Dog').length).toBeGreaterThanOrEqual(1)
     // Zone 4: statusbar copy (mono filename · counts · green parse status).
     expect(screen.getByText('pizza.ttl')).toBeTruthy()
     expect(screen.getByText('99 类')).toBeTruthy()
