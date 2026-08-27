@@ -20,9 +20,15 @@ class SPAStaticFiles(StaticFiles):
     """StaticFiles that falls back to index.html for client-side routes."""
 
     async def get_response(self, path: str, scope: Scope) -> Response:
-        """Serve the file; SPA-route misses return index.html, API stays JSON."""
+        """Serve the file; SPA-route misses return index.html, API stays JSON.
+
+        Caching: index.html revalidates every load (no-cache) so a rebuilt
+        bundle lands on the next refresh — without the header browsers keep
+        heuristic-cached stale entries. Hashed /assets/* are immutable:
+        their filename changes with content, so they cache for a year.
+        """
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except HTTPException as exc:
             if exc.status_code != 404:
                 raise
@@ -31,4 +37,10 @@ class SPAStaticFiles(StaticFiles):
                     status_code=404,
                     content=error_body(ErrorCode.NOT_FOUND, "Not Found"),
                 )
-            return await super().get_response("index.html", scope)
+            response = await super().get_response("index.html", scope)
+            path = "index.html"
+        if path in ("", ".") or path.endswith("index.html"):
+            response.headers["Cache-Control"] = "no-cache"
+        elif path.startswith("assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response

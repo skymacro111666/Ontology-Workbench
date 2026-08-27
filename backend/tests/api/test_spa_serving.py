@@ -36,3 +36,16 @@ def test_unknown_api_path_is_json_404(client: TestClient) -> None:
     body = r.json()
     assert body["code"] == "NOT_FOUND"
     assert set(body) == {"code", "message", "data", "hint", "request_id"}
+
+
+def test_index_revalidates_no_cache(client: TestClient) -> None:
+    """/ and history-fallback responses carry no-cache so rebuilds land."""
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    deep = client.get("/browse/0b6a3f2a-8f13-4a3e-9c2d-1d4e5f6a7b8c")
+    assert deep.headers["cache-control"] == "no-cache"
+
+
+def test_hashed_assets_cache_immutable(client: TestClient) -> None:
+    """/assets/* filenames carry the content hash: cache forever."""
+    r = client.get("/assets/app.js")
+    assert r.headers["cache-control"] == "public, max-age=31536000, immutable"
