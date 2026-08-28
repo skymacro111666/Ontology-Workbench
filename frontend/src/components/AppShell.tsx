@@ -144,11 +144,15 @@ export default function AppShell({ children }: { children?: ReactNode }) {
                 导出 ▾
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="text-[13px]">
-              <DropdownMenuItem onSelect={() => openLast('/export')}>导出文档站</DropdownMenuItem>
+            <DropdownMenuContent align="end">
+              {/* text-xs per item: the item base class ships text-sm, so a
+                  font-size on the content element never reaches the items. */}
+              <DropdownMenuItem className="text-xs" onSelect={() => openLast('/export')}>
+                导出文档站
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               {FILE_EXPORTS.map(([fmt, label]) => (
-                <DropdownMenuItem key={fmt} onSelect={() => void downloadAs(fmt)}>
+                <DropdownMenuItem key={fmt} className="text-xs" onSelect={() => void downloadAs(fmt)}>
                   {label}
                 </DropdownMenuItem>
               ))}
@@ -198,11 +202,12 @@ export default function AppShell({ children }: { children?: ReactNode }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <div className="text-ink-2 px-2 py-1 text-xs">{user?.username ?? '用户'}</div>
-              <DropdownMenuItem onSelect={() => setPwdOpen(true)}>
+              <DropdownMenuItem className="text-xs" onSelect={() => setPwdOpen(true)}>
                 <KeyRoundIcon />
                 修改密码
               </DropdownMenuItem>
               <DropdownMenuItem
+                className="text-xs"
                 onSelect={() => {
                   logout()
                   navigate('/login')
