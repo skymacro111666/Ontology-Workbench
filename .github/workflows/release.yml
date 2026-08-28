@@ -1,0 +1,20 @@
+name: release
+
+# 推送 v* tag 时自动创建 GitHub Release,正文取自 RELEASE_NOTES.md。
+# 流程:改完 RELEASE_NOTES.md → git tag -f v0.1.0 → git push -f origin v0.1.0
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Create release from RELEASE_NOTES.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes-file RELEASE_NOTES.md
