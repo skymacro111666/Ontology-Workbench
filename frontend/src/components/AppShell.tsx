@@ -1,5 +1,5 @@
-import { FileTextIcon, LogOutIcon, Share2Icon } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { FileTextIcon, KeyRoundIcon, LogOutIcon, Share2Icon } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { LAST_OID_KEY, useAuth } from '../auth/AuthContext'
@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import CommandPalette from './CommandPalette'
 import ImportDialog from './ImportDialog'
 import OntologySwitcher from './OntologySwitcher'
+import PasswordDialog from './PasswordDialog'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
@@ -52,6 +53,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const setBrowseView = useUiStore((s) => s.setBrowseView)
   const pendingView = useUiStore((s) => s.pendingView)
   const setPendingView = useUiStore((s) => s.setPendingView)
+  const [pwdOpen, setPwdOpen] = useState(false)
 
   /** View switch with a dirty-text guard: route through the dialog. */
   const switchView = (v: BrowseView) => {
@@ -199,6 +201,10 @@ export default function AppShell({ children }: { children?: ReactNode }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <div className="text-ink-2 px-2 py-1 text-xs">{user?.username ?? '用户'}</div>
+              <DropdownMenuItem onSelect={() => setPwdOpen(true)}>
+                <KeyRoundIcon />
+                修改密码
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
                   logout()
@@ -218,6 +224,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
 
       <ImportDialog />
       <CommandPalette />
+      <PasswordDialog open={pwdOpen} onClose={() => setPwdOpen(false)} />
 
       {/* Dirty-text switch guard: save / discard the edits before leaving. */}
       <AlertDialog
