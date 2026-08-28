@@ -1,0 +1,218 @@
+# Sample ontology 'library' — 图书馆藏书演示本体 (library collection demo).
+# Authored for Ontology Workbench (Apache-2.0); designed to showcase a
+# three-level class tree, bilingual labels, per-class instances, and both
+# object- and data-property semantics. Local names stay ASCII (app
+# constraint); Chinese lives in rdfs:label / rdfs:comment literals.
+# 实例仅含书目事实数据(题名/作者/年份/页数),事实数据不受版权保护。
+
+@prefix lib: <https://github.com/skymacro111666/ontology-workbench/samples/library#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<https://github.com/skymacro111666/ontology-workbench/samples/library> a owl:Ontology ;
+    dcterms:title "图书馆藏书本体"@zh-CN ,
+                  "Library Collection Ontology"@en ;
+    dcterms:license <http://www.apache.org/licenses/LICENSE-2.0> ;
+    rdfs:comment "一个小型图书馆藏书模型:馆藏资料分类、馆藏位置与创作者,附示例藏书实例。"@zh-CN ;
+    owl:versionInfo "1.0.0" .
+
+#################################################################
+#    Classes 类
+#################################################################
+
+### 馆藏资料(根)
+lib:LibraryMaterial a owl:Class ;
+    rdfs:label "馆藏资料"@zh-CN , "Library Material"@en ;
+    rdfs:comment "图书馆收藏的所有资料。"@zh-CN .
+
+### 图书一支
+lib:Book a owl:Class ;
+    rdfs:subClassOf lib:LibraryMaterial ;
+    rdfs:label "图书"@zh-CN , "Book"@en ;
+    rdfs:comment "以文字为主的出版物。"@zh-CN .
+
+lib:Novel a owl:Class ;
+    rdfs:subClassOf lib:Book ;
+    rdfs:label "小说"@zh-CN , "Novel"@en .
+
+lib:ScienceFiction a owl:Class ;
+    rdfs:subClassOf lib:Novel ;
+    rdfs:label "科幻小说"@zh-CN , "Science Fiction"@en .
+
+lib:MysteryNovel a owl:Class ;
+    rdfs:subClassOf lib:Novel ;
+    rdfs:label "推理小说"@zh-CN , "Mystery Novel"@en .
+
+lib:Biography a owl:Class ;
+    rdfs:subClassOf lib:Book ;
+    rdfs:label "传记"@zh-CN , "Biography"@en .
+
+### 期刊一支
+lib:Periodical a owl:Class ;
+    rdfs:subClassOf lib:LibraryMaterial ;
+    rdfs:label "期刊"@zh-CN , "Periodical"@en .
+
+lib:Magazine a owl:Class ;
+    rdfs:subClassOf lib:Periodical ;
+    rdfs:label "杂志"@zh-CN , "Magazine"@en .
+
+lib:AcademicJournal a owl:Class ;
+    rdfs:subClassOf lib:Periodical ;
+    rdfs:label "学术期刊"@zh-CN , "Academic Journal"@en .
+
+### 多媒体一支
+lib:Multimedia a owl:Class ;
+    rdfs:subClassOf lib:LibraryMaterial ;
+    rdfs:label "多媒体资料"@zh-CN , "Multimedia"@en .
+
+lib:Audiobook a owl:Class ;
+    rdfs:subClassOf lib:Multimedia ;
+    rdfs:label "有声书"@zh-CN , "Audiobook"@en .
+
+lib:VideoRecording a owl:Class ;
+    rdfs:subClassOf lib:Multimedia ;
+    rdfs:label "录像资料"@zh-CN , "Video Recording"@en .
+
+### 位置与人物(独立根)
+lib:Location a owl:Class ;
+    rdfs:label "馆藏位置"@zh-CN , "Location"@en ;
+    rdfs:comment "馆内收藏地点。"@zh-CN .
+
+lib:Stacks a owl:Class ;
+    rdfs:subClassOf lib:Location ;
+    rdfs:label "书库"@zh-CN , "Stacks"@en .
+
+lib:ReadingRoom a owl:Class ;
+    rdfs:subClassOf lib:Location ;
+    rdfs:label "阅览区"@zh-CN , "Reading Room"@en .
+
+lib:Person a owl:Class ;
+    rdfs:label "人物"@zh-CN , "Person"@en ;
+    rdfs:comment "与藏书相关的创作者(作者、译者)。"@zh-CN .
+
+#################################################################
+#    Object Properties 对象属性
+#################################################################
+
+lib:locatedIn a owl:ObjectProperty ;
+    rdfs:domain lib:LibraryMaterial ;
+    rdfs:range lib:Location ;
+    rdfs:label "位于"@zh-CN , "located in"@en .
+
+lib:hasCreator a owl:ObjectProperty ;
+    rdfs:domain lib:Book ;
+    rdfs:range lib:Person ;
+    rdfs:label "创作者"@zh-CN , "has creator"@en .
+
+lib:hasTranslator a owl:ObjectProperty ;
+    rdfs:domain lib:Book ;
+    rdfs:range lib:Person ;
+    rdfs:label "译者"@zh-CN , "has translator"@en .
+
+#################################################################
+#    Data Properties 数据属性
+#################################################################
+
+lib:title a owl:DatatypeProperty ;
+    rdfs:domain lib:LibraryMaterial ;
+    rdfs:range xsd:string ;
+    rdfs:label "题名"@zh-CN , "title"@en .
+
+lib:isbn a owl:DatatypeProperty ;
+    rdfs:domain lib:Book ;
+    rdfs:range xsd:string ;
+    rdfs:label "ISBN"@zh-CN , "ISBN"@en .
+
+lib:publicationYear a owl:DatatypeProperty ;
+    rdfs:domain lib:LibraryMaterial ;
+    rdfs:range xsd:integer ;
+    rdfs:label "出版年"@zh-CN , "publication year"@en .
+
+lib:pageCount a owl:DatatypeProperty ;
+    rdfs:domain lib:Book ;
+    rdfs:range xsd:integer ;
+    rdfs:label "页数"@zh-CN , "page count"@en .
+
+lib:available a owl:DatatypeProperty ;
+    rdfs:domain lib:LibraryMaterial ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "可外借"@zh-CN , "available"@en .
+
+#################################################################
+#    Individuals 实例(书目为事实数据)
+#################################################################
+
+lib:ThreeBody a owl:NamedIndividual , lib:ScienceFiction ;
+    rdfs:label "三体"@zh-CN , "The Three-Body Problem"@en ;
+    lib:title "三体"@zh-CN ;
+    lib:isbn "978-7-5366-9293-0" ;
+    lib:publicationYear 2008 ;
+    lib:pageCount 302 ;
+    lib:available true ;
+    lib:hasCreator lib:LiuCixin ;
+    lib:locatedIn lib:MainStacks .
+
+lib:BallLightning a owl:NamedIndividual , lib:ScienceFiction ;
+    rdfs:label "球状闪电"@zh-CN , "Ball Lightning"@en ;
+    lib:title "球状闪电"@zh-CN ;
+    lib:publicationYear 2005 ;
+    lib:pageCount 354 ;
+    lib:available true ;
+    lib:hasCreator lib:LiuCixin ;
+    lib:locatedIn lib:MainStacks .
+
+lib:JourneyUnderMidnightSun a owl:NamedIndividual , lib:MysteryNovel ;
+    rdfs:label "白夜行"@zh-CN , "Journey Under the Midnight Sun"@en ;
+    lib:title "白夜行"@zh-CN ;
+    lib:publicationYear 1999 ;
+    lib:pageCount 468 ;
+    lib:available false ;
+    lib:hasCreator lib:HigashinoKeigo ;
+    lib:locatedIn lib:ScienceReadingRoom .
+
+lib:BiographyOfSuDongpo a owl:NamedIndividual , lib:Biography ;
+    rdfs:label "苏东坡传"@zh-CN , "The Biography of Su Dongpo"@en ;
+    lib:title "苏东坡传"@zh-CN ;
+    lib:publicationYear 1947 ;
+    lib:pageCount 336 ;
+    lib:available true ;
+    lib:hasCreator lib:LinYutang ;
+    lib:locatedIn lib:MainStacks .
+
+lib:NatureJournal a owl:NamedIndividual , lib:AcademicJournal ;
+    rdfs:label "Nature(期刊)"@zh-CN , "Nature"@en ;
+    lib:publicationYear 1869 ;
+    lib:available true ;
+    lib:locatedIn lib:ScienceReadingRoom .
+
+lib:ReadersMagazine a owl:NamedIndividual , lib:Magazine ;
+    rdfs:label "读者"@zh-CN , "Readers"@en ;
+    lib:publicationYear 1981 ;
+    lib:available true ;
+    lib:locatedIn lib:ScienceReadingRoom .
+
+lib:ThreeBodyAudiobook a owl:NamedIndividual , lib:Audiobook ;
+    rdfs:label "三体(有声书)"@zh-CN , "The Three-Body Problem (Audiobook)"@en ;
+    lib:publicationYear 2019 ;
+    lib:available true ;
+    lib:locatedIn lib:MainStacks .
+
+### 位置实例
+lib:MainStacks a owl:NamedIndividual , lib:Stacks ;
+    rdfs:label "主书库"@zh-CN , "Main Stacks"@en .
+
+lib:ScienceReadingRoom a owl:NamedIndividual , lib:ReadingRoom ;
+    rdfs:label "自然科学阅览区"@zh-CN , "Science Reading Room"@en .
+
+### 人物实例
+lib:LiuCixin a owl:NamedIndividual , lib:Person ;
+    rdfs:label "刘慈欣"@zh-CN , "Liu Cixin"@en .
+
+lib:HigashinoKeigo a owl:NamedIndividual , lib:Person ;
+    rdfs:label "东野圭吾"@zh-CN , "Keigo Higashino"@en .
+
+lib:LinYutang a owl:NamedIndividual , lib:Person ;
+    rdfs:label "林语堂"@zh-CN , "Lin Yutang"@en .

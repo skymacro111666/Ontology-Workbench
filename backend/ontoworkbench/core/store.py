@@ -9,7 +9,7 @@ from uuid import UUID
 
 from ontoworkbench.core.errors import CoreError
 
-_SAMPLE_NAMES = {"pizza", "wine", "foaf"}
+_SAMPLE_NAMES = {"pizza", "wine", "foaf", "library"}
 
 
 class LocalUserDirStore:
