@@ -1,9 +1,10 @@
-"""Auth endpoints: one-shot setup, login, me."""
+"""Auth endpoints: one-shot setup, login, me, password change."""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
 from ontoworkbench.auth.jwt import create_token
@@ -67,3 +68,29 @@ def me(user: User = Depends(get_current_user)) -> dict:
             "created_at": user.created_at.isoformat(),
         }
     )
+
+
+class PasswordChange(BaseModel):
+    """Change-password payload (camelCase wire names)."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    current_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+@router.put("/password")
+def change_password(
+    body: PasswordChange,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Verify the current password and set a new one.
+
+    Tokens issued before the change stay valid until their 7-day expiry
+    (keep-logged-in design for the single-user self-hosted deployment).
+    """
+    if not verify_password(body.current_password, user.password_hash):
+        raise ApiError(ErrorCode.AUTH_INVALID_CREDENTIALS, "Current password is incorrect")
+    UserRepository(session).update_password(user.id, hash_password(body.new_password))
+    return respond({"ok": True})

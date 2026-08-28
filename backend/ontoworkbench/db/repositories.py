@@ -75,6 +75,18 @@ class UserRepository:
         self._s.commit()
         return u
 
+    def update_password(self, user_id: UUID, password_hash: str) -> None:
+        """Replace a user's password hash.
+
+        Args:
+            user_id: User to update.
+            password_hash: New hashed password.
+        """
+        u = self._s.get(User, user_id)
+        if u is not None:
+            u.password_hash = password_hash
+            self._s.commit()
+
 
 class OntologyRepository:
     """Access to ontologies registry."""

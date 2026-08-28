@@ -76,3 +76,61 @@ def test_status_needs_no_auth_and_flips_after_setup(client: TestClient) -> None:
     done = client.get("/api/auth/status")
     assert done.json()["code"] == "OK"
     assert done.json()["data"] == {"need_setup": False}
+
+
+def _login_token(client: TestClient, password: str) -> str:
+    """Log in as the (already set up) admin and return the bearer token."""
+    r = client.post("/api/auth/login", json={"username": "admin", "password": password})
+    return r.json()["data"]["token"]
+
+
+def test_change_password_round_trip(client: TestClient) -> None:
+    """Wrong current password rejected; a correct change swaps login credentials.
+
+    Issued tokens stay valid after the change (keep-logged-in design).
+    """
+    client.post("/api/auth/setup", json={"username": "admin", "password": "long-enough-pw"})
+    token = _login_token(client, "long-enough-pw")
+    auth = {"Authorization": f"Bearer {token}"}
+
+    bad = client.put(
+        "/api/auth/password",
+        json={"currentPassword": "wrong-password", "newPassword": "brand-new-long-pw"},
+        headers=auth,
+    )
+    assert bad.json()["code"] == "AUTH_INVALID_CREDENTIALS"
+    # Rejected change leaves the old password working.
+    assert _login_token(client, "long-enough-pw")
+
+    ok = client.put(
+        "/api/auth/password",
+        json={"currentPassword": "long-enough-pw", "newPassword": "brand-new-long-pw"},
+        headers=auth,
+    )
+    assert ok.json()["code"] == "OK"
+    assert set(ok.json()) == FIVE_FIELDS
+
+    old = client.post("/api/auth/login", json={"username": "admin", "password": "long-enough-pw"})
+    assert old.json()["code"] == "AUTH_INVALID_CREDENTIALS"
+    assert _login_token(client, "brand-new-long-pw")
+    # The token issued before the change still authenticates.
+    me = client.get("/api/auth/me", headers=auth)
+    assert me.json()["data"]["username"] == "admin"
+
+
+def test_change_password_requires_auth_and_length(client: TestClient) -> None:
+    """Unauthenticated calls bounce; short new passwords fail validation."""
+    client.post("/api/auth/setup", json={"username": "admin", "password": "long-enough-pw"})
+    anon = client.put(
+        "/api/auth/password",
+        json={"currentPassword": "long-enough-pw", "newPassword": "brand-new-long-pw"},
+    )
+    assert anon.json()["code"] == "AUTH_REQUIRED"
+
+    token = _login_token(client, "long-enough-pw")
+    short = client.put(
+        "/api/auth/password",
+        json={"currentPassword": "long-enough-pw", "newPassword": "short"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert short.json()["code"] == "VALIDATION_ERROR"
