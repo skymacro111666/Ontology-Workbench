@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -124,7 +124,7 @@ function renderBrowse(
 
 beforeEach(() => {
   useBrowseStore.setState({ selectedEid: null, revealEid: null })
-  useUiStore.setState({ browseView: 'graph' })
+  useUiStore.setState({ browseView: 'graph', leftCollapsed: false, rightCollapsed: false })
   resetG6()
 })
 
@@ -203,5 +203,44 @@ describe('Browse workspace (overview-only)', () => {
     renderBrowse(stubFetch(), { entry: `/browse/oid-1?eid=${encodeURIComponent(EID)}` })
     expect(await screen.findByText(EID)).toBeTruthy()
     expect(useBrowseStore.getState().selectedEid).toBe(EID)
+  })
+
+  it('collapses each sidebar to a 24px rail; panels stay mounted while hidden', async () => {
+    const { container } = renderBrowse(stubFetch())
+    expect(await screen.findByText('pizza.ttl')).toBeTruthy()
+    const gridCls = () => container.firstElementChild!.className
+    // Both open: the full three-column template.
+    expect(gridCls()).toContain('grid-cols-[264px_1fr_312px]')
+
+    // Collapse left: 24px rail column appears; the tree tabs stay in the
+    // DOM (hidden, not unmounted — expansion state survives).
+    fireEvent.click(screen.getByRole('button', { name: '折叠类树' }))
+    expect(gridCls()).toContain('grid-cols-[24px_1fr_312px]')
+    expect(screen.getByRole('button', { name: '展开类树' })).toBeTruthy()
+    expect(screen.getAllByRole('button', { name: '属性' }).length).toBeGreaterThanOrEqual(1)
+    expect(useUiStore.getState().leftCollapsed).toBe(true)
+
+    // Collapse right too: both rails, canvas takes the middle.
+    fireEvent.click(screen.getByRole('button', { name: '折叠检查器' }))
+    expect(gridCls()).toContain('grid-cols-[24px_1fr_24px]')
+
+    // Expand left from the rail; right stays collapsed.
+    fireEvent.click(screen.getByRole('button', { name: '展开类树' }))
+    expect(gridCls()).toContain('grid-cols-[264px_1fr_24px]')
+    expect(useUiStore.getState().leftCollapsed).toBe(false)
+  })
+
+  it('text mode keeps the left rail and drops the inspector column entirely', async () => {
+    const { container } = renderBrowse(stubFetch())
+    expect(await screen.findByText('pizza.ttl')).toBeTruthy()
+    // act(): the external store update schedules the re-render — flush it
+    // before asserting on the DOM.
+    act(() => {
+      useUiStore.setState({ browseView: 'text', leftCollapsed: true })
+    })
+    expect(container.firstElementChild!.className).toContain('grid-cols-[24px_1fr]')
+    expect(screen.getByRole('button', { name: '展开类树' })).toBeTruthy()
+    // No inspector column in text mode — no rail for it either.
+    expect(screen.queryByRole('button', { name: '展开检查器' })).toBeNull()
   })
 })

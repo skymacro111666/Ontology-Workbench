@@ -31,6 +31,11 @@ export const useUiStore = create<{
   setImportOpen: (open: boolean) => void
   browseView: BrowseView
   setBrowseView: (view: BrowseView) => void
+  /** Sidebar collapse (rail mode): collapsed panels stay mounted, hidden. */
+  leftCollapsed: boolean
+  setLeftCollapsed: (collapsed: boolean) => void
+  rightCollapsed: boolean
+  setRightCollapsed: (collapsed: boolean) => void
   sourceDirty: boolean
   setSourceDirty: (dirty: boolean) => void
   pendingView: BrowseView | null
@@ -44,6 +49,10 @@ export const useUiStore = create<{
   setImportOpen: (importOpen) => set({ importOpen }),
   browseView: 'graph',
   setBrowseView: (browseView) => set({ browseView }),
+  leftCollapsed: false,
+  setLeftCollapsed: (leftCollapsed) => set({ leftCollapsed }),
+  rightCollapsed: false,
+  setRightCollapsed: (rightCollapsed) => set({ rightCollapsed }),
   sourceDirty: false,
   setSourceDirty: (sourceDirty) => set({ sourceDirty }),
   pendingView: null,

@@ -9,6 +9,8 @@ beforeEach(() => {
     browseView: 'graph',
     importOpen: false,
     entityDialog: null,
+    leftCollapsed: false,
+    rightCollapsed: false,
   })
 })
 
@@ -38,5 +40,17 @@ describe('uiStore entity-dialog state (A2)', () => {
     })
     useUiStore.getState().setEntityDialog(null)
     expect(useUiStore.getState().entityDialog).toBeNull()
+  })
+})
+
+describe('uiStore sidebar collapse', () => {
+  it('defaults both sidebars open and collapses them independently', () => {
+    expect(useUiStore.getState().leftCollapsed).toBe(false)
+    expect(useUiStore.getState().rightCollapsed).toBe(false)
+    useUiStore.getState().setLeftCollapsed(true)
+    expect(useUiStore.getState().leftCollapsed).toBe(true)
+    expect(useUiStore.getState().rightCollapsed).toBe(false)
+    useUiStore.getState().setRightCollapsed(true)
+    expect(useUiStore.getState().rightCollapsed).toBe(true)
   })
 })
