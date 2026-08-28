@@ -1,13 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { ApiErr, api } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import ClassTree from '../components/ClassTree'
 import EntityDialogs from '../components/EntityDialogs'
-import GraphOverview from '../components/GraphOverview'
 import InspectorPanel from '../components/InspectorPanel'
-import SourceView from '../components/SourceView'
+// Zone-2 views load lazily: each drags a heavy editor/graph stack (G6,
+// CodeMirror) that must not sit in the entry chunk.
+const GraphOverview = lazy(() => import('../components/GraphOverview'))
+const SourceView = lazy(() => import('../components/SourceView'))
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
@@ -148,11 +150,13 @@ export default function Browse() {
       {/* Zone 2: whole-ontology canvas (graph) or source text (text),
        *  per the topbar's 图形/文本 switch (spec: single content view). */}
       <section aria-label="内容区" className="border-line min-h-0 border-r p-1">
-        {browseView === 'graph' ? (
-          <GraphOverview oid={oid} focus={selectedEid} />
-        ) : (
-          <SourceView oid={oid} />
-        )}
+        <Suspense fallback={<div className="text-ink-3 py-16 text-center text-sm">加载中…</div>}>
+          {browseView === 'graph' ? (
+            <GraphOverview oid={oid} focus={selectedEid} />
+          ) : (
+            <SourceView oid={oid} />
+          )}
+        </Suspense>
       </section>
 
       {/* Zone 3: resident inspector (graph mode only). Collapses to a
