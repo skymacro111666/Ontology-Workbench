@@ -1,7 +1,9 @@
 name: release
 
-# 推送 v* tag 时自动创建 GitHub Release,正文取自 RELEASE_NOTES.md。
-# 流程:改完 RELEASE_NOTES.md → git tag -f v0.1.0 → git push -f origin v0.1.0
+# 推送 v* tag 时自动创建 GitHub Release(由 github-actions 发布)。
+# 正文是 Changelog 风格的提交清单:自上一 tag 以来的 git log --oneline;
+# 首个 tag(无上一 tag)列出全部历史。不依赖仓库内的 notes 文件。
+# 流程:git tag vX.Y.Z → git push origin vX.Y.Z
 on:
   push:
     tags: ['v*']
@@ -14,7 +16,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Create release from RELEASE_NOTES.md
+        with:
+          fetch-depth: 0 # changelog 范围计算需要完整历史与全部 tag
+      - name: Create release with commit changelog
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes-file RELEASE_NOTES.md
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # 版本号降序取第一个非当前 tag 作为上一版本;awk 恒返 0,避免 pipefail 误伤
+          PREV="$(git tag --list 'v*' --sort=-v:refname | awk -v t="$TAG" '$0 != t' | head -1)"
+          RANGE="${TAG}"
+          if [ -n "$PREV" ]; then RANGE="${PREV}..${TAG}"; fi
+          {
+            echo "Changelog"
+            echo
+            git log --oneline --no-decorate "${RANGE}"
+          } > /tmp/release-notes.md
+          gh release create "$TAG" --title "$TAG" --notes-file /tmp/release-notes.md
