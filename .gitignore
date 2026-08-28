@@ -38,3 +38,6 @@ tmp/
 # 内部工程文档(设计 spec/计划/backlog;docs/api-examples 是 CI 契约夹具,保留跟踪)
 /docs/superpowers/
 /docs/phase2-backlog.md
+
+# 发布说明草稿(暂不随仓库推送;对外发布时再重新跟踪)
+/RELEASE_NOTES.md
