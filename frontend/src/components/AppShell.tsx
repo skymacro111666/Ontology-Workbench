@@ -35,9 +35,9 @@ const THEME_LABEL = { light: '浅色', dark: '深色', system: '跟随系统' } 
 
 /** Dropdown file exports: query value → menu label (export/file endpoint). */
 const FILE_EXPORTS: [string, string][] = [
-  ['turtle', '导出 Turtle (.ttl)'],
-  ['json-ld', '导出 JSON-LD (.jsonld)'],
-  ['rdf-xml', '导出 RDF/XML (.rdf)'],
+  ['turtle', 'Turtle (.ttl)'],
+  ['json-ld', 'JSON-LD (.jsonld)'],
+  ['rdf-xml', 'RDF/XML (.rdf)'],
 ]
 
 /** App frame: 48px persistent topbar (logo, nav, switcher, actions) + content.

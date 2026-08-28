@@ -75,9 +75,9 @@ it('export menu downloads the current ontology in the picked RDF format', async 
 
   await userEvent.click(screen.getByRole('button', { name: '导出 ▾' }))
   // All three format items are offered alongside the docs-site entry.
-  expect(screen.getByText('导出 Turtle (.ttl)')).toBeTruthy()
-  expect(screen.getByText('导出 RDF/XML (.rdf)')).toBeTruthy()
-  await userEvent.click(screen.getByText('导出 JSON-LD (.jsonld)'))
+  expect(screen.getByText('Turtle (.ttl)')).toBeTruthy()
+  expect(screen.getByText('RDF/XML (.rdf)')).toBeTruthy()
+  await userEvent.click(screen.getByText('JSON-LD (.jsonld)'))
 
   await waitFor(() =>
     expect(vi.mocked(api.download)).toHaveBeenCalledWith(
