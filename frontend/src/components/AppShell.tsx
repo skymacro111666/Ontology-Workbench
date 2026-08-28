@@ -6,6 +6,7 @@ import { LAST_OID_KEY, useAuth } from '../auth/AuthContext'
 import { ApiErr, api } from '../api/client'
 import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { useTheme } from '../theme/ThemeProvider'
+import logoMark from '../assets/logo-mark.png'
 import { cn } from '@/lib/utils'
 import CommandPalette from './CommandPalette'
 import ImportDialog from './ImportDialog'
@@ -100,12 +101,8 @@ export default function AppShell({ children }: { children?: ReactNode }) {
     <div className="bg-background text-foreground flex h-dvh flex-col">
       <header className="bg-panel border-line flex h-12 shrink-0 items-center gap-5 border-b px-4">
         <div className="flex items-center gap-2">
-          <span
-            className="from-primary to-edge-sub text-primary-foreground flex size-6 items-center justify-center rounded-md bg-gradient-to-br text-xs font-semibold"
-            aria-hidden
-          >
-            ◈
-          </span>
+          {/* Brand mark: the OW letterform cropped from assets/logo.png. */}
+          <img src={logoMark} alt="" aria-hidden className="rounded-ctl h-6 w-auto" />
           <span className="text-sm font-bold">Ontology Workbench</span>
         </div>
 
