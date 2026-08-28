@@ -86,13 +86,15 @@ const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
 ]
 
 /** Two-stage layout pipeline: dagre fixes the ranks and sibling order
- *  top-down, then rank-wrap packs each rank's nodes into sub-rows of at
- *  most ~1700px so canvas width scales with the widest row, not the widest
- *  rank (54 siblings in one row would otherwise span ~9,800px). Orthogonal
- *  polyline edges read org-chart style and dodge the staggered rows. */
+ *  top-down, then rank-wrap keeps every fitting rank at dagre's parent-
+ *  centered x and folds over-wide ranks into sub-rows of at most ~1700px,
+ *  centered under their anchors, sibling groups kept whole — so canvas
+ *  width scales with the widest row, not the widest rank (54 siblings in
+ *  one row would otherwise span ~9,800px). Orthogonal polyline edges read
+ *  org-chart style and dodge the staggered rows. */
 const LAYOUT = [
-  { type: 'antv-dagre', rankdir: 'TB', nodesep: 16, ranksep: 90 },
-  { type: 'rank-wrap', rowGap: 14, rankGap: 90, nodesep: 16, targetRowWidth: 1700 },
+  { type: 'antv-dagre', rankdir: 'TB', nodesep: 48, ranksep: 90 },
+  { type: 'rank-wrap', rowGap: 24, rankGap: 90, nodesep: 48, targetRowWidth: 1700 },
 ]
 
 /** A G6 display object as click events expose it (structural subset). */

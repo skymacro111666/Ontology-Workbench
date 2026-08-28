@@ -15,14 +15,21 @@ export interface WrapNode {
   data?: { kind?: unknown }
 }
 
+/** Edge datum as the layout stage sees it — direction is irrelevant, only
+ *  adjacency (which nodes hang off which) feeds the sibling grouping. */
+export interface WrapEdge {
+  source: string
+  target: string
+}
+
 export interface WrapOptions {
-  /** Vertical gap between wrapped sub-rows inside one rank. */
+  /** Vertical gap between folded sub-rows inside one rank. */
   rowGap: number
   /** Vertical gap between rank blocks. */
   rankGap: number
-  /** Horizontal gap between nodes in a row. */
+  /** Horizontal gap between nodes in a row (and the sweep's minimum gap). */
   nodesep: number
-  /** Rows wrap once their accumulated width exceeds this. */
+  /** Ranks wider than this fold into centered sub-rows. */
   targetRowWidth: number
 }
 
@@ -34,13 +41,27 @@ const widthOf = (n: WrapNode): number => {
   return 72
 }
 
-/** Stage 2 of the overview layout pipeline (after antv-dagre): dagre fixes
- *  each rank's y and the sibling order x; this pass re-packs every rank's
- *  nodes into sub-rows of at most targetRowWidth, staggering overflow rows
- *  downward. Canvas width stops scaling with the widest rank (54 siblings ≈
- *  9,800px) and scales with the widest row instead. */
+/** Median of a numbers list (even counts average the middle pair). */
+const median = (xs: number[]): number => {
+  const s = [...xs].sort((a, b) => a - b)
+  const mid = s.length >> 1
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2
+}
+
+/** Total width of a packed row: member widths plus inter-node gaps. */
+const rowWidthOf = (row: { width: number }[], opts: WrapOptions): number =>
+  row.reduce((m, u) => m + u.width, 0) + Math.max(0, row.length - 1) * opts.nodesep
+
+/** Stage 2 of the layout pipeline (after antv-dagre): dagre fixes each
+ *  rank's y and a parent-centered x; this pass keeps every fitting rank
+ *  exactly where dagre put it (only widening overlaps away) and folds
+ *  over-wide ranks into sub-rows centered under their anchors, never
+ *  interleaving a sibling group. The first-load canvas reads as a tidy
+ *  centered tree; canvas width still scales with the widest ROW, not the
+ *  widest rank (54 siblings ≈ 9,800px unfold). */
 export function wrapRanks(
   nodes: WrapNode[],
+  edges: WrapEdge[],
   opts: WrapOptions,
 ): { id: string; style: { x: number; y: number } }[] {
   // 1) Cluster into ranks by near-equal y (one y per dagre rank), top down.
@@ -51,31 +72,115 @@ export function wrapRanks(
     if (last && Math.abs(last.y - y) <= 1) last.nodes.push(n)
     else ranks.push({ y, nodes: [n] })
   }
-  // 2) Per rank: keep dagre's x order (siblings stay adjacent), wrap greedily
-  //    by accumulated width, pack each row left to right.
+
+  // Undirected adjacency for the anchor lookup (attach or property edges
+  // alike — any placed neighbor can anchor a sibling group).
+  const neighbors = new Map<string, string[]>()
+  for (const { source, target } of edges) {
+    ;(neighbors.get(source) ?? neighbors.set(source, []).get(source)!).push(target)
+    ;(neighbors.get(target) ?? neighbors.set(target, []).get(target)!).push(source)
+  }
+
   const out: { id: string; style: { x: number; y: number } }[] = []
+  /** Final x of every placed node (for anchor centers). */
+  const centerX = new Map<string, number>()
   let rankBase = 0
+
   for (const rank of ranks) {
+    // 2) Sweep dagre's x right just enough that effective widths (instance
+    //    labels included) never overlap; order and gaps ≥ nodesep elsewhere.
     const ordered = [...rank.nodes].sort((a, b) => (a.style?.x ?? 0) - (b.style?.x ?? 0))
-    const rows: WrapNode[][] = [[]]
-    let rowWidth = 0
+    const swept: { n: WrapNode; x: number }[] = []
     for (const n of ordered) {
-      const w = widthOf(n)
+      const prev = swept.at(-1)
+      const dx = n.style?.x ?? 0
+      const x = prev ? Math.max(dx, prev.x + widthOf(prev.n) + opts.nodesep) : dx
+      swept.push({ n, x })
+    }
+    const extent = swept.reduce((m, s) => Math.max(m, s.x + widthOf(s.n)), 0)
+
+    // 3) Fitting rank: keep dagre's parent-centered x verbatim.
+    const place = (n: WrapNode, x: number, y: number) => {
+      out.push({ id: n.id, style: { x, y } })
+      centerX.set(n.id, x + widthOf(n) / 2)
+    }
+    if (extent <= opts.targetRowWidth) {
+      for (const s of swept) place(s.n, s.x, rankBase)
+      rankBase += ROW_HEIGHT + opts.rowGap + opts.rankGap
+      continue
+    }
+
+    // 4) Over-wide rank: group members by their nearest placed neighbor
+    //    above (the anchor — the shared parent for subclass siblings);
+    //    anchorless nodes group alone. Groups order by dagre x.
+    const groups = new Map<string, { anchor: number; members: WrapNode[]; minX: number }>()
+    for (const s of swept) {
+      let anchorId: string | null = null
+      let dist = Infinity
+      for (const m of neighbors.get(s.n.id) ?? []) {
+        const c = centerX.get(m)
+        if (c === undefined) continue
+        const d = Math.abs(c - (s.x + widthOf(s.n) / 2))
+        if (d < dist) {
+          dist = d
+          anchorId = m
+        }
+      }
+      const key = anchorId ?? `#${s.n.id}`
+      const g = groups.get(key) ?? {
+        anchor: anchorId ? centerX.get(anchorId)! : s.x + widthOf(s.n) / 2,
+        members: [],
+        minX: s.x,
+      }
+      g.members.push(s.n)
+      groups.set(key, g)
+    }
+    // Row axis: the median member anchor — folded rows stack symmetrically
+    // under the parents that spawned them, not flush left.
+    const axis = median([...groups.values()].flatMap((g) => g.members.map(() => g.anchor)))
+
+    // 5) Split each group into chunk units that fit one row (whole groups
+    //    when possible), pack units greedily, center every row on the axis.
+    type Unit = { members: WrapNode[]; width: number }
+    const units: Unit[] = []
+    for (const g of [...groups.values()].sort((a, b) => a.minX - b.minX)) {
+      let chunk: WrapNode[] = []
+      let w = 0
+      const flush = () => {
+        if (chunk.length) units.push({ members: chunk, width: w })
+        chunk = []
+        w = 0
+      }
+      for (const n of g.members) {
+        const nw = widthOf(n)
+        if (chunk.length && w + opts.nodesep + nw > opts.targetRowWidth) flush()
+        w = chunk.length ? w + opts.nodesep + nw : nw
+        chunk.push(n)
+      }
+      flush()
+    }
+    const rows: Unit[][] = [[]]
+    let rowWidth = 0
+    for (const u of units) {
       const row = rows.at(-1)!
-      if (row.length && rowWidth + w > opts.targetRowWidth) {
-        rows.push([n])
-        rowWidth = w + opts.nodesep
+      if (row.length && rowWidth + opts.nodesep + u.width > opts.targetRowWidth) {
+        rows.push([u])
+        rowWidth = u.width
       } else {
-        row.push(n)
-        rowWidth += w + opts.nodesep
+        row.push(u)
+        rowWidth = rowWidth ? rowWidth + opts.nodesep + u.width : u.width
       }
     }
-    rows.forEach((rowNodes, i) => {
-      let x = 0
+    rows.forEach((row, i) => {
       const y = rankBase + i * (ROW_HEIGHT + opts.rowGap)
-      for (const n of rowNodes) {
-        out.push({ id: n.id, style: { x, y } })
-        x += widthOf(n) + opts.nodesep
+      let x = axis - rowWidthOf(row, opts) / 2
+      for (const u of row) {
+        u.members.forEach((n, j) => {
+          if (j > 0) x += opts.nodesep
+          place(n, x, y)
+          x += widthOf(n)
+        })
+        x += opts.nodesep // one gap after the unit, mirrored by rowWidthOf
       }
     })
     rankBase += rows.length * (ROW_HEIGHT + opts.rowGap) + opts.rankGap
@@ -89,12 +194,11 @@ export class RankWrapLayout extends BaseLayout {
   async execute(model: GraphData): Promise<GraphData> {
     const { rowGap = 14, rankGap = 90, nodesep = 16, targetRowWidth = 1700 } =
       this.options as Partial<WrapOptions>
-    const nodes = wrapRanks((model.nodes ?? []) as WrapNode[], {
-      rowGap,
-      rankGap,
-      nodesep,
-      targetRowWidth,
-    })
+    const nodes = wrapRanks(
+      (model.nodes ?? []) as WrapNode[],
+      (model.edges ?? []) as WrapEdge[],
+      { rowGap, rankGap, nodesep, targetRowWidth },
+    )
     return { nodes }
   }
 }

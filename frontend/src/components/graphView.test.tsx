@@ -110,7 +110,7 @@ describe('GraphView', () => {
     const opts = lastG6()!.options as Record<string, unknown>
     const layout = opts.layout as { type: string }[]
     expect(layout).toHaveLength(2)
-    expect(layout[0]).toMatchObject({ type: 'antv-dagre', rankdir: 'TB', nodesep: 16 })
+    expect(layout[0]).toMatchObject({ type: 'antv-dagre', rankdir: 'TB', nodesep: 48 })
     expect(layout[1]).toMatchObject({ type: 'rank-wrap', targetRowWidth: 1700 })
     expect(opts.edge).toMatchObject({ type: 'polyline' })
   })
