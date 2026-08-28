@@ -9,7 +9,7 @@
 [![English](https://img.shields.io/badge/English-README-blue)](README.en.md)
 [![简体中文](https://img.shields.io/badge/简体中文-README-gray)](../../README.md)
 
-[Features](#-features) · [Get Started](#-get-started) · [License](#-license)
+[Features](#-features) · [Preview](#-preview) · [Get Started](#-get-started) · [License](#-license)
 
 </div>
 
@@ -21,6 +21,20 @@
 - **Canvas editing** — right-click to create/edit/delete classes and properties; back-references pruned with them; optimistic locking prevents conflicts
 - **Source editing** — built-in editor with find/replace, dirty-state guards, and parse-before-save
 - **One-click docs export** — a zero-dependency static site, ready for GitHub Pages
+
+## 📸 Preview
+
+**Workspace (graph mode)** — class tree, canvas, and inspector; badges reveal instances, right-click edits entities:
+
+![Workspace graph mode](screenshots/browser-graph.png)
+
+**Source editing** — one click between graph and text; the built-in editor highlights syntax and parses before saving:
+
+![Source editing](screenshots/browser-text.png)
+
+**Overview** — stats and the ontology list, bundled samples one click away:
+
+![Overview home](screenshots/home.png)
 
 ## 🚀 Get Started
 

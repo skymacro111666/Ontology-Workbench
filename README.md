@@ -9,7 +9,7 @@
 [![简体中文](https://img.shields.io/badge/简体中文-README-blue)](README.md)
 [![English](https://img.shields.io/badge/English-README-gray)](assets/README/README.en.md)
 
-[特性](#-特性亮点) · [快速开始](#-快速开始) · [许可证](#-许可证)
+[特性](#-特性亮点) · [预览](#-预览) · [快速开始](#-快速开始) · [许可证](#-许可证)
 
 </div>
 
@@ -21,6 +21,20 @@
 - **画布内编辑** —— 右键即可新建 / 编辑 / 删除类与属性,连反向引用一并清理,乐观锁防冲突
 - **源码编辑** —— 集成编辑器,搜索替换、脏态守卫、试解析后才落盘
 - **一键文档站导出** —— 零外部依赖的静态站,扔给 GitHub Pages 即可发布
+
+## 📸 预览
+
+**工作区(图形模式)** —— 类树、画布、检查器三栏;节点徽章展开实例,右键即可增删改:
+
+![工作区图形模式](assets/README/screenshots/browser-graph.png)
+
+**源码编辑** —— 图形/文本一键切换,内置编辑器带语法高亮,试解析后才落盘:
+
+![源码编辑](assets/README/screenshots/browser-text.png)
+
+**概览** —— 统计与本体列表,内置示例一键载入:
+
+![概览首页](assets/README/screenshots/home.png)
 
 ## 🚀 快速开始
 
