@@ -1,0 +1,28 @@
+diff --git a/node_modules/@antv/g-lite/dist/index.esm.js b/node_modules/@antv/g-lite/dist/index.esm.js
+--- a/node_modules/@antv/g-lite/dist/index.esm.js
++++ b/node_modules/@antv/g-lite/dist/index.esm.js
+@@ -15489,7 +15489,9 @@
+         var _this$mutationRecords;
+         var records = e.detail;
+         // Store mutation records for potential future processing
+-        (_this$mutationRecords = _this.mutationRecords).push.apply(_this$mutationRecords, _toConsumableArray(records));
++        for (var _ri = 0; _ri < records.length; _ri++) {
++          _this.mutationRecords.push(records[_ri]);
++        }
+         renderingService.dirty();
+       };
+       var handleMounted = function handleMounted(e) {
+diff --git a/node_modules/@antv/g-lite/dist/index.js b/node_modules/@antv/g-lite/dist/index.js
+--- a/node_modules/@antv/g-lite/dist/index.js
++++ b/node_modules/@antv/g-lite/dist/index.js
+@@ -15491,7 +15491,9 @@
+         var _this$mutationRecords;
+         var records = e.detail;
+         // Store mutation records for potential future processing
+-        (_this$mutationRecords = _this.mutationRecords).push.apply(_this$mutationRecords, _toConsumableArray(records));
++        for (var _ri = 0; _ri < records.length; _ri++) {
++          _this.mutationRecords.push(records[_ri]);
++        }
+         renderingService.dirty();
+       };
+       var handleMounted = function handleMounted(e) {
