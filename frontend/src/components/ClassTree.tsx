@@ -161,7 +161,9 @@ export default function ClassTree({ oid }: { oid: string }) {
     (id: string) => {
       // Expanding a materialized branch needs nothing; closing changes nothing.
       if (childMap[id]) return
-      void loadChildren(id)
+      // Mirror the reveal walk's catch: a failed fetch leaves the branch
+      // collapsed instead of an unhandled rejection (backlog T10①).
+      loadChildren(id).catch(() => null)
     },
     [childMap, loadChildren],
   )

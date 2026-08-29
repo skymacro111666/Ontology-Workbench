@@ -1,7 +1,9 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { toast } from 'sonner'
+import { Toaster } from './ui/sonner'
 import type { Envelope, NodesEdges } from '../api/types'
 import { useUiStore } from '../stores/uiStore'
 import { ThemeProvider } from '../theme/ThemeProvider'
@@ -29,6 +31,9 @@ const OVERVIEW: NodesEdges = {
   totalCount: 1,
 }
 
+/** Truncated variant: same canvas content, but flagged as cut off. */
+const TRUNCATED_OVERVIEW: NodesEdges = { ...OVERVIEW, truncated: true }
+
 function env(data: unknown) {
   return new Response(
     JSON.stringify({ code: 'OK', message: 'ok', data, hint: null, request_id: 'r' } satisfies Envelope<unknown>),
@@ -38,10 +43,13 @@ function env(data: unknown) {
 
 let savedBody: { positions: Record<string, { x: number; y: number }> } | undefined
 
-function stubFetch(layout: Record<string, { x: number; y: number }> | null = null) {
+function stubFetch(
+  layout: Record<string, { x: number; y: number }> | null = null,
+  overview: NodesEdges = OVERVIEW,
+) {
   return vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
-    if (u.endsWith('/overview')) return env(OVERVIEW)
+    if (u.endsWith('/overview')) return env(overview)
     if (u.endsWith('/layout') && init?.method === 'PUT') {
       savedBody = JSON.parse(String(init.body))
       return env(savedBody)
@@ -50,13 +58,14 @@ function stubFetch(layout: Record<string, { x: number; y: number }> | null = nul
   })
 }
 
-function draw(fetchMock: ReturnType<typeof stubFetch>) {
+function draw(fetchMock: ReturnType<typeof stubFetch>, focus?: string) {
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
       <ThemeProvider>
-        <GraphOverview oid="oid-1" />
+        <Toaster />
+        <GraphOverview oid="oid-1" focus={focus} />
       </ThemeProvider>
     </QueryClientProvider>,
   )
@@ -71,6 +80,9 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  // Sonner keeps toasts in a module-global store that outlives unmounting;
+  // drop them so a prior test's toast cannot leak into the next Toaster.
+  toast.dismiss()
 })
 
 describe('GraphOverview layout persistence', () => {
@@ -113,6 +125,28 @@ describe('GraphOverview layout persistence', () => {
     expect(fetchMock.mock.calls.some(([u, i]) => String(u).endsWith('/layout') && i?.method === 'DELETE')).toBe(
       true,
     )
+  })
+})
+
+describe('GraphOverview focus feedback', () => {
+  it('stays quiet when the focus entity is present', async () => {
+    draw(stubFetch(null, TRUNCATED_OVERVIEW), 'a')
+    // Give the settled data a moment; no toast may appear.
+    await new Promise((r) => setTimeout(r, 100))
+    expect(screen.queryByText(/未出现在总览中/)).toBeNull()
+  })
+
+  it('stays quiet when the overview is not truncated (inspector covers dead links)', async () => {
+    draw(stubFetch(null, OVERVIEW), 'http://example.org/Ghost')
+    await new Promise((r) => setTimeout(r, 100))
+    expect(screen.queryByText(/未出现在总览中/)).toBeNull()
+  })
+
+  it('notifies when the focus entity is cut off by a truncated overview', async () => {
+    // Deep link ?focus=… pointing outside the truncated overview must not
+    // degrade silently (backlog T12①).
+    draw(stubFetch(null, TRUNCATED_OVERVIEW), 'http://example.org/Ghost')
+    await waitFor(() => expect(screen.getByText(/未出现在总览中/)).toBeTruthy())
   })
 })
 

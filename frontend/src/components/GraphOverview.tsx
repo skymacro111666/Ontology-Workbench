@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
 import type { NodesEdges } from '../api/types'
@@ -100,6 +100,20 @@ export default function GraphOverview({
     queryFn: () => api.get<NodesEdges>(`/api/ontologies/${oid}/overview`),
     retry: false,
   })
+  /** A focus outside a TRUNCATED overview used to degrade silently (backlog
+   *  T12①); say so once per (oid, focus). Non-truncated overviews stay quiet —
+   *  an absent entity there is a dead link, and the inspector already reports
+   *  it; in-app selections of off-canvas entities need no toast either. */
+  const focusNotified = useRef<string | null>(null)
+  useEffect(() => {
+    if (!data || !focus || !data.truncated) return
+    const key = `${oid}:${focus}`
+    if (focusNotified.current === key) return
+    if (!data.nodes.some((n) => n.id === focus)) {
+      focusNotified.current = key
+      toast.info('焦点实体未出现在总览中（可能已被截断），详情见右侧检查器')
+    }
+  }, [data, focus, oid])
   /** Saved canvas positions gate the mount: rendering before they arrive
    *  would auto-layout first and then never rebuild onto the saved spots. */
   const { data: layoutData, isPending: layoutPending } = useQuery({

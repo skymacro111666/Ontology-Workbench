@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -130,6 +130,62 @@ describe('ClassTree', () => {
     // Clicking a row updates the shared browse store.
     await userEvent.click(screen.getByText('Animal'))
     await waitFor(() => expect(useBrowseStore.getState().selectedEid).toBe(ANIMAL))
+  })
+
+  it('keeps the tree usable when expanding a node fails (no unhandled rejection)', async () => {
+    // handleToggle voids loadChildren; without a catch the rejection goes
+    // unhandled (backlog T10①). The tree must simply not expand.
+    const fetchMock = stubFetch()
+    fetchMock.mockImplementation(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes(`parent=${encodeURIComponent(THING)}`)) {
+        throw new TypeError('network down')
+      }
+      return stubFetch().getMockImplementation()!(url)
+    })
+    renderTree(fetchMock)
+    expect(await screen.findByText('Thing')).toBeTruthy()
+
+    await userEvent.click(screen.getByRole('button', { name: '展开' }))
+    // Let the rejection land; the roots stay interactive afterwards.
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.getByText('Thing')).toBeTruthy()
+    expect(screen.queryByText('Animal')).toBeNull()
+  })
+
+  it('reveal walk loads each ancestor level and lands on the target (backlog T10②)', async () => {
+    // Dog ← Animal ← Thing: the walk must fetch each /entities parent,
+    // materialize every tree level top-down, then select Dog.
+    const DOG = 'http://example.org/Dog'
+    const curieOf = (eid: string) => `ex:${eid.split('/').pop()}`
+    const parentOf: Record<string, string | null> = { [DOG]: ANIMAL, [ANIMAL]: THING, [THING]: null }
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const u = String(url)
+      if (u.endsWith('/meta')) return ok(META)
+      if (u.includes('/entities/')) {
+        const eid = decodeURIComponent(u.split('/entities/')[1])
+        const p = parentOf[eid]
+        return ok({
+          eid,
+          curie: curieOf(eid),
+          label: {},
+          parents: p ? [{ eid: p, curie: curieOf(p), label: {} }] : [],
+        })
+      }
+      if (u.includes(`parent=${encodeURIComponent(THING)}`)) return ok([node(ANIMAL, 'ex:Animal', 1)])
+      if (u.includes(`parent=${encodeURIComponent(ANIMAL)}`)) return ok([node(DOG, 'ex:Dog', 0)])
+      if (u.includes(`parent=${encodeURIComponent(DOG)}`)) return ok([])
+      if (u.endsWith('/tree')) return ok([node(THING, 'ex:Thing', 1, 'Class', 3)])
+      throw new Error(`unmocked url: ${u}`)
+    })
+    renderTree(fetchMock as unknown as ReturnType<typeof stubFetch>)
+    expect(await screen.findByText('Thing')).toBeTruthy()
+
+    act(() => useBrowseStore.getState().reveal(DOG))
+
+    expect(await screen.findByText('Dog')).toBeTruthy()
+    await waitFor(() => expect(useBrowseStore.getState().selectedEid).toBe(DOG))
+    await waitFor(() => expect(useBrowseStore.getState().revealEid).toBeNull())
   })
 
   it('marks the store-selected row as selected', async () => {
