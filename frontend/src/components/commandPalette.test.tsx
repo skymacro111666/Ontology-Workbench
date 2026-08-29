@@ -129,6 +129,18 @@ describe('CommandPalette', () => {
     expect(screen.queryByText('无匹配结果')).toBeNull()
   })
 
+  it('reports a failed search instead of 无匹配结果', async () => {
+    // A rejected search must not read as "no matches" (pre-existing issue).
+    const fetchMock: Mock = vi.fn(async () => {
+      throw new TypeError('network down')
+    })
+    renderPalette(fetchMock)
+    const input = await openPalette()
+    await userEvent.type(input, '玛格丽特')
+    await waitFor(() => expect(screen.getByText('搜索失败，请稍后重试')).toBeTruthy())
+    expect(screen.queryByText('无匹配结果')).toBeNull()
+  })
+
   it('navigates to /browse/:oid?eid=… and reveals the pick in the tree store', async () => {
     renderPalette()
     const input = await openPalette()

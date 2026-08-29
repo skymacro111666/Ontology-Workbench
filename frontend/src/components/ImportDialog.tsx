@@ -65,6 +65,9 @@ export default function ImportDialog() {
     if (open) {
       setSizeError(null)
       setStatus(null)
+      // A still-pending upload from the closed session must not disable the
+      // fresh one's input (backlog T3rr); its finally will settle harmlessly.
+      setUploading(false)
     }
   }
 

@@ -52,6 +52,7 @@ export default function Home() {
     mutationFn: (id: string) => api.del(`/api/ontologies/${id}`),
     onSuccess: () => {
       toast.success('已删除')
+      setDeleteTarget(null)
       void queryClient.invalidateQueries({ queryKey: ['ontologies'] })
     },
     onError: (err) => {
@@ -190,12 +191,16 @@ export default function Home() {
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
-              onClick={() => {
+              className="bg-destructive text-white hover:bg-destructive/90 disabled:pointer-events-none disabled:opacity-60"
+              disabled={del.isPending}
+              onClick={(e) => {
+                // Stay open while the delete runs: the dialog is the in-flight
+                // feedback (backlog T6②); success closes it in onSuccess.
+                e.preventDefault()
                 if (deleteTarget) del.mutate(deleteTarget.id)
               }}
             >
-              删除
+              {del.isPending ? '删除中…' : '删除'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

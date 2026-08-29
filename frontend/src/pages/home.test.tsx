@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
@@ -117,6 +117,37 @@ describe('Home', () => {
       '/api/ontologies/oid-1',
       expect.objectContaining({ method: 'DELETE' }),
     )
+  })
+
+  it('keeps the confirm dialog open with its action disabled while deleting', async () => {
+    // In-flight feedback (backlog T6①②): the dialog itself is the busy state —
+    // it must not vanish on the first click leaving only a toast as feedback.
+    let resolveDelete!: (v: Response) => void
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      if (String(url) === '/api/ontologies/oid-1' && init?.method === 'DELETE') {
+        return new Promise<Response>((r) => {
+          resolveDelete = r
+        })
+      }
+      return ok({ items: [summary('oid-1', { title: 'Pizza' })], total: 1 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderHome()
+
+    await userEvent.click(await screen.findByRole('button', { name: '删除 Pizza' }))
+    await userEvent.click(screen.getByRole('button', { name: '删除' }))
+    await waitFor(() => expect(deleteCalls(fetchMock)).toHaveLength(1))
+
+    // The dialog is still up as the in-flight feedback; the action is
+    // disabled and relabeled so no second click can race the first.
+    const action = screen.getByRole('button', { name: '删除中…' }) as HTMLButtonElement
+    expect(action.disabled).toBe(true)
+    expect(screen.getByRole('alertdialog')).toBeTruthy()
+
+    await act(async () => {
+      resolveDelete(ok(null))
+    })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
   })
 
   it('shows the empty state with both onboarding buttons wired', async () => {
