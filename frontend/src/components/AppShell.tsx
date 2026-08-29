@@ -109,7 +109,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
     <div className="bg-background text-foreground flex h-dvh flex-col">
       <header className="bg-panel border-line flex h-12 shrink-0 items-center gap-5 border-b px-4">
         <div className="flex items-center gap-2">
-          {/* Brand mark: the OW letterform cropped from assets/logo.png. */}
+          {/* Brand mark: the square OW app icon (assets/logo.png), 96px mark. */}
           <img src={logoMark} alt="" aria-hidden className="rounded-ctl h-6 w-auto" />
           <span className="text-sm font-bold">Ontology Workbench</span>
         </div>
