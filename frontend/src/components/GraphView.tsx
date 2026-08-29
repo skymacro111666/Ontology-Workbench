@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Graph } from '@antv/g6'
 import type { EdgeData, GraphData, IPointerEvent, NodeData } from '@antv/g6'
 import type { GEdge, GNode } from '../api/types'
+import { FAST_LAYOUT_NODES, linearTreePositions } from './linearTree'
+import type { WrapEdge, WrapNode } from './wrapRanks'
 import { localName } from '../lib/localName'
 import { assignFallbackPositions, type Pt } from './layoutPositions'
 import { useTheme } from '../theme/ThemeProvider'
@@ -387,6 +389,19 @@ export default function GraphView({
       positionsRef.current = {}
     }
     const data = buildData(snap.nodes, snap.edges, snap.kinds, snap.showLabels, t)
+    // Oversized auto layouts skip dagre (minutes on wide trees, main thread):
+    // a linear tree pass + the shared rank-wrap fold places them in <1s.
+    const autoLinear = !useSaved && (data.nodes?.length ?? 0) > FAST_LAYOUT_NODES
+    if (autoLinear) {
+      positionsRef.current = linearTreePositions(
+        (data.nodes ?? []) as WrapNode[],
+        (data.edges ?? []) as unknown as WrapEdge[],
+      )
+      for (const nd of data.nodes ?? []) {
+        const p = positionsRef.current[nd.id]
+        if (p) nd.style = { ...nd.style, x: p.x, y: p.y }
+      }
+    }
     if (useSaved) {
       for (const nd of data.nodes ?? []) {
         const p = positionsRef.current[nd.id]
@@ -402,7 +417,7 @@ export default function GraphView({
       data,
       // `false` (skip layout, use data x/y) is valid at runtime but missing
       // from G6's LayoutOptions type — see render()'s !options.layout branch.
-      layout: (useSaved ? false : LAYOUT) as unknown as typeof LAYOUT,
+      layout: (useSaved || autoLinear ? false : LAYOUT) as unknown as typeof LAYOUT,
       node: { type: (d: NodeData) => (d.data?.kind === 'instance' ? 'circle' : 'rect') },
       edge: { type: 'polyline' },
       behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element'],

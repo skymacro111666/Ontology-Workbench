@@ -33,7 +33,7 @@ export interface WrapOptions {
   targetRowWidth: number
 }
 
-const widthOf = (n: WrapNode): number => {
+export const widthOf = (n: WrapNode): number => {
   if (n.data?.kind === 'instance') return INSTANCE_WIDTH
   const s = n.style?.size
   if (typeof s === 'number') return s

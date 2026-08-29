@@ -5,6 +5,7 @@ import type { GEdge } from '../api/types'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { lastG6, MockGraph, resetG6 } from '../test/g6Mock'
 import GraphView, { toG6Edges, toG6Nodes, type GraphViewNode, type KindFilter } from './GraphView'
+import { FAST_LAYOUT_NODES } from './linearTree'
 
 /* G6 renders on canvas, which jsdom cannot provide — the module is mocked and
    assertions target (a) the DOM overlays (legend/controls, real) and (b) the
@@ -411,5 +412,34 @@ describe('GraphView context menu reporting', () => {
     expect(onContextMenu).toHaveBeenCalledWith(
       expect.objectContaining({ targetId: undefined }),
     )
+  })
+})
+
+describe('oversized auto layout (linear tree path)', () => {
+  it('skips the dagre pipeline past FAST_LAYOUT_NODES and seeds every position', () => {
+    const big: GraphViewNode[] = [{ id: 'root', curie: 'ex:Root', label: {}, kind: 'class' }]
+    const bigEdges: GEdge[] = []
+    for (let i = 0; i < FAST_LAYOUT_NODES + 5; i++) {
+      big.push({ id: `n${i}`, curie: `ex:N${i}`, label: {}, kind: 'class' })
+      bigEdges.push({ source: `n${i}`, target: 'root', kind: 'subClassOf' })
+    }
+    render(
+      <ThemeProvider>
+        <GraphView nodes={big} edges={bigEdges} defaultKinds={CLASS_ONLY} onSelect={vi.fn()} />
+      </ThemeProvider>,
+    )
+    // The auto pipeline is replaced by precomputed coordinates.
+    expect(lastG6()!.options.layout).toBe(false)
+    const placed = lastData().nodes.filter(
+      (n) => typeof n.style.x === 'number' && typeof n.style.y === 'number',
+    )
+    expect(placed).toHaveLength(big.length)
+  })
+
+  it('keeps the dagre pipeline below the threshold', () => {
+    draw({ defaultKinds: CLASS_ONLY })
+    const layout = lastG6()!.options.layout as unknown as { type: string }[]
+    expect(Array.isArray(layout)).toBe(true)
+    expect(layout[0].type).toBe('antv-dagre')
   })
 })
