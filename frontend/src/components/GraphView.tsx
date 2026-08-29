@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Graph } from '@antv/g6'
 import type { EdgeData, GraphData, IPointerEvent, NodeData } from '@antv/g6'
 import type { GEdge, GNode } from '../api/types'
-import { FAST_LAYOUT_NODES, linearTreePositions } from './linearTree'
+import { FAST_LAYOUT_NODES, MIN_AUTO_ZOOM, linearTreePositions } from './linearTree'
 import type { WrapEdge, WrapNode } from './wrapRanks'
 import { localName } from '../lib/localName'
 import { assignFallbackPositions, type Pt } from './layoutPositions'
@@ -479,8 +479,20 @@ export default function GraphView({
             positionsRef.current[nd.id] = { x, y }
         }
       }
-      if (snap.focusId) void graph.focusElement(snap.focusId)
-      else void graph.fitView()
+      if (snap.focusId) {
+        void graph.focusElement(snap.focusId)
+      } else {
+        // Folded oversized maps tower over the viewport (36k px tall): a raw
+        // fitView lands near 2% zoom where cards are invisible dots. Clamp
+        // to a readable floor around the viewport center; panning/zoom-out
+        // still covers the whole map.
+        void graph.fitView().then(() => {
+          if (graph.getZoom() >= MIN_AUTO_ZOOM) return
+          return graph.zoomTo(MIN_AUTO_ZOOM).then(() => {
+            setZoomPct(Math.round(graph.getZoom() * 100))
+          })
+        })
+      }
       setZoomPct(Math.round(graph.getZoom() * 100))
     })
 

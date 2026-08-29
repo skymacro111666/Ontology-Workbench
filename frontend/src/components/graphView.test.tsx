@@ -5,7 +5,7 @@ import type { GEdge } from '../api/types'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { lastG6, MockGraph, resetG6 } from '../test/g6Mock'
 import GraphView, { toG6Edges, toG6Nodes, type GraphViewNode, type KindFilter } from './GraphView'
-import { FAST_LAYOUT_NODES } from './linearTree'
+import { FAST_LAYOUT_NODES, MIN_AUTO_ZOOM } from './linearTree'
 
 /* G6 renders on canvas, which jsdom cannot provide — the module is mocked and
    assertions target (a) the DOM overlays (legend/controls, real) and (b) the
@@ -441,5 +441,34 @@ describe('oversized auto layout (linear tree path)', () => {
     const layout = lastG6()!.options.layout as unknown as { type: string }[]
     expect(Array.isArray(layout)).toBe(true)
     expect(layout[0].type).toBe('antv-dagre')
+  })
+})
+
+describe('fitView zoom clamp', () => {
+  it('raises the zoom floor after an over-shrunk fit (oversized maps stay visible)', async () => {
+    const big: GraphViewNode[] = [{ id: 'root', curie: 'ex:Root', label: {}, kind: 'class' }]
+    const bigEdges: GEdge[] = []
+    for (let i = 0; i < FAST_LAYOUT_NODES + 5; i++) {
+      big.push({ id: `n${i}`, curie: `ex:N${i}`, label: {}, kind: 'class' })
+      bigEdges.push({ source: `n${i}`, target: 'root', kind: 'subClassOf' })
+    }
+    render(
+      <ThemeProvider>
+        <GraphView nodes={big} edges={bigEdges} defaultKinds={CLASS_ONLY} onSelect={vi.fn()} />
+      </ThemeProvider>,
+    )
+    const g = lastG6()!
+    // fitView landed at ~2% on a 36k-px-tall map — invisible dots.
+    g.getZoom.mockReturnValue(0.02)
+    await waitFor(() => expect(g.fitView).toHaveBeenCalled())
+    await waitFor(() => expect(g.zoomTo).toHaveBeenCalledWith(MIN_AUTO_ZOOM))
+  })
+
+  it('leaves a comfortable fit alone (no zoomTo)', async () => {
+    draw({ defaultKinds: CLASS_ONLY })
+    const g = lastG6()!
+    g.getZoom.mockReturnValue(0.8)
+    await waitFor(() => expect(g.fitView).toHaveBeenCalled())
+    expect(g.zoomTo).not.toHaveBeenCalled()
   })
 })

@@ -8,6 +8,12 @@ import { widthOf, wrapRanks, type WrapEdge, type WrapNode, type WrapOptions } fr
  *  Below the threshold dagre's sibling ordering is worth its ~5s ceiling. */
 export const FAST_LAYOUT_NODES = 1000
 
+/** Post-fitView zoom floor: a folded 5000-node map towers ~36k px tall, so
+ *  fitView lands near 2% where 32px cards are invisible dots. Keep the fit
+ *  only when it stays legible; otherwise pull back to this floor around the
+ *  viewport center (the whole map is still reachable via zoom-out/pan). */
+export const MIN_AUTO_ZOOM = 0.3
+
 /** Fold options shared with the dagre pipeline's rank-wrap stage, so both
  *  auto paths produce the same org-chart rhythm. */
 const WRAP_OPTS: WrapOptions = { rowGap: 24, rankGap: 90, nodesep: 48, targetRowWidth: 1700 }

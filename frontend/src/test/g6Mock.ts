@@ -30,6 +30,7 @@ export class MockGraph {
   fitView = vi.fn(async () => {})
   focusElement = vi.fn(async () => {})
   zoomBy = vi.fn(async () => {})
+  zoomTo = vi.fn(async () => {})
   getZoom = vi.fn(() => 1)
   setData = vi.fn()
   updateEdgeData = vi.fn()
