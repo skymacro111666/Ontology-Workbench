@@ -482,3 +482,40 @@ describe('mount effects skip their first run', () => {
     expect(g.updateEdgeData).not.toHaveBeenCalled()
   })
 })
+
+describe('instance isolation across rebuilds (dev double-mount safety)', () => {
+  it('gives each Graph its own mount node inside the host and removes it on cleanup', () => {
+    const { unmount } = render(
+      <ThemeProvider>
+        <GraphView nodes={NODES} edges={EDGES} defaultKinds={CLASS_ONLY} onSelect={vi.fn()} />
+      </ThemeProvider>,
+    )
+    const g = lastG6()!
+    const mount = g.options.container as HTMLElement
+    const host = mount.parentElement!
+    expect(host.contains(mount)).toBe(true)
+    unmount()
+    expect(document.body.contains(mount)).toBe(false)
+  })
+
+  it('a second build mounts a fresh node, never reusing the first', () => {
+    const { rerender } = render(
+      <ThemeProvider>
+        <GraphView nodes={NODES} edges={EDGES} defaultKinds={CLASS_ONLY} onSelect={vi.fn()} />
+      </ThemeProvider>,
+    )
+    const first = (lastG6()!.options.container as HTMLElement)
+    rerender(
+      <ThemeProvider>
+        <GraphView
+          nodes={[...NODES, { id: 'zz', curie: 'ex:ZZ', label: {}, kind: 'class' }]}
+          edges={EDGES}
+          defaultKinds={CLASS_ONLY}
+          onSelect={vi.fn()}
+        />
+      </ThemeProvider>,
+    )
+    const second = lastG6()!.options.container as HTMLElement
+    expect(second).not.toBe(first)
+  })
+})

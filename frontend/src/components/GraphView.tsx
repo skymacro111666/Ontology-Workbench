@@ -414,8 +414,17 @@ export default function GraphView({
         if (p) nd.style = { ...nd.style, x: p.x, y: p.y }
       }
     }
+    // Every Graph gets its own mount node, replaced on cleanup: React dev
+    // double-invokes effects (mount → cleanup → mount), and a re-created
+    // Graph reusing the same container walked straight into @antv/g's
+    // bounds-change recursion between the dying and the fresh canvas — the
+    // GO blank-canvas stack overflow. A private node isolates the instances.
+    const mount = document.createElement('div')
+    mount.style.width = '100%'
+    mount.style.height = '100%'
+    el.appendChild(mount)
     const graph = new Graph({
-      container: el,
+      container: mount,
       autoResize: true,
       animation: false,
       theme: resolved,
@@ -430,6 +439,26 @@ export default function GraphView({
       plugins: [],
     })
     graphRef.current = graph
+
+    // Stale-instance guard: the render chain is async; a rebuild (or React
+    // dev's double-invoked effects) may have destroyed this graph by the
+    // time callbacks fire. Never touch a dead instance.
+    const isCurrent = () => graphRef.current === graph
+
+    // TEMP-DIAG — remove after the GO blank-canvas diagnosis closes.
+    const diag = (stage: string, extra: Record<string, unknown> = {}) => {
+      console.info(`[g6diag] ${stage}`, JSON.stringify(extra))
+    }
+    diag('build', {
+      nodes: snap.nodes.length,
+      dataNodes: data.nodes?.length ?? 0,
+      autoLinear,
+      useSaved,
+      placed: Object.keys(positionsRef.current).length,
+      boxW: el.clientWidth,
+      boxH: el.clientHeight,
+    })
+    window.addEventListener('error', (e) => diag('uncaught', { msg: String(e.message) }))
 
     graph.on('node:click', (e) => {
       const evt = e as IPointerEvent & { originalTarget?: HitShape | null }
@@ -472,39 +501,65 @@ export default function GraphView({
       reportContextMenu(e, id)
     })
 
-    void graph.render().then(() => {
-      if (!useSaved) {
-        // Auto pipeline: capture what dagre/rank-wrap computed so a later
-        // drag saves the full map, not just the dragged node.
-        for (const nd of graph.getNodeData() as {
-          id: string
-          style?: { x?: number; y?: number }
-        }[]) {
-          const { x, y } = nd.style ?? {}
-          if (typeof x === 'number' && typeof y === 'number')
-            positionsRef.current[nd.id] = { x, y }
+    void graph
+      .render()
+      .then(() => {
+        if (!isCurrent()) return
+        if (!useSaved) {
+          // Auto pipeline: capture what dagre/rank-wrap computed so a later
+          // drag saves the full map, not just the dragged node.
+          for (const nd of graph.getNodeData() as {
+            id: string
+            style?: { x?: number; y?: number }
+          }[]) {
+            const { x, y } = nd.style ?? {}
+            if (typeof x === 'number' && typeof y === 'number')
+              positionsRef.current[nd.id] = { x, y }
+          }
         }
-      }
-      if (snap.focusId) {
-        void graph.focusElement(snap.focusId)
-      } else {
-        // Folded oversized maps tower over the viewport (36k px tall): a raw
-        // fitView lands near 2% zoom where cards are invisible dots. Clamp
-        // to a readable floor around the viewport center; panning/zoom-out
-        // still covers the whole map.
-        void graph.fitView().then(() => {
-          if (graph.getZoom() >= MIN_AUTO_ZOOM) return
-          return graph.zoomTo(MIN_AUTO_ZOOM).then(() => {
-            setZoomPct(Math.round(graph.getZoom() * 100))
+        if (snap.focusId) {
+          void graph.focusElement(snap.focusId)
+        } else {
+          // Folded oversized maps tower over the viewport (36k px tall): a raw
+          // fitView lands near 2% zoom where cards are invisible dots. Clamp
+          // to a readable floor around the viewport center; panning/zoom-out
+          // still covers the whole map.
+          void graph.fitView().then(() => {
+            diag('fit', { zoom: graph.getZoom() })
+            if (graph.getZoom() >= MIN_AUTO_ZOOM) return
+            return graph.zoomTo(MIN_AUTO_ZOOM).then(() => {
+              diag('clamped', { zoom: graph.getZoom() })
+              setZoomPct(Math.round(graph.getZoom() * 100))
+            })
           })
-        })
-      }
-      setZoomPct(Math.round(graph.getZoom() * 100))
-    })
+        }
+        setZoomPct(Math.round(graph.getZoom() * 100))
+        // TEMP-DIAG — count inked samples on every canvas layer, 2s later.
+        window.setTimeout(() => {
+          if (!isCurrent()) return
+          const inks: number[] = []
+          el.querySelectorAll('canvas').forEach((cv) => {
+            const ctx = cv.getContext('2d')
+            let n = -1
+            if (ctx && cv.width > 0 && cv.height > 0) {
+              const img = ctx.getImageData(0, 0, cv.width, cv.height).data
+              n = 0
+              for (let i = 3; i < img.length; i += 40) if (img[i] !== 0) n++
+            }
+            inks.push(n)
+          })
+          diag('pixels', { layers: inks.length, inks })
+        }, 2000)
+      })
+      .catch((e: unknown) => {
+        if (!isCurrent()) return
+        diag('render-error', { err: String(e) })
+      })
 
     return () => {
       window.clearTimeout(saveTimerRef.current)
       graph.destroy()
+      mount.remove()
       graphRef.current = null
     }
   }, [nodes, edges, resolved, savedPositions])
