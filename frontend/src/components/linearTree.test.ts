@@ -70,6 +70,21 @@ describe('linearTreePositions', () => {
     expect(linearTreePositions([], [])).toEqual({})
   })
 
+  it('normalizes output to the origin (no axis-anchor offset)', () => {
+    // GO-shaped reality: thousands of isolated roots — raw leaf cursors push
+    // the fold axis to ~300k. Huge magnitudes only amplify float drift in
+    // the renderer's bounds comparisons; the map must start at (0,0).
+    const nodes = Array.from({ length: 300 }, (_, i) => node(`iso${i}`))
+    nodes.push(node('r'), node('kid'))
+    const edges = [edge('kid', 'r')]
+    const pos = linearTreePositions(nodes, edges)
+    const xs = Object.values(pos).map((p) => p.x)
+    const ys = Object.values(pos).map((p) => p.y)
+    expect(Math.min(...ys)).toBe(0)
+    expect(Math.min(...xs)).toBeGreaterThanOrEqual(0)
+    expect(Math.min(...xs)).toBeLessThan(100)
+  })
+
   it('lays out a GO-shaped 5000-node graph under one second', () => {
     const nodes = [{ id: 'r0' }]
     const edges: { source: string; target: string }[] = []

@@ -216,10 +216,11 @@ describe('GraphView', () => {
   it('prevents emptying the canvas: the last active dimension stays on', async () => {
     draw({ defaultKinds: CLASS_ONLY })
     const g = lastG6() as MockGraph
-    await waitFor(() => expect(g.setData).toHaveBeenCalled())
-    const settled = g.setData.mock.calls.length
+    await waitFor(() => expect(g.render).toHaveBeenCalled()) // mount settled
+    // Classes are the only active dimension — switching them off would empty
+    // the canvas, so the toggle refuses (no setData at all).
     await userEvent.click(screen.getByRole('button', { name: '类' }))
-    expect(g.setData.mock.calls.length).toBe(settled)
+    expect(g.setData).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: '类' }).getAttribute('aria-pressed')).toBe('true')
   })
 
@@ -470,5 +471,14 @@ describe('fitView zoom clamp', () => {
     g.getZoom.mockReturnValue(0.8)
     await waitFor(() => expect(g.fitView).toHaveBeenCalled())
     expect(g.zoomTo).not.toHaveBeenCalled()
+  })
+})
+
+describe('mount effects skip their first run', () => {
+  it('does not setData/updateEdgeData on mount — the build effect already rendered', () => {
+    draw({ defaultKinds: CLASS_ONLY })
+    const g = lastG6()!
+    expect(g.setData).not.toHaveBeenCalled()
+    expect(g.updateEdgeData).not.toHaveBeenCalled()
   })
 })

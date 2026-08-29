@@ -352,6 +352,12 @@ export default function GraphView({
   useEffect(() => {
     stateRef.current = { nodes, edges, showLabels, kinds, focusId }
   })
+  // Change-driven effects (label toggle, kind filter) must not fire on mount:
+  // the build effect already rendered the current state. For a 5000-node
+  // auto layout the mount-time setData/draw re-render races the first
+  // render's RAF ticks — the browser stack-overflowed inside @antv/g's
+  // bounds-change cascade; sequential renders never did.
+  const firstRun = useRef({ labels: true, kinds: true })
 
   /** Read the engine's current coordinates into positionsRef (after a
    *  layout pass or a drag) and schedule the debounced whole-map report.
@@ -505,6 +511,10 @@ export default function GraphView({
 
   /** Edge-label toggle without rebuilding (keeps dragged positions). */
   useEffect(() => {
+    if (firstRun.current.labels) {
+      firstRun.current.labels = false
+      return
+    }
     const g = graphRef.current
     if (!g) return
     const snap = stateRef.current
@@ -516,6 +526,10 @@ export default function GraphView({
   /** Kind filter via setData. In saved mode the newly visible nodes need
    *  positions too (deterministic fallbacks); in auto mode dagre reruns. */
   useEffect(() => {
+    if (firstRun.current.kinds) {
+      firstRun.current.kinds = false
+      return
+    }
     const g = graphRef.current
     if (!g) return
     const snap = stateRef.current

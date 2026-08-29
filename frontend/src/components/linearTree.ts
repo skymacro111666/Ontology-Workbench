@@ -88,6 +88,15 @@ export function linearTreePositions(
   }))
   const out: Record<string, Pt> = {}
   for (const f of wrapRanks(staged, edges, opts)) out[f.id] = { x: f.style.x, y: f.style.y }
+  // Normalize to the origin: isolated-root forests make the fold axis land
+  // the whole map around x≈300k — large magnitudes serve nothing and only
+  // amplify float drift in the renderer's bounds comparisons.
+  const vals = Object.values(out)
+  if (vals.length) {
+    const dx = vals.reduce((m, p) => Math.min(m, p.x), Infinity)
+    const dy = vals.reduce((m, p) => Math.min(m, p.y), Infinity)
+    for (const k of Object.keys(out)) out[k] = { x: out[k].x - dx, y: out[k].y - dy }
+  }
   return out
 }
 
