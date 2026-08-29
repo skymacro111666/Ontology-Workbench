@@ -11,6 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
 
+import structlog
 import typer
 import uvicorn
 
@@ -18,6 +19,8 @@ from ontoworkbench.config import Settings, ensure_env_file
 from ontoworkbench.observability.logging import setup_logging
 
 app = typer.Typer(help="Ontology Workbench — self-hosted ontology workbench.")
+
+_imports_log = structlog.get_logger("ow.imports")
 
 PACKAGE_ROOT = Path(__file__).parent
 BACKEND_ROOT = PACKAGE_ROOT.parent
@@ -205,6 +208,22 @@ def import_ontology(
             file_hash=LocalUserDirStore.file_hash(data),
         )
         build_indexes(ir)  # warm parse validation only; server rebuilds on demand
+        # Same ops event as the API path (ow.imports) so grepping one name
+        # covers both; timing starts at the parse, after the cheap guards.
+        _imports_log.info(
+            "ontology.import",
+            filename=filename,
+            format=fmt,
+            size_bytes=len(data),
+            parse_ms=round(parse_ms, 1),
+            class_count=ir.counts.class_count,
+            property_count=ir.counts.property_count,
+            instance_count=ir.counts.individual_count,
+            axiom_count=ir.counts.axiom_count,
+            ontology_id=str(row.id),
+            user_id=str(admin.id),
+            source="cli",
+        )
         typer.echo(f"imported {filename} as {row.id} ({ir.counts.class_count} classes)")
 
 

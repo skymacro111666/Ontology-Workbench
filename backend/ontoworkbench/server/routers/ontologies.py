@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 from uuid import UUID, uuid4
 
+import structlog
 from fastapi import APIRouter, Depends, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
@@ -26,6 +28,8 @@ from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 router = APIRouter(prefix="/api", tags=["ontologies"])
 
 MAX_UPLOAD = 150 * 1024 * 1024
+
+_imports_log = structlog.get_logger("ow.imports")
 
 
 class CamelModel(BaseModel):
@@ -127,40 +131,71 @@ def _import_bytes(
     filename: str,
     data: bytes,
 ) -> Ontology:
-    """Shared import path for uploads and samples: parse, store, register."""
-    repos = OntologyRepository(session)
-    store: LocalUserDirStore = request.app.state.store
-    existing = repos.find_by_filename(user.id, filename)
-    if existing:
-        raise ApiError(
-            ErrorCode.DUPLICATE_FILENAME,
-            f"'{filename}' already exists",
-            "Rename the file or delete the existing ontology first.",
-        )
-    fmt = sniff_format(filename, data[:2048])
-    with ow_parse_seconds.labels(fmt).time():
-        graph, parse_ms = timed_parse(data, fmt)
-    ir = build_ir(graph)
+    """Shared import path for uploads and samples: parse, store, register.
 
-    oid = uuid4()
-    path = store.save(user.id, oid, filename, data)
-    row = repos.create(
-        user.id,
-        id=oid,
-        title=title_of(graph, filename),
+    Both outcomes leave an ops trace on ow.imports: success carries file,
+    timing and counts; failure carries the rejecting code. The HTTP error
+    handler still logs the envelope (with request_id) — these events carry
+    the file context that one lacks.
+    """
+    started = time.perf_counter()
+    try:
+        repos = OntologyRepository(session)
+        store: LocalUserDirStore = request.app.state.store
+        existing = repos.find_by_filename(user.id, filename)
+        if existing:
+            raise ApiError(
+                ErrorCode.DUPLICATE_FILENAME,
+                f"'{filename}' already exists",
+                "Rename the file or delete the existing ontology first.",
+            )
+        fmt = sniff_format(filename, data[:2048])
+        with ow_parse_seconds.labels(fmt).time():
+            graph, parse_ms = timed_parse(data, fmt)
+        ir = build_ir(graph)
+
+        oid = uuid4()
+        path = store.save(user.id, oid, filename, data)
+        row = repos.create(
+            user.id,
+            id=oid,
+            title=title_of(graph, filename),
+            filename=filename,
+            storage_path=str(path),
+            format=fmt,
+            class_count=ir.counts.class_count,
+            property_count=ir.counts.property_count,
+            axiom_count=ir.counts.axiom_count,
+            instance_count=ir.counts.individual_count,
+            stats_json={"prefixes": ir.prefixes, "parse_ms": round(parse_ms, 1)},
+            file_size_bytes=len(data),
+            file_hash=LocalUserDirStore.file_hash(data),
+        )
+        cache: OntologyCache = request.app.state.cache
+        cache.indexes_for(row, lambda r: build_indexes(ir))
+    except Exception as exc:
+        _imports_log.warning(
+            "ontology.import_failed",
+            filename=filename,
+            size_bytes=len(data),
+            code=str(getattr(exc, "code", type(exc).__name__)),
+            user_id=str(user.id),
+        )
+        raise
+    _imports_log.info(
+        "ontology.import",
         filename=filename,
-        storage_path=str(path),
         format=fmt,
+        size_bytes=len(data),
+        parse_ms=round(parse_ms, 1),
         class_count=ir.counts.class_count,
         property_count=ir.counts.property_count,
-        axiom_count=ir.counts.axiom_count,
         instance_count=ir.counts.individual_count,
-        stats_json={"prefixes": ir.prefixes, "parse_ms": round(parse_ms, 1)},
-        file_size_bytes=len(data),
-        file_hash=LocalUserDirStore.file_hash(data),
+        axiom_count=ir.counts.axiom_count,
+        ontology_id=str(oid),
+        user_id=str(user.id),
+        total_ms=round((time.perf_counter() - started) * 1000, 1),
     )
-    cache: OntologyCache = request.app.state.cache
-    cache.indexes_for(row, lambda r: build_indexes(ir))
     ow_uploads_total.labels("ok").inc()
     return row
 
