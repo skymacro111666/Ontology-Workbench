@@ -80,7 +80,20 @@ def export_ontology_site(
     indexes = build_indexes(ir)
 
     raw = (options.out_dir or "").strip()
-    target = Path(raw) if raw else default_out_dir(request.app.state.settings.data_dir, row.id)
+    settings = request.app.state.settings
+    if raw:
+        target = Path(raw)
+        if not settings.export_allow_any_path:
+            exports_root = (settings.data_dir / "exports").resolve()
+            if not target.resolve().is_relative_to(exports_root):
+                raise ApiError(
+                    ErrorCode.VALIDATION_ERROR,
+                    "Output directory must stay under the exports directory",
+                    f"Allowed root: {exports_root}. "
+                    "Set OW_EXPORT_ALLOW_ANY_PATH=1 to allow arbitrary server paths.",
+                )
+    else:
+        target = default_out_dir(settings.data_dir, row.id)
     result = export_site(ir, indexes, target, row.title or row.filename, force=options.force)
     payload = ExportSiteResult(
         output_dir=str(result.output_dir), page_count=result.page_count

@@ -67,7 +67,7 @@ cd ../frontend && npm ci && npm run build
 cd ../backend && uv run ow serve
 ```
 
-首次访问引导创建管理员(一次性),登录后载入内置示例本体即可体验。**配置优先级:CLI 参数 > 环境变量(`.env`)> 默认值**;常用变量 `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL`(默认 SQLite,后续支持 PostgreSQL)/ `OW_LOG_LEVEL`。
+首次访问引导创建管理员(一次性),登录后载入内置示例本体即可体验。**配置优先级:CLI 参数 > 环境变量(`.env`)> 默认值**;常用变量 `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL`(默认 SQLite,后续支持 PostgreSQL)/ `OW_LOG_LEVEL`;文档站导出目录默认限定在 `{数据目录}/exports/` 下,自托管可设 `OW_EXPORT_ALLOW_ANY_PATH=1` 放开。
 
 ## 📄 许可证
 

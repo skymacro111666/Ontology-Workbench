@@ -23,9 +23,9 @@ def _upload(client: TestClient) -> str:
 
 
 def test_export_site_happy_path(client: TestClient, tmp_path: Path) -> None:
-    """Export to an explicit dir: camelCase payload, index.html + entity pages on disk."""
+    """Export to an explicit dir under exports: index.html + entity pages on disk."""
     oid = _upload(client)
-    out = tmp_path / "site"
+    out = tmp_path / "exports" / "site"
     r = client.post(f"/api/ontologies/{oid}/export/site", json={"out_dir": str(out)})
     body = r.json()
     assert r.status_code == 200
@@ -40,7 +40,7 @@ def test_export_site_happy_path(client: TestClient, tmp_path: Path) -> None:
 def test_export_duplicate_dir_guard(client: TestClient, tmp_path: Path) -> None:
     """Re-export into the non-empty dir is VALIDATION_ERROR unless force clears it."""
     oid = _upload(client)
-    out = tmp_path / "site"
+    out = tmp_path / "exports" / "site"
     first = client.post(f"/api/ontologies/{oid}/export/site", json={"outDir": str(out)})
     assert first.status_code == 200
 
@@ -73,6 +73,58 @@ def test_export_default_dir_sample_site(client: TestClient, tmp_path: Path) -> N
     assert len(entity_pages) >= 1
     search = json.loads((out / "data" / "index.json").read_text(encoding="utf-8"))
     assert len(search) == data["pageCount"] - 1 == len(entity_pages)
+
+
+def test_export_site_out_dir_must_stay_under_exports(client: TestClient, tmp_path: Path) -> None:
+    """Explicit outDir outside {data_dir}/exports is rejected, target untouched."""
+    oid = _upload(client)
+    out = tmp_path / "elsewhere"
+    r = client.post(f"/api/ontologies/{oid}/export/site", json={"outDir": str(out)})
+    assert r.status_code == 422
+    assert r.json()["code"] == "VALIDATION_ERROR"
+    assert "OW_EXPORT_ALLOW_ANY_PATH" in r.json()["hint"]
+    assert not out.exists()
+
+
+def test_export_site_out_dir_inside_exports_ok(client: TestClient, tmp_path: Path) -> None:
+    """An explicit outDir under {data_dir}/exports works without the flag."""
+    oid = _upload(client)
+    out = tmp_path / "exports" / "my-site"
+    r = client.post(f"/api/ontologies/{oid}/export/site", json={"outDir": str(out)})
+    assert r.status_code == 200
+    assert r.json()["data"]["outputDir"] == str(out)
+    assert (out / "index.html").is_file()
+
+
+def test_export_site_rejects_dot_dot_and_symlink_escape(client: TestClient, tmp_path: Path) -> None:
+    """Traversal spellings that resolve outside exports are rejected too."""
+    oid = _upload(client)
+    dots = client.post(
+        f"/api/ontologies/{oid}/export/site",
+        json={"outDir": str(tmp_path / "exports" / ".." / "escape")},
+    )
+    assert dots.status_code == 422
+
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (tmp_path / "exports").mkdir(exist_ok=True)
+    (tmp_path / "exports" / "link").symlink_to(victim)
+    link = client.post(
+        f"/api/ontologies/{oid}/export/site",
+        json={"outDir": str(tmp_path / "exports" / "link")},
+    )
+    assert link.status_code == 422
+    assert list(victim.iterdir()) == []  # untouched, not force-cleared
+
+
+def test_export_site_any_path_with_flag(client: TestClient, tmp_path: Path) -> None:
+    """OW_EXPORT_ALLOW_ANY_PATH=1 relaxes the containment for self-hosted use."""
+    client.app.state.settings.export_allow_any_path = True
+    oid = _upload(client)
+    out = tmp_path / "elsewhere"
+    r = client.post(f"/api/ontologies/{oid}/export/site", json={"outDir": str(out)})
+    assert r.status_code == 200
+    assert (out / "index.html").is_file()
 
 
 def test_export_unknown_ontology_is_404(client: TestClient) -> None:

@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     db_url: str = ""  # resolved in load(): sqlite under data_dir
     jwt_secret: str = ""
     log_level: str = "INFO"
+    # Export site: by default the API only writes under {data_dir}/exports/
+    # (the force flag clears the target dir, so an unrestricted out_dir is a
+    # wipe-any-directory primitive). Opt back into arbitrary paths for
+    # single-admin self-hosted use with OW_EXPORT_ALLOW_ANY_PATH=1.
+    export_allow_any_path: bool = False
 
     @classmethod
     def load(cls, cli: dict | None = None) -> Settings:

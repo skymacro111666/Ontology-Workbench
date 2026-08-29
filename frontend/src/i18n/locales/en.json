@@ -142,6 +142,7 @@
     "desc": "Renders the ontology once into a static HTML docs site written to a server-local directory; open index.html from the output directory on the server to browse it.",
     "outDirLabel": "Output directory (optional)",
     "outDirPlaceholder": "Empty uses the default: {data dir}/exports/{id}-{timestamp}",
+    "outDirHint": "Must stay under {data dir}/exports/; set OW_EXPORT_ALLOW_ANY_PATH=1 on the server to lift this.",
     "forceLabel": "Overwrite a non-empty directory",
     "submit": "Start export",
     "resultTitle": "Export result",

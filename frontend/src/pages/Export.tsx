@@ -88,6 +88,7 @@ export default function Export() {
                 disabled={submitting}
                 {...form.register('outDir')}
               />
+              <p className="text-ink-3 text-xs">{t('exportPage.outDirHint')}</p>
             </div>
             <div className="flex items-center gap-2">
               <Switch
