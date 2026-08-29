@@ -9,32 +9,31 @@
 [![English](https://img.shields.io/badge/English-README-blue)](README.en.md)
 [![简体中文](https://img.shields.io/badge/简体中文-README-gray)](../../README.md)
 
-[Features](#-features) · [Preview](#-preview) · [Get Started](#-get-started) · [License](#-license)
+[Features](#-features) · [Showcase](#-feature-showcase) · [Get Started](#-get-started) · [License](#-license)
 
 </div>
 
 ## ✨ Features
 
-- **Three-pane reading workspace** — class/property/prefix sidebar, instant search, breadcrumb lineage; virtualized tree keeps large ontologies smooth
-- **Two view modes per entity** — switch between detail and graph in one click
-- **Graph visualization** — canvas for local-neighbor and global-overview graphs, semantically colored edges, drag positions persisted server-side
-- **Canvas editing** — right-click to create/edit/delete classes and properties; back-references pruned with them; optimistic locking prevents conflicts
-- **Source editing** — built-in editor with find/replace, dirty-state guards, and parse-before-save
-- **One-click docs export** — a zero-dependency static site, ready for GitHub Pages
+- **Three-pane browsing** — class-tree, property, and prefix-URI sidebars plus instant search; silky-smooth virtualized scrolling even on huge ontologies
+- **Smart graph visualization** — canvas hosts local-neighbor and global-overview graphs, edges colored by semantics, node positions remembered after dragging
+- **Point-and-edit canvas** — right-click to create, edit, and delete classes and properties, no page-hopping needed
+- **Integrated source editing** — built-in editor with full find-and-replace
+- **Offline docs export** — generates a static site with zero external dependencies
 
-## 📸 Preview
+## 📸 Feature Showcase
 
-**Workspace (graph mode)** — class tree, canvas, and inspector; badges reveal instances, right-click edits entities:
+**Overview page**
+
+![Overview home](screenshots/home.png)
+
+**Graph mode**
 
 ![Workspace graph mode](screenshots/browser-graph.png)
 
-**Source editing** — one click between graph and text; the built-in editor highlights syntax and parses before saving:
+**Source editing**
 
-![Source editing](screenshots/browser-text.png)
-
-**Overview** — stats and the ontology list, bundled samples one click away:
-
-![Overview home](screenshots/home.png)
+![Source mode](screenshots/browser-text.png)
 
 ## 🚀 Get Started
 
@@ -66,7 +65,7 @@ cd ../frontend && npm ci && npm run build
 cd ../backend && uv run ow serve
 ```
 
-The first visit walks you through a one-time admin setup; log in and load a bundled sample ontology. **Config precedence: CLI flags > environment variables (`.env`) > defaults**; common variables are `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL` (SQLite by default, PostgreSQL supported) / `OW_LOG_LEVEL`.
+The first visit walks you through a one-time admin setup; log in and load a bundled sample ontology. **Config precedence: CLI flags > environment variables (`.env`) > defaults**; common variables are `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL` (SQLite by default, PostgreSQL support coming soon) / `OW_LOG_LEVEL`.
 
 ## 📄 License
 

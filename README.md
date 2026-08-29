@@ -9,32 +9,33 @@
 [![简体中文](https://img.shields.io/badge/简体中文-README-blue)](README.md)
 [![English](https://img.shields.io/badge/English-README-gray)](assets/README/README.en.md)
 
-[特性](#-特性亮点) · [预览](#-预览) · [快速开始](#-快速开始) · [许可证](#-许可证)
+[特性](#-特性亮点) · [功能展示](#-功能展示) · [快速开始](#-快速开始) · [许可证](#-许可证)
 
 </div>
 
 ## ✨ 特性亮点
 
-- **三区阅读工作区** —— 类树 / 属性 / 前缀侧栏 + 即时搜索 + 面包屑谱系,大本体虚拟滚动不卡顿
-- **实体详情双态视图** —— 详情 / 纯图一键切换
-- **图可视化** —— 画布承载局部邻居图与全局总览,边按语义着色,节点位置拖拽后持久化
-- **画布内编辑** —— 右键即可新建 / 编辑 / 删除类与属性,连反向引用一并清理,乐观锁防冲突
-- **源码编辑** —— 集成编辑器,搜索替换、脏态守卫、试解析后才落盘
-- **一键文档站导出** —— 零外部依赖的静态站,扔给 GitHub Pages 即可发布
+- **三区协同浏览** —— 类树、属性、前缀URI侧栏+即时搜索，大本体下虚拟滚动丝滑无卡顿
+- **智能图可视化** —— 画布承载局部邻居图与全局总览,边按语义着色,节点位置拖拽后持久化记忆
+- **画布即点即编** —— 右键完成类与属性的新建、编辑、删除，无需跳转多页面
+- **集成源码编辑** —— 内置编辑器,搜索替换功能全覆盖
+- **离线文档导出** —— 生成完全零外部依赖的静态站点
 
-## 📸 预览
+## 📸 功能展示
 
-**工作区(图形模式)** —— 类树、画布、检查器三栏;节点徽章展开实例,右键即可增删改:
+**概览页面** 
+
+![概览首页](assets/README/screenshots/home.png)
+
+
+**图形模式** 
 
 ![工作区图形模式](assets/README/screenshots/browser-graph.png)
 
-**源码编辑** —— 图形/文本一键切换,内置编辑器带语法高亮,试解析后才落盘:
+**源码编辑** 
 
-![源码编辑](assets/README/screenshots/browser-text.png)
+![源码模式](assets/README/screenshots/browser-text.png)
 
-**概览** —— 统计与本体列表,内置示例一键载入:
-
-![概览首页](assets/README/screenshots/home.png)
 
 ## 🚀 快速开始
 
@@ -66,7 +67,7 @@ cd ../frontend && npm ci && npm run build
 cd ../backend && uv run ow serve
 ```
 
-首次访问引导创建管理员(一次性),登录后载入内置示例本体即可体验。**配置优先级:CLI 参数 > 环境变量(`.env`)> 默认值**;常用变量 `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL`(默认 SQLite,可切 PostgreSQL)/ `OW_LOG_LEVEL`。
+首次访问引导创建管理员(一次性),登录后载入内置示例本体即可体验。**配置优先级:CLI 参数 > 环境变量(`.env`)> 默认值**;常用变量 `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL`(默认 SQLite,后续支持 PostgreSQL)/ `OW_LOG_LEVEL`。
 
 ## 📄 许可证
 
