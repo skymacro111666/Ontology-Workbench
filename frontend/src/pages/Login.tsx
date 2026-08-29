@@ -2,20 +2,13 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router'
-import { z } from 'zod'
 import { ApiErr } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { credentialsSchema, type Credentials } from '../auth/credentials'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-
-const credentialsSchema = z.object({
-  username: z.string().min(3, '用户名至少 3 个字符').max(64, '用户名不超过 64 个字符'),
-  password: z.string().min(8, '密码至少 8 位').max(128, '密码不超过 128 位'),
-})
-
-type Credentials = z.infer<typeof credentialsSchema>
 
 /** JWT login; error copy branches on the envelope code. */
 export default function Login() {

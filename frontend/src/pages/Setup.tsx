@@ -2,29 +2,22 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router'
-import { z } from 'zod'
 import { ApiErr, api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { credentialsSchema, type Credentials } from '../auth/credentials'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-const credentialsSchema = z.object({
-  username: z.string().min(3, '用户名至少 3 个字符').max(64, '用户名不超过 64 个字符'),
-  password: z.string().min(8, '密码至少 8 位').max(128, '密码不超过 128 位'),
-})
-
-type Credentials = z.infer<typeof credentialsSchema>
-
 /** One-shot first-run page: create the single admin account and enter. */
 export default function Setup() {
-  const { login, needSetup, ready } = useAuth()
+  const { login, needSetup, ready, probeError } = useAuth()
   const navigate = useNavigate()
   const [formError, setFormError] = useState<string | null>(null)
   // The status probe may already know setup is done before any submit happens.
   const [done, setDone] = useState(false)
-  const showDoneNotice = done || (ready && !needSetup)
+  const showDoneNotice = done || (ready && !needSetup && !probeError)
   const form = useForm<Credentials>({
     resolver: zodResolver(credentialsSchema),
     defaultValues: { username: '', password: '' },
@@ -71,6 +64,11 @@ export default function Setup() {
               <Link to="/login" className="ml-1 text-primary underline underline-offset-2">
                 前往登录
               </Link>
+            </p>
+          )}
+          {ready && probeError && (
+            <p role="status" className="text-sm text-muted-foreground">
+              无法连接服务器，请检查服务状态后重试
             </p>
           )}
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>

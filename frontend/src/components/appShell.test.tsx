@@ -2,9 +2,9 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, it, vi } from 'vitest'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import AppShell from './AppShell'
-import { AuthProvider, LAST_OID_KEY } from '../auth/AuthContext'
+import { AuthProvider, LAST_OID_KEY, TOKEN_KEY } from '../auth/AuthContext'
 import { api } from '../api/client'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { useUiStore } from '../stores/uiStore'
@@ -21,6 +21,7 @@ vi.mock('../api/client', () => ({
 // the shared uiStore's opened dialog) would leak into any later test.
 afterEach(() => {
   cleanup()
+  localStorage.clear()
   useUiStore.setState({
     browseView: 'graph',
     importOpen: false,
@@ -30,7 +31,7 @@ afterEach(() => {
   })
 })
 
-it('renders nav, opens import dialog, logs out', async () => {
+it('renders nav and opens the import dialog', async () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={qc}>
@@ -54,6 +55,47 @@ it('renders nav, opens import dialog, logs out', async () => {
   expect(screen.getByRole('button', { name: '工作区' })).toBeTruthy()
   await userEvent.click(screen.getByRole('button', { name: '＋ 导入' }))
   expect(await screen.findByRole('dialog')).toBeTruthy()
+})
+
+it('logs out via the account menu (name now matches the assertion)', async () => {
+  localStorage.setItem(TOKEN_KEY, 'tok')
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider>
+        <MemoryRouter>
+          <AuthProvider>
+            <AppShell>
+              <div>content</div>
+            </AppShell>
+          </AuthProvider>
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+  await userEvent.click(screen.getByRole('button', { name: /菜单/ }))
+  await userEvent.click(await screen.findByText('退出登录'))
+  await waitFor(() => expect(localStorage.getItem(TOKEN_KEY)).toBeNull())
+})
+
+it('renders the router Outlet when no children are given (production branch)', () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/']}>
+          <AuthProvider>
+            <Routes>
+              <Route element={<AppShell />}>
+                <Route path="/" element={<div>outlet content</div>} />
+              </Route>
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+  expect(screen.getByText('outlet content')).toBeTruthy()
 })
 
 it('export menu downloads the current ontology in the picked RDF format', async () => {

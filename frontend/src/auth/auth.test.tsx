@@ -1,7 +1,7 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { AuthProvider } from './AuthContext'
+import { AuthProvider, useAuth } from './AuthContext'
 import ProtectedRoute from './ProtectedRoute'
 
 afterEach(() => {
@@ -52,5 +52,28 @@ describe('ProtectedRoute', () => {
     stubFetch({ code: 'OK', message: 'ok', data: { id: 'u1', username: 'admin' }, hint: null, request_id: 'r' })
     renderRoutes()
     await waitFor(() => expect(screen.getByText('home page')).toBeTruthy())
+  })
+})
+
+describe('AuthProvider status probe', () => {
+  it('signals probeError when the status probe fails (backlog T5①)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('network down')
+      }),
+    )
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.ready).toBe(true))
+    expect(result.current.probeError).toBe(true)
+    expect(result.current.needSetup).toBe(false)
+  })
+
+  it('keeps probeError clear when the probe succeeds', async () => {
+    stubFetch({ code: 'OK', message: 'ok', data: { need_setup: true }, hint: null, request_id: 'r' })
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider })
+    await waitFor(() => expect(result.current.ready).toBe(true))
+    expect(result.current.probeError).toBe(false)
+    expect(result.current.needSetup).toBe(true)
   })
 })

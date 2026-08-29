@@ -15,6 +15,9 @@ interface AuthState {
   needSetup: boolean
   /** False until the setup-status probe settles; gates routing decisions. */
   ready: boolean
+  /** True when the status probe itself failed — distinct from needSetup=false,
+   *  which asserts the server answered and setup is genuinely done. */
+  probeError: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => void
 }
@@ -27,12 +30,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY))
   const [needSetup, setNeedSetup] = useState(false)
   const [ready, setReady] = useState(false)
+  const [probeError, setProbeError] = useState(false)
 
   useEffect(() => {
     api
       .get<{ need_setup: boolean }>('/api/auth/status')
-      .then((data) => setNeedSetup(data.need_setup))
-      .catch(() => setNeedSetup(false))
+      .then((data) => {
+        setNeedSetup(data.need_setup)
+        setProbeError(false)
+      })
+      .catch(() => {
+        // Unreachable server: needSetup stays a meaningless default — say so
+        // via probeError instead of letting it read as "setup completed".
+        setNeedSetup(false)
+        setProbeError(true)
+      })
       .finally(() => setReady(true))
   }, [])
 
@@ -59,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, token, needSetup, ready, login, logout }}>
+    <AuthContext.Provider value={{ user, token, needSetup, ready, probeError, login, logout }}>
       {children}
     </AuthContext.Provider>
   )
