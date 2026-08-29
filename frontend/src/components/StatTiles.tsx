@@ -1,4 +1,5 @@
 import { AlignJustifyIcon, ArrowLeftRightIcon, BoxesIcon, HexagonIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Card, CardContent } from '@/components/ui/card'
 
 export interface StatTilesProps {
@@ -10,11 +11,12 @@ export interface StatTilesProps {
 
 /** Home header row: four KPI tiles — icon + uppercase micro-label + big number. */
 export default function StatTiles({ ontologies, classes, properties, axioms }: StatTilesProps) {
+  const { t } = useTranslation()
   const tiles = [
-    { label: '本体', value: ontologies, icon: BoxesIcon },
-    { label: '类', value: classes, icon: HexagonIcon },
-    { label: '属性', value: properties, icon: ArrowLeftRightIcon },
-    { label: '公理', value: axioms, icon: AlignJustifyIcon },
+    { label: t('home.countOntology'), value: ontologies, icon: BoxesIcon },
+    { label: t('home.countClass'), value: classes, icon: HexagonIcon },
+    { label: t('home.countProperty'), value: properties, icon: ArrowLeftRightIcon },
+    { label: t('home.countAxiom'), value: axioms, icon: AlignJustifyIcon },
   ]
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

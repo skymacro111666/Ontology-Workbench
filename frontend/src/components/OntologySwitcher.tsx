@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { CheckIcon, ChevronDownIcon } from 'lucide-react'
 import { useMatch, useNavigate } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import type { OntologySummary } from '../api/types'
 import { LAST_OID_KEY } from '../auth/AuthContext'
@@ -14,6 +15,7 @@ import {
 
 /** Topbar ontology picker: lists loaded ontologies, opens the picked one in Browse. */
 export default function OntologySwitcher() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   // Layout-level component, so route params must be read from the URL matches.
   const browseOid = useMatch('/browse/:oid')?.params.oid
@@ -37,18 +39,18 @@ export default function OntologySwitcher() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm">
-          {current?.title ?? '选择本体'}
+          {current?.title ?? t('shell.pickOntology')}
           <ChevronDownIcon />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
         {isPending ? (
-          <DropdownMenuItem disabled>加载中…</DropdownMenuItem>
+          <DropdownMenuItem disabled>{t('common.loading')}</DropdownMenuItem>
         ) : isError ? (
           // A failed fetch must not masquerade as an empty shelf (T4①).
-          <DropdownMenuItem disabled>加载失败</DropdownMenuItem>
+          <DropdownMenuItem disabled>{t('shell.loadFailed')}</DropdownMenuItem>
         ) : items.length === 0 ? (
-          <DropdownMenuItem disabled>暂无本体</DropdownMenuItem>
+          <DropdownMenuItem disabled>{t('shell.noOntologies')}</DropdownMenuItem>
         ) : (
           items.map((o) => (
             <DropdownMenuItem key={o.id} onSelect={() => open(o.id)}>

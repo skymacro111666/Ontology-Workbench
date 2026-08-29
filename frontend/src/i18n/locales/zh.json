@@ -26,6 +26,33 @@
     "submit": "创建并进入",
     "footnote": "凭据仅存于本地数据库，不会离开这台服务器"
   },
+  "home": {
+    "title": "我的本体",
+    "overview": "本体概览",
+    "list": "本体列表",
+    "listFailed": "列表加载失败",
+    "offline": "无法连接服务器，请确认后端已启动。",
+    "openAria": "打开 {{title}}",
+    "deleteAria": "删除 {{title}}",
+    "deleteTitle": "删除「{{title}}」？",
+    "deleteDesc": "文件与索引将一并移除，不可恢复。",
+    "deleted": "已删除",
+    "sampleFailed": "载入示例失败，请稍后重试",
+    "listLoadingSr": "本体列表加载中",
+    "countOntology": "本体",
+    "countClass": "类",
+    "countProperty": "属性",
+    "countAxiom": "公理",
+    "emptyTitle": "还没有本体",
+    "emptyHint": "载入内置示例快速体验，或导入你的本体文件",
+    "loadSample": "载入示例 {{name}}",
+    "import": "导入本体"
+  },
+  "shell": {
+    "pickOntology": "选择本体",
+    "loadFailed": "加载失败",
+    "noOntologies": "暂无本体"
+  },
   "err": {
     "AUTH_REQUIRED": "需要登录",
     "TOKEN_EXPIRED": "登录已过期，请重新登录",

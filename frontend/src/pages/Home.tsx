@@ -2,10 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
 import type { OntologyMeta, OntologySummary } from '../api/types'
 import { LAST_OID_KEY } from '../auth/AuthContext'
+import { errText } from '../i18n/errText'
 import EmptyState from '../components/EmptyState'
 import StatTiles from '../components/StatTiles'
 import { useUiStore } from '../stores/uiStore'
@@ -33,6 +35,7 @@ function formatDate(iso: string): string {
 
 /** Home (工作台): stat tiles, builtin samples, ontology list cards. */
 export default function Home() {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const setImportOpen = useUiStore((s) => s.setImportOpen)
@@ -51,12 +54,12 @@ export default function Home() {
   const del = useMutation({
     mutationFn: (id: string) => api.del(`/api/ontologies/${id}`),
     onSuccess: () => {
-      toast.success('已删除')
+      toast.success(t('home.deleted'))
       setDeleteTarget(null)
       void queryClient.invalidateQueries({ queryKey: ['ontologies'] })
     },
     onError: (err) => {
-      toast.error(err instanceof ApiErr ? err.message : '操作失败，请稍后重试')
+      toast.error(errText(err, t))
     },
   })
 
@@ -67,7 +70,7 @@ export default function Home() {
       openOntology(meta.id)
     },
     onError: (err) => {
-      toast.error(err instanceof ApiErr ? err.message : '载入示例失败，请稍后重试')
+      toast.error(err instanceof ApiErr ? errText(err, t) : t('home.sampleFailed'))
     },
   })
 
@@ -78,9 +81,9 @@ export default function Home() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
-      <h1 className="text-lg font-semibold">我的本体</h1>
-      <section className="flex flex-col gap-3" aria-label="本体列表">
-        <h2 className="text-sm font-semibold">本体概览</h2>
+      <h1 className="text-lg font-semibold">{t('home.title')}</h1>
+      <section className="flex flex-col gap-3" aria-label={t('home.list')}>
+        <h2 className="text-sm font-semibold">{t('home.overview')}</h2>
           <StatTiles
             ontologies={items.length}
             classes={totalClasses}
@@ -89,22 +92,22 @@ export default function Home() {
           />
       </section>
 
-      <section className="flex flex-col gap-3" aria-label="本体列表">
-        <h2 className="text-sm font-bold">本体列表</h2>
+      <section className="flex flex-col gap-3" aria-label={t('home.list')}>
+        <h2 className="text-sm font-bold">{t('home.list')}</h2>
         {isError ? (
           <div className="border-line flex flex-col items-center gap-3 rounded-card border px-6 py-12 text-center">
             <div className="flex flex-col gap-1">
-              <p className="font-medium">列表加载失败</p>
-              <p className="text-ink-2 text-sm">无法连接服务器，请确认后端已启动。</p>
+              <p className="font-medium">{t('home.listFailed')}</p>
+              <p className="text-ink-2 text-sm">{t('home.offline')}</p>
             </div>
             <Button size="sm" variant="outline" onClick={() => void refetch()}>
-              重试
+              {t('common.retry')}
             </Button>
           </div>
         ) : isPending ? (
           <div
             role="status"
-            aria-label="加载中"
+            aria-label={t('common.loading')}
             className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
           >
             {/* Six ghost cards mirroring the loaded row shape; bg-line adapts
@@ -119,7 +122,7 @@ export default function Home() {
                 <div className="bg-line animate-pulse h-3 w-2/3 rounded" />
               </div>
             ))}
-            <span className="sr-only">本体列表加载中</span>
+            <span className="sr-only">{t('home.listLoadingSr')}</span>
           </div>
         ) : items.length === 0 ? (
           <EmptyState
@@ -135,7 +138,7 @@ export default function Home() {
                 key={o.id}
                 role="button"
                 tabIndex={0}
-                aria-label={`打开 ${o.title}`}
+                aria-label={t('home.openAria', { title: o.title })}
                 onClick={() => openOntology(o.id)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') openOntology(o.id)
@@ -157,12 +160,12 @@ export default function Home() {
                         openOntology(o.id)
                       }}
                     >
-                      打开
+                      {t('common.open')}
                     </Button>
                     <Button
                       size="icon-sm"
                       variant="ghost"
-                      aria-label={`删除 ${o.title}`}
+                      aria-label={t('home.deleteAria', { title: o.title })}
                       onClick={(e) => {
                         e.stopPropagation()
                         setDeleteTarget(o)
@@ -178,9 +181,9 @@ export default function Home() {
                 </p>
                 <div className="flex gap-2">
                   {[
-                    [o.classCount, '类'],
-                    [o.propertyCount, '属性'],
-                    [o.axiomCount, '公理'],
+                    [o.classCount, t('home.countClass')],
+                    [o.propertyCount, t('home.countProperty')],
+                    [o.axiomCount, t('home.countAxiom')],
                   ].map(([count, unit]) => (
                     <span
                       key={unit as string}
@@ -205,11 +208,11 @@ export default function Home() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除「{deleteTarget?.title}」？</AlertDialogTitle>
-            <AlertDialogDescription>文件与索引将一并移除，不可恢复。</AlertDialogDescription>
+            <AlertDialogTitle>{t('home.deleteTitle', { title: deleteTarget?.title ?? '' })}</AlertDialogTitle>
+            <AlertDialogDescription>{t('home.deleteDesc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-white hover:bg-destructive/90 disabled:pointer-events-none disabled:opacity-60"
               disabled={del.isPending}
@@ -220,7 +223,7 @@ export default function Home() {
                 if (deleteTarget) del.mutate(deleteTarget.id)
               }}
             >
-              {del.isPending ? '删除中…' : '删除'}
+              {del.isPending ? t('common.deleting') : t('common.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

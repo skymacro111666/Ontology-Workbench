@@ -26,6 +26,33 @@
     "submit": "Create and enter",
     "footnote": "Credentials stay in the local database and never leave this server"
   },
+  "home": {
+    "title": "My ontologies",
+    "overview": "Overview",
+    "list": "Ontologies",
+    "listFailed": "Failed to load the list",
+    "offline": "Cannot reach the server — make sure the backend is running.",
+    "openAria": "Open {{title}}",
+    "deleteAria": "Delete {{title}}",
+    "deleteTitle": "Delete “{{title}}”?",
+    "deleteDesc": "The file and its indexes are removed together — this cannot be undone.",
+    "deleted": "Deleted",
+    "sampleFailed": "Failed to load the sample, please try again later",
+    "listLoadingSr": "Loading the ontology list",
+    "countOntology": "ontologies",
+    "countClass": "classes",
+    "countProperty": "properties",
+    "countAxiom": "axioms",
+    "emptyTitle": "No ontologies yet",
+    "emptyHint": "Load a bundled sample to explore, or import your own ontology file",
+    "loadSample": "Load sample {{name}}",
+    "import": "Import ontology"
+  },
+  "shell": {
+    "pickOntology": "Choose ontology",
+    "loadFailed": "Failed to load",
+    "noOntologies": "No ontologies yet"
+  },
   "err": {
     "AUTH_REQUIRED": "Sign-in required",
     "TOKEN_EXPIRED": "Session expired, please sign in again",
