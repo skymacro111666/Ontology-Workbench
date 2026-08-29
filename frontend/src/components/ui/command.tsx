@@ -25,8 +25,8 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
 }
 
 function CommandDialog({
-  title = '全局搜索',
-  description = '输入关键词以搜索类与属性',
+  title = 'Search',
+  description = 'Type a keyword to search',
   commandProps,
   children,
   ...props

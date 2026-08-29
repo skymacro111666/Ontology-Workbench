@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
@@ -10,6 +11,7 @@ import { turtle } from '@codemirror/legacy-modes/mode/turtle'
 import { tags as t } from '@lezer/highlight'
 import { SearchIcon } from 'lucide-react'
 import { ApiErr, api } from '../api/client'
+import { errText } from '../i18n/errText'
 import type { OntologyMeta } from '../api/types'
 import { useUiStore } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
@@ -123,6 +125,8 @@ const editorHighlight = HighlightStyle.define([
  *  dirty = doc differs from the loaded baseline; saving PUTs the doc with
  *  the baseline fileHash as the optimistic lock. */
 export default function SourceView({ oid }: { oid: string }) {
+  // `t` is taken by @lezer/highlight's tags alias below; translations use tr.
+  const { t: tr } = useTranslation()
   const holderRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   /** Loaded baseline: dirty === doc !== baseline. */
@@ -158,7 +162,7 @@ export default function SourceView({ oid }: { oid: string }) {
         baseFileHash: baseHashRef.current,
       }),
     onSuccess: (meta, content) => {
-      toast.success('已保存')
+      toast.success(tr('common.saved'))
       baselineRef.current = content
       baseHashRef.current = meta.fileHash
       markDirty(false)
@@ -166,7 +170,7 @@ export default function SourceView({ oid }: { oid: string }) {
     },
     onError: (e) => {
       if (!(e instanceof ApiErr && (e.code === 'PARSE_FAILED' || e.code === 'EDIT_CONFLICT')))
-        toast.error(e instanceof ApiErr ? e.message : '保存失败，请稍后重试')
+        toast.error(errText(e, tr))
     },
   })
 
@@ -292,21 +296,21 @@ export default function SourceView({ oid }: { oid: string }) {
     return (
       <div className="border-line rounded-card text-ink-2 mx-auto mt-16 flex w-full max-w-[420px] flex-col items-center gap-3 border px-6 py-12 text-center">
         <div className="flex flex-col gap-1">
-          <p className="font-medium">{missing ? '本体不存在' : '加载失败'}</p>
+          <p className="font-medium">{missing ? tr('browse.notFound') : tr('shell.loadFailed')}</p>
           <p className="text-sm">
-            {missing ? '它可能已被删除，或不属于当前用户。' : '无法连接服务器，请确认后端已启动。'}
+            {missing ? tr('browse.missingHint') : tr('browse.offline')}
           </p>
         </div>
         {!missing && (
           <Button size="sm" variant="outline" onClick={() => void refetch()}>
-            重试
+            {tr('common.retry')}
           </Button>
         )}
       </div>
     )
   }
   if (!data) {
-    return <div className="text-ink-3 py-16 text-center text-sm">加载中…</div>
+    return <div className="text-ink-3 py-16 text-center text-sm">{tr('common.loading')}</div>
   }
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
@@ -317,18 +321,18 @@ export default function SourceView({ oid }: { oid: string }) {
         </span>
         {dirty && (
           <span className="text-amber-600 dark:text-amber-400" aria-live="polite">
-            ● 未保存
+            {tr('sourceview.dirty')}
           </span>
         )}
         <Button
           size="sm"
           variant="outline"
           className="ml-auto h-6 gap-1 px-2 text-xs"
-          title="查找/替换（Ctrl+F）"
+          title={tr('sourceview.findReplace')}
           onClick={() => viewRef.current && openSearchPanel(viewRef.current)}
         >
           <SearchIcon className="size-3" aria-hidden="true" />
-          搜索
+          {tr('sourceview.search')}
         </Button>
         {dirty && (
           <Button
@@ -337,7 +341,7 @@ export default function SourceView({ oid }: { oid: string }) {
             disabled={saveMutation.isPending}
             onClick={() => void saveRef.current()}
           >
-            保存
+            {tr('common.save')}
           </Button>
         )}
       </div>
@@ -347,7 +351,8 @@ export default function SourceView({ oid }: { oid: string }) {
           className="border-line bg-panel text-ink rounded-ctl flex shrink-0 flex-col gap-0.5 border px-3 py-2 text-xs"
         >
           <span className="text-amber-600 dark:text-amber-400 font-medium">
-            解析失败：{parseErr.message}
+            {tr('sourceview.parseFailedPrefix')}
+            {parseErr.message}
           </span>
           {parseErr.hint && <span className="text-ink-3">{parseErr.hint}</span>}
         </div>
@@ -355,7 +360,7 @@ export default function SourceView({ oid }: { oid: string }) {
       <div
         ref={holderRef}
         className="border-line bg-panel rounded-ctl min-h-0 flex-1 overflow-auto border"
-        aria-label="本体源码"
+        aria-label={tr('sourceview.sourceAria')}
       />
       <AlertDialog
         open={conflict}
@@ -365,14 +370,16 @@ export default function SourceView({ oid }: { oid: string }) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>文件已在别处更新</AlertDialogTitle>
-            <AlertDialogDescription>
-              源文件在你编辑期间被保存过新版本。重新加载会丢弃本地修改。
-            </AlertDialogDescription>
+            <AlertDialogTitle>{tr('sourceview.conflictTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{tr('sourceview.conflictDesc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => saveMutation.reset()}>继续编辑</AlertDialogCancel>
-            <AlertDialogAction onClick={reloadFromServer}>重新加载</AlertDialogAction>
+            <AlertDialogCancel onClick={() => saveMutation.reset()}>
+              {tr('sourceview.keepEditing')}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={reloadFromServer}>
+              {tr('sourceview.reload')}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

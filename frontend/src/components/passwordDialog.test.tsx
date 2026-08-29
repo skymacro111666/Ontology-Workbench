@@ -86,7 +86,9 @@ describe('PasswordDialog', () => {
     await user.type(screen.getByLabelText('新密码'), 'brand-new-long-pw')
     await user.type(screen.getByLabelText('确认新密码'), 'brand-new-long-pw')
     await user.click(screen.getByRole('button', { name: '保存' }))
-    expect((await screen.findByRole('alert')).textContent).toContain('Current password is incorrect')
+    // errText maps AUTH_INVALID_CREDENTIALS to the localized text — the raw
+    // envelope message ('Current password is incorrect') is no longer shown.
+    expect((await screen.findByRole('alert')).textContent).toContain('用户名或密码错误')
     expect(onClose).not.toHaveBeenCalled()
   })
 })

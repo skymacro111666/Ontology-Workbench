@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Graph } from '@antv/g6'
 import type { EdgeData, GraphData, IPointerEvent, NodeData } from '@antv/g6'
 import type { GEdge, GNode } from '../api/types'
@@ -77,12 +78,13 @@ function edgeVisualFor(kind: string, t: CanvasTokens): { stroke: string; dash?: 
   return { stroke: t.primary }
 }
 
-/** Legend copy tied to the visuals above so the two cannot drift apart. */
+/** Legend copy tied to the visuals above so the two cannot drift apart.
+ *  Labels are i18n keys — the render site translates. */
 const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
-  { label: '子类（subClassOf）', visual: { stroke: 'var(--color-edge-sub)', dash: '6 5' } },
-  { label: '对象属性', visual: { stroke: 'var(--color-primary)' } },
-  { label: '数据属性', visual: { stroke: 'var(--color-ink-3)', dash: '1 4' } },
-  { label: '实例', visual: { stroke: 'var(--color-ink-3)' } },
+  { label: 'canvas.edgeSubClass', visual: { stroke: 'var(--color-edge-sub)', dash: '6 5' } },
+  { label: 'canvas.edgeObjectProp', visual: { stroke: 'var(--color-primary)' } },
+  { label: 'canvas.edgeDataProp', visual: { stroke: 'var(--color-ink-3)', dash: '1 4' } },
+  { label: 'canvas.edgeInstance', visual: { stroke: 'var(--color-ink-3)' } },
 ]
 
 /** Two-stage layout pipeline: dagre fixes the ranks and sibling order
@@ -309,6 +311,8 @@ export default function GraphView({
     curie?: string
   }) => void
 }) {
+  // `t` reads canvas tokens in a helper below; translations use tr.
+  const { t: tr } = useTranslation()
   const resolved = useTheme().resolved
   const [labelsFallback, setLabelsFallback] = useState(true)
   const [kinds, setKinds] = useState<KindFilter>(defaultKindsProp ?? allKinds())
@@ -543,11 +547,11 @@ export default function GraphView({
             +
           </button>
           <button type="button" className={ctlBtn} onClick={() => void fit()}>
-            适配
+            {tr('canvas.fit')}
           </button>
           {onResetLayout && (
             <button type="button" className={ctlBtn} onClick={onResetLayout}>
-              重排
+              {tr('canvas.relayout')}
             </button>
           )}
         </div>
@@ -567,7 +571,7 @@ export default function GraphView({
                 strokeDasharray={visual.dash}
               />
             </svg>
-            <span className="text-ink-2 text-xs">{label}</span>
+            <span className="text-ink-2 text-xs">{tr(label)}</span>
           </div>
         ))}
       </div>
@@ -575,7 +579,7 @@ export default function GraphView({
       {!external && (
         <div className="border-line bg-panel/90 rounded-ctl absolute top-2 right-2 flex items-center gap-1 border p-1 shadow-xs backdrop-blur">
           <Toggle variant="outline" size="sm" pressed={showLabels} onPressedChange={setShowLabels}>
-            标签
+            {tr('canvas.labels')}
           </Toggle>
           <Toggle
             variant="outline"
@@ -583,7 +587,7 @@ export default function GraphView({
             pressed={kinds.classes && kinds.objectProps && kinds.dataProps}
             onPressedChange={() => setKinds(allKinds())}
           >
-            全部
+            {tr('canvas.all')}
           </Toggle>
           <ToggleGroup
             type="multiple"
@@ -595,9 +599,9 @@ export default function GraphView({
               if (v.length > 0) setKinds(kindsFromKeys(v))
             }}
           >
-            <ToggleGroupItem value="classes">类</ToggleGroupItem>
-            <ToggleGroupItem value="objectProps">对象</ToggleGroupItem>
-            <ToggleGroupItem value="dataProps">数据</ToggleGroupItem>
+            <ToggleGroupItem value="classes">{tr('canvas.filterClasses')}</ToggleGroupItem>
+            <ToggleGroupItem value="objectProps">{tr('canvas.filterObjects')}</ToggleGroupItem>
+            <ToggleGroupItem value="dataProps">{tr('canvas.filterData')}</ToggleGroupItem>
           </ToggleGroup>
         </div>
       )}

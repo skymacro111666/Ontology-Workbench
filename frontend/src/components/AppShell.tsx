@@ -1,9 +1,11 @@
 import { FileTextIcon, KeyRoundIcon, LogOutIcon, Share2Icon } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { LAST_OID_KEY, useAuth } from '../auth/AuthContext'
-import { ApiErr, api } from '../api/client'
+import { api } from '../api/client'
+import { errText } from '../i18n/errText'
 import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { useTheme } from '../theme/ThemeProvider'
 import logoMark from '../assets/logo-mark.png'
@@ -34,7 +36,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 const NEXT_THEME = { light: 'dark', dark: 'system', system: 'light' } as const
-const THEME_LABEL = { light: '浅色', dark: '深色', system: '跟随系统' } as const
 
 /** Dropdown file exports: query value → menu label (export/file endpoint). */
 const FILE_EXPORTS: [string, string][] = [
@@ -46,6 +47,7 @@ const FILE_EXPORTS: [string, string][] = [
 /** App frame: 48px persistent topbar (logo, nav, switcher, actions) + content.
  *  Nav (mockup): 概览 = home; 工作区 merges browse + the overview canvas. */
 export default function AppShell({ children }: { children?: ReactNode }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuth()
@@ -70,7 +72,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const openLast = (prefix: string) => {
     const last = localStorage.getItem(LAST_OID_KEY)
     if (!last) {
-      toast('先选择一个本体')
+      toast(t('shell.pickOntologyFirst'))
       return
     }
     navigate(`${prefix}/${last}`)
@@ -80,7 +82,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const downloadAs = async (format: string) => {
     const last = localStorage.getItem(LAST_OID_KEY)
     if (!last) {
-      toast('先选择一个本体')
+      toast(t('shell.pickOntologyFirst'))
       return
     }
     try {
@@ -88,15 +90,20 @@ export default function AppShell({ children }: { children?: ReactNode }) {
         `/api/ontologies/${last}/export/file?format=${format}`,
         'ontology',
       )
-      toast.success(`已导出 ${name}`)
+      toast.success(t('shell.exportedToast', { name }))
     } catch (err) {
-      toast.error(err instanceof ApiErr ? err.message : '导出失败，请稍后重试')
+      toast.error(errText(err, t))
     }
   }
 
   const isWorkspace = location.pathname.startsWith('/browse') || location.pathname.startsWith('/graph')
-  const themeCycle = ['浅色', '深色', '跟随系统'] as const
-  const themeLabel = THEME_LABEL[theme]
+  const themeLabels = {
+    light: t('shell.themeLight'),
+    dark: t('shell.themeDark'),
+    system: t('shell.themeSystem'),
+  }
+  const themeCycle = [themeLabels.light, themeLabels.dark, themeLabels.system]
+  const themeLabel = themeLabels[theme]
 
   return (
     <div className="bg-background text-foreground flex h-dvh flex-col">
@@ -107,7 +114,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
           <span className="text-sm font-bold">Ontology Workbench</span>
         </div>
 
-        <nav className="flex items-center gap-0.5" aria-label="主导航">
+        <nav className="flex items-center gap-0.5" aria-label={t('shell.mainNav')}>
           <button
             type="button"
             onClick={() => navigate('/')}
@@ -118,7 +125,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
                 : 'text-ink-2 hover:text-primary',
             )}
           >
-            概览
+            {t('shell.navOverview')}
           </button>
           <button
             type="button"
@@ -128,7 +135,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               isWorkspace ? 'bg-primary-soft text-primary' : 'text-ink-2 hover:text-primary',
             )}
           >
-            工作区
+            {t('shell.navWorkspace')}
           </button>
         </nav>
 
@@ -136,20 +143,20 @@ export default function AppShell({ children }: { children?: ReactNode }) {
 
         <div className="ml-auto flex items-center gap-2">
           <Button size="sm" onClick={() => setImportOpen(true)}>
-            ＋ 导入
+            {t('shell.import')}
           </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
-                导出 ▾
+                {t('shell.exportMenu')}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {/* text-xs per item: the item base class ships text-sm, so a
                   font-size on the content element never reaches the items. */}
               <DropdownMenuItem className="text-xs" onSelect={() => openLast('/export')}>
-                导出文档站
+                {t('shell.exportSite')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {FILE_EXPORTS.map(([fmt, label]) => (
@@ -173,18 +180,18 @@ export default function AppShell({ children }: { children?: ReactNode }) {
             >
               <ToggleGroupItem value="graph">
                 <Share2Icon aria-hidden="true" />
-                图形
+                {t('shell.viewGraph')}
               </ToggleGroupItem>
               <ToggleGroupItem value="text">
                 <FileTextIcon aria-hidden="true" />
-                文本
+                {t('shell.viewText')}
               </ToggleGroupItem>
             </ToggleGroup>
           )}
 
           <button
             type="button"
-            aria-label={`切换主题，当前：${themeLabel}（依次切换${themeCycle.join(' / ')}）`}
+            aria-label={t('shell.themeAria', { current: themeLabel, cycle: themeCycle.join(' / ') })}
             onClick={() => setTheme(NEXT_THEME[theme])}
             className="text-ink-2 hover:bg-panel-2 hover:text-primary rounded-ctl size-8 cursor-pointer"
           >
@@ -197,17 +204,17 @@ export default function AppShell({ children }: { children?: ReactNode }) {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label={`${user?.username ?? '用户'} 菜单`}
+                aria-label={t('shell.userMenu', { name: user?.username ?? t('shell.userFallback') })}
                 className="bg-primary-soft text-primary grid size-7 cursor-pointer place-items-center rounded-full text-xs font-semibold"
               >
-                {(user?.username ?? '用')[0].toUpperCase()}
+                {(user?.username ?? t('shell.avatarFallback'))[0].toUpperCase()}
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <div className="text-ink-2 px-2 py-1 text-xs">{user?.username ?? '用户'}</div>
+              <div className="text-ink-2 px-2 py-1 text-xs">{user?.username ?? t('shell.userFallback')}</div>
               <DropdownMenuItem className="text-xs" onSelect={() => setPwdOpen(true)}>
                 <KeyRoundIcon />
-                修改密码
+                {t('shell.changePwd')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-xs"
@@ -217,7 +224,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
                 }}
               >
                 <LogOutIcon />
-                退出登录
+                {t('shell.logout')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -240,20 +247,18 @@ export default function AppShell({ children }: { children?: ReactNode }) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>未保存的修改</AlertDialogTitle>
-            <AlertDialogDescription>
-              文本视图有未保存的修改，切换前请选择保留方式。
-            </AlertDialogDescription>
+            <AlertDialogTitle>{t('shell.dirtyTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('shell.dirtyDesc')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (pendingView) setBrowseView(pendingView)
                 setPendingView(null)
               }}
             >
-              放弃并切换
+              {t('shell.discardSwitch')}
             </AlertDialogAction>
             <AlertDialogAction
               onClick={() => {
@@ -265,7 +270,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
                 })()
               }}
             >
-              保存并切换
+              {t('shell.saveSwitch')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

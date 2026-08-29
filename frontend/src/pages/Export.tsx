@@ -3,9 +3,11 @@ import { CopyIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { ApiErr, api } from '../api/client'
+import { errText } from '../i18n/errText'
 import type { ExportSiteResult } from '../api/types'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,6 +23,7 @@ type ExportForm = z.infer<typeof exportSchema>
 
 /** One-click docs-site export: output-dir option, force switch, copyable result path. */
 export default function Export() {
+  const { t } = useTranslation()
   const { oid = '' } = useParams()
   const [force, setForce] = useState(false)
   const [result, setResult] = useState<ExportSiteResult | null>(null)
@@ -44,11 +47,11 @@ export default function Export() {
       )
     } catch (err) {
       if (err instanceof ApiErr && err.code === 'VALIDATION_ERROR') {
-        setFormError('目录非空，勾选覆盖或换一个')
+        setFormError(t('exportPage.dirNotEmpty'))
       } else if (err instanceof ApiErr) {
-        setFormError(err.message)
+        setFormError(errText(err, t))
       } else {
-        setFormError('导出失败，请稍后重试')
+        setFormError(t('exportPage.exportFailed'))
       }
     }
   }
@@ -57,9 +60,9 @@ export default function Export() {
     if (!result) return
     try {
       await navigator.clipboard.writeText(result.outputDir)
-      toast.success('已复制')
+      toast.success(t('exportPage.copied'))
     } catch {
-      toast.error('复制失败')
+      toast.error(t('exportPage.copyFailed'))
     }
   }
 
@@ -67,11 +70,8 @@ export default function Export() {
     <div className="mx-auto flex w-full max-w-[640px] flex-col gap-6 px-6 py-10">
       <Card className="rounded-card">
         <CardHeader>
-          <CardTitle>导出文档站</CardTitle>
-          <CardDescription>
-            将本体一次性渲染为静态 HTML 文档站，写入服务器本地目录；导出完成后在服务器上打开输出目录中的
-            index.html 即可浏览。
-          </CardDescription>
+          <CardTitle>{t('exportPage.title')}</CardTitle>
+          <CardDescription>{t('exportPage.desc')}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
@@ -81,10 +81,10 @@ export default function Export() {
               </p>
             )}
             <div className="flex flex-col gap-2">
-              <Label htmlFor="outDir">输出目录（可选）</Label>
+              <Label htmlFor="outDir">{t('exportPage.outDirLabel')}</Label>
               <Input
                 id="outDir"
-                placeholder="留空使用默认：{数据目录}/exports/{id}-{时间戳}"
+                placeholder={t('exportPage.outDirPlaceholder')}
                 disabled={submitting}
                 {...form.register('outDir')}
               />
@@ -96,10 +96,10 @@ export default function Export() {
                 onCheckedChange={setForce}
                 disabled={submitting}
               />
-              <Label htmlFor="force">覆盖非空目录</Label>
+              <Label htmlFor="force">{t('exportPage.forceLabel')}</Label>
             </div>
             <Button type="submit" className="w-fit" disabled={submitting}>
-              开始导出
+              {t('exportPage.submit')}
             </Button>
           </form>
         </CardContent>
@@ -108,7 +108,7 @@ export default function Export() {
       {result && (
         <Card className="rounded-card">
           <CardHeader>
-            <CardTitle>导出结果</CardTitle>
+            <CardTitle>{t('exportPage.resultTitle')}</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
@@ -123,11 +123,11 @@ export default function Export() {
                 onClick={() => void copyDir()}
               >
                 <CopyIcon />
-                复制
+                {t('common.copy')}
               </Button>
             </div>
             <p className="text-ink-2 text-sm">
-              共 {result.pageCount} 页（1 个索引页 + {result.pageCount - 1} 个实体页）
+              {t('exportPage.pages', { total: result.pageCount, entities: result.pageCount - 1 })}
             </p>
           </CardContent>
         </Card>

@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
+import { errText } from '../i18n/errText'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -18,6 +20,7 @@ import { Label } from '@/components/ui/label'
  *  inline. Success keeps the session — tokens run to their 7-day expiry
  *  by design (single-user deployment). */
 export default function PasswordDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useTranslation()
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -36,20 +39,20 @@ export default function PasswordDialog({ open, onClose }: { open: boolean; onClo
   const submit = async () => {
     setError(null)
     if (next.length < 8 || next.length > 128) {
-      setError('新密码需为 8–128 个字符')
+      setError(t('pwd.lenRule'))
       return
     }
     if (next !== confirm) {
-      setError('两次输入的新密码不一致')
+      setError(t('pwd.mismatch'))
       return
     }
     setBusy(true)
     try {
       await api.put('/api/auth/password', { currentPassword: current, newPassword: next })
-      toast.success('密码已修改')
+      toast.success(t('pwd.changed'))
       close()
     } catch (e) {
-      setError(e instanceof ApiErr ? e.message : '修改失败，请稍后重试')
+      setError(errText(e, t))
       setBusy(false)
     }
   }
@@ -58,12 +61,12 @@ export default function PasswordDialog({ open, onClose }: { open: boolean; onClo
     <Dialog open={open} onOpenChange={(o) => !o && close()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>修改密码</DialogTitle>
-          <DialogDescription>修改后当前登录保持有效，直至令牌自然过期。</DialogDescription>
+          <DialogTitle>{t('pwd.title')}</DialogTitle>
+          <DialogDescription>{t('pwd.desc')}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pwd-current">当前密码</Label>
+            <Label htmlFor="pwd-current">{t('pwd.current')}</Label>
             <Input
               id="pwd-current"
               type="password"
@@ -73,7 +76,7 @@ export default function PasswordDialog({ open, onClose }: { open: boolean; onClo
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pwd-new">新密码</Label>
+            <Label htmlFor="pwd-new">{t('pwd.new')}</Label>
             <Input
               id="pwd-new"
               type="password"
@@ -83,7 +86,7 @@ export default function PasswordDialog({ open, onClose }: { open: boolean; onClo
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="pwd-confirm">确认新密码</Label>
+            <Label htmlFor="pwd-confirm">{t('pwd.confirm')}</Label>
             <Input
               id="pwd-confirm"
               type="password"
@@ -100,10 +103,10 @@ export default function PasswordDialog({ open, onClose }: { open: boolean; onClo
         </div>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={close} disabled={busy}>
-            取消
+            {t('common.cancel')}
           </Button>
           <Button size="sm" onClick={() => void submit()} disabled={busy}>
-            保存
+            {t('common.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

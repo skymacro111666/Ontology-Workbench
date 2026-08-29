@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
+import { errText } from '../i18n/errText'
 import type { EntityIR, GNode, NodesEdges, OntologyMeta } from '../api/types'
 import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
@@ -52,6 +54,7 @@ function ClassPicker({
   onChange: (next: string[]) => void
   multiple: boolean
 }) {
+  const { t } = useTranslation()
   const [q, setQ] = useState('')
   const shown = classes.filter((c) => localName(c.curie).toLowerCase().includes(q.toLowerCase()))
   const toggle = (id: string) => {
@@ -64,7 +67,7 @@ function ClassPicker({
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="过滤类…"
+        placeholder={t('entityDialogs.filterPlaceholder')}
         className="text-ink bg-panel-2 border-line rounded-ctl border px-2 py-1 text-xs"
       />
       <div className="flex max-h-36 flex-col gap-0.5 overflow-y-auto">
@@ -83,13 +86,16 @@ function ClassPicker({
             {localName(c.curie)}
           </button>
         ))}
-        {shown.length === 0 && <span className="text-ink-3 px-2 py-1 text-xs">无匹配</span>}
+        {shown.length === 0 && (
+          <span className="text-ink-3 px-2 py-1 text-xs">{t('entityDialogs.noMatch')}</span>
+        )}
       </div>
     </div>
   )
 }
 
 export default function EntityDialogs({ oid }: { oid: string }) {
+  const { t } = useTranslation()
   const dialog = useUiStore((s) => s.entityDialog)
   const setEntityDialog = useUiStore((s) => s.setEntityDialog)
   const reveal = useBrowseStore((s) => s.reveal)
@@ -164,7 +170,7 @@ export default function EntityDialogs({ oid }: { oid: string }) {
   }, [open, prevOpen, dialog, entity, meta])
 
   const afterSuccess = (eid?: string) => {
-    toast.success('已保存')
+    toast.success(t('common.saved'))
     setEntityDialog(null)
     void queryClient.invalidateQueries()
     if (eid) reveal(eid)
@@ -221,10 +227,10 @@ export default function EntityDialogs({ oid }: { oid: string }) {
     },
     onError: (e) => {
       if (e instanceof ApiErr && e.code === 'DUPLICATE_ENTITY') {
-        setNameError('该名称已存在，换一个名字或前缀。')
+        setNameError(t('entityDialogs.nameTaken'))
         return
       }
-      toast.error(e instanceof ApiErr ? e.message : '保存失败，请稍后重试')
+      toast.error(errText(e, t))
     },
   })
 
@@ -232,20 +238,20 @@ export default function EntityDialogs({ oid }: { oid: string }) {
 
   const submit = () => {
     if ((isCreate(mode) || isProperty(mode)) && !/^[A-Za-z_][\w.-]*$/.test(name.trim())) {
-      setNameError('名称需以字母/下划线开头，仅含字母、数字、.、-、_。')
+      setNameError(t('entityDialogs.nameRule'))
       return
     }
     mutation.mutate()
   }
 
   const titles: Record<EntityDialogMode | 'delete', string> = {
-    class: '新建类',
-    subclass: '新建子类',
-    objectProperty: '新建对象属性',
-    dataProperty: '新建数据属性',
-    editClass: '编辑类',
-    editProperty: '编辑属性',
-    delete: '删除实体',
+    class: t('entityDialogs.titleClass'),
+    subclass: t('entityDialogs.titleSubclass'),
+    objectProperty: t('entityDialogs.titleObjectProperty'),
+    dataProperty: t('entityDialogs.titleDataProperty'),
+    editClass: t('entityDialogs.titleEditClass'),
+    editProperty: t('entityDialogs.titleEditProperty'),
+    delete: t('entityDialogs.titleDelete'),
   }
   const fieldCls =
     'border-line bg-panel-2 text-ink rounded-ctl border px-2 py-1.5 text-sm w-full'
@@ -257,31 +263,31 @@ export default function EntityDialogs({ oid }: { oid: string }) {
         <DialogHeader>
           <DialogTitle>{titles[mode]}</DialogTitle>
           <DialogDescription>
-            {dialog.mode === 'delete'
-              ? '删除会同时清理指向它的子类/属性引用（可恢复地写在 RDF 里不可逆）。'
-              : '保存后会重写本体源文件（Turtle 排版会重排）。'}
+            {dialog.mode === 'delete' ? t('entityDialogs.warnDelete') : t('entityDialogs.warnSave')}
           </DialogDescription>
         </DialogHeader>
 
         {mode === 'delete' ? (
           <div className="flex flex-col gap-2">
             <p className="text-ink text-sm break-all">
-              确认删除 <span className="text-primary font-mono">{localName(dialog.eid ?? '')}</span>？
+              <Trans
+                i18nKey="entityDialogs.confirmDelete"
+                values={{ name: localName(dialog.eid ?? '') }}
+                components={{ name: <span className="text-primary font-mono" /> }}
+              />
             </p>
-            <p className="text-ink-3 text-xs">
-              将一并移除：指向它的 subClassOf / domain / range / 实例类型（prune）。
-            </p>
+            <p className="text-ink-3 text-xs">{t('entityDialogs.pruneNote')}</p>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
             {(isCreate(mode) || isProperty(mode)) && (
               <div className="grid grid-cols-[7rem_1fr] items-center gap-2">
-                <span className={labelCls}>前缀</span>
+                <span className={labelCls}>{t('entityDialogs.prefix')}</span>
                 <select
                   value={prefix}
                   onChange={(e) => setPrefix(e.target.value)}
                   className={fieldCls}
-                  aria-label="前缀"
+                  aria-label={t('entityDialogs.prefix')}
                 >
                   {prefixes.map((p) => (
                     <option key={p} value={p}>
@@ -292,7 +298,7 @@ export default function EntityDialogs({ oid }: { oid: string }) {
               </div>
             )}
             <div className="grid grid-cols-[7rem_1fr] items-center gap-2">
-              <span className={labelCls}>名称</span>
+              <span className={labelCls}>{t('entityDialogs.name')}</span>
               {isEdit(mode) ? (
                 <code className="text-ink-2 bg-panel-2 border-line rounded-ctl border px-2 py-1.5 text-sm">
                   {localName(entity?.curie ?? dialog.eid ?? '')}
@@ -304,8 +310,8 @@ export default function EntityDialogs({ oid }: { oid: string }) {
                     setName(e.target.value)
                     setNameError(null)
                   }}
-                  aria-label="名称"
-                  placeholder="例如 Cat"
+                  aria-label={t('entityDialogs.name')}
+                  placeholder={t('entityDialogs.namePlaceholder')}
                   className={fieldCls}
                 />
               )}
@@ -316,19 +322,19 @@ export default function EntityDialogs({ oid }: { oid: string }) {
               </p>
             )}
             <div className="grid grid-cols-[7rem_1fr] items-start gap-2">
-              <span className={labelCls}>描述</span>
+              <span className={labelCls}>{t('entityDialogs.description')}</span>
               <textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                aria-label="描述"
+                aria-label={t('entityDialogs.description')}
                 rows={2}
-                placeholder="rdfs:comment（可选）"
+                placeholder={t('entityDialogs.descPlaceholder')}
                 className={`${fieldCls} resize-none`}
               />
             </div>
             {mode !== 'dataProperty' && (isCreate(mode) || isProperty(mode) || mode === 'editClass') && (
               <div className="grid grid-cols-[7rem_1fr] items-start gap-2">
-                <span className={labelCls}>{isProperty(mode) ? 'domain' : '父类'}</span>
+                <span className={labelCls}>{isProperty(mode) ? 'domain' : t('entityDialogs.parentClass')}</span>
                 <ClassPicker classes={classes} value={picked} onChange={setPicked} multiple />
               </div>
             )}
@@ -346,11 +352,11 @@ export default function EntityDialogs({ oid }: { oid: string }) {
             )}
             {mode === 'dataProperty' && (
               <div className="grid grid-cols-[7rem_1fr] items-center gap-2">
-                <span className={labelCls}>数据类型</span>
+                <span className={labelCls}>{t('entityDialogs.dataType')}</span>
                 <select
                   value={range[0] ?? XSD_TYPES[0][0]}
                   onChange={(e) => setRange([e.target.value])}
-                  aria-label="数据类型"
+                  aria-label={t('entityDialogs.dataType')}
                   className={fieldCls}
                 >
                   {XSD_TYPES.map(([v, l]) => (
@@ -383,10 +389,10 @@ export default function EntityDialogs({ oid }: { oid: string }) {
 
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={() => setEntityDialog(null)}>
-            取消
+            {t('common.cancel')}
           </Button>
           <Button size="sm" disabled={mutation.isPending} onClick={submit}>
-            {dialog.mode === 'delete' ? '删除' : '保存'}
+            {dialog.mode === 'delete' ? t('common.delete') : t('common.save')}
           </Button>
         </DialogFooter>
       </DialogContent>

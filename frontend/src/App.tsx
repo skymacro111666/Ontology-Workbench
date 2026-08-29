@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { AuthProvider } from './auth/AuthContext'
 import ProtectedRoute from './auth/ProtectedRoute'
 import AppShell from './components/AppShell'
@@ -15,9 +16,10 @@ const Export = lazy(() => import('./pages/Export'))
 
 /** Route table; protected area sits behind ProtectedRoute inside the AppShell. */
 export default function App() {
+  const { t } = useTranslation()
   return (
     <AuthProvider>
-      <Suspense fallback={<div className="text-ink-3 py-16 text-center text-sm">加载中…</div>}>
+      <Suspense fallback={<div className="text-ink-3 py-16 text-center text-sm">{t('common.loading')}</div>}>
         <Routes>
           <Route path="/setup" element={<Setup />} />
           <Route path="/login" element={<Login />} />

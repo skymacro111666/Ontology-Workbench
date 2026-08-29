@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { TFunction } from 'i18next'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
 import type { NodesEdges } from '../api/types'
@@ -21,22 +23,23 @@ function menuItems(
     parent?: string
     eid?: string
   }) => void,
+  t: TFunction,
 ): MenuItem[] {
   if (!menu.targetId) {
     return [
-      { key: 'class', label: '＋ 新建类', onSelect: () => setEntityDialog({ mode: 'class' }) },
+      { key: 'class', label: t('canvas.newClass'), onSelect: () => setEntityDialog({ mode: 'class' }) },
     ]
   }
   if (menu.kind === 'property') {
     return [
       {
         key: 'edit',
-        label: '编辑属性',
+        label: t('canvas.editProperty'),
         onSelect: () => setEntityDialog({ mode: 'editProperty', eid: menu.targetId }),
       },
       {
         key: 'delete',
-        label: `删除 ${menu.curie ? localName(menu.curie) : ''}`,
+        label: t('canvas.deleteCurie', { name: menu.curie ? localName(menu.curie) : '' }),
         danger: true,
         onSelect: () => setEntityDialog({ mode: 'delete', eid: menu.targetId }),
       },
@@ -45,27 +48,27 @@ function menuItems(
   return [
     {
       key: 'subclass',
-      label: '新建子类',
+      label: t('canvas.newSubclass'),
       onSelect: () => setEntityDialog({ mode: 'subclass', parent: menu.targetId }),
     },
     {
       key: 'objectProperty',
-      label: '新建对象属性',
+      label: t('canvas.newObjectProp'),
       onSelect: () => setEntityDialog({ mode: 'objectProperty', parent: menu.targetId }),
     },
     {
       key: 'dataProperty',
-      label: '新建数据属性',
+      label: t('canvas.newDataProp'),
       onSelect: () => setEntityDialog({ mode: 'dataProperty', parent: menu.targetId }),
     },
     {
       key: 'edit',
-      label: '编辑类',
+      label: t('canvas.editClass'),
       onSelect: () => setEntityDialog({ mode: 'editClass', eid: menu.targetId }),
     },
     {
       key: 'delete',
-      label: `删除 ${menu.curie ? localName(menu.curie) : ''}`,
+      label: t('canvas.deleteCurie', { name: menu.curie ? localName(menu.curie) : '' }),
       danger: true,
       onSelect: () => setEntityDialog({ mode: 'delete', eid: menu.targetId }),
     },
@@ -84,6 +87,7 @@ export default function GraphOverview({
   oid: string
   focus?: string | null
 }) {
+  const { t } = useTranslation()
   const reveal = useBrowseStore((s) => s.reveal)
   const setEntityDialog = useUiStore((s) => s.setEntityDialog)
   const queryClient = useQueryClient()
@@ -111,7 +115,7 @@ export default function GraphOverview({
     if (focusNotified.current === key) return
     if (!data.nodes.some((n) => n.id === focus)) {
       focusNotified.current = key
-      toast.info('焦点实体未出现在总览中（可能已被截断），详情见右侧检查器')
+      toast.info(t('canvas.focusMissingToast'))
     }
   }, [data, focus, oid])
   /** Saved canvas positions gate the mount: rendering before they arrive
@@ -124,7 +128,7 @@ export default function GraphOverview({
   const saveLayout = useMutation({
     mutationFn: (positions: Record<string, Pt>) =>
       api.put(`/api/ontologies/${oid}/layout`, { positions }),
-    onError: () => toast.error('布局保存失败，稍后自动重试拖动即可'),
+    onError: () => toast.error(t('canvas.layoutSaveFailed')),
   })
   /** Remount nonce: bumping after 重排 forces GraphView back to the auto
    *  pipeline with a clean positionsRef. */
@@ -183,21 +187,21 @@ export default function GraphOverview({
     return (
       <div className="border-line rounded-card text-ink-2 mx-auto mt-16 flex w-full max-w-[420px] flex-col items-center gap-3 border px-6 py-12 text-center">
         <div className="flex flex-col gap-1">
-          <p className="font-medium">{missing ? '本体不存在' : '加载失败'}</p>
+          <p className="font-medium">{missing ? t('browse.notFound') : t('shell.loadFailed')}</p>
           <p className="text-sm">
-            {missing ? '它可能已被删除，或不属于当前用户。' : '无法连接服务器，请确认后端已启动。'}
+            {missing ? t('browse.missingHint') : t('browse.offline')}
           </p>
         </div>
         {!missing && (
           <Button size="sm" variant="outline" onClick={() => void refetch()}>
-            重试
+            {t('common.retry')}
           </Button>
         )}
       </div>
     )
   }
   if (!data || layoutPending) {
-    return <div className="text-ink-3 py-16 text-center text-sm">加载中…</div>
+    return <div className="text-ink-3 py-16 text-center text-sm">{t('common.loading')}</div>
   }
 
   return (
@@ -207,7 +211,7 @@ export default function GraphOverview({
           role="status"
           className="border-primary-border bg-primary-soft text-ink-2 rounded-ctl shrink-0 border px-3 py-2 text-sm"
         >
-          本体超过 5000 实体，仅显示顶层 3 层（共 {data.totalCount}）
+          {t('canvas.truncatedNote', { total: data.totalCount })}
         </div>
       )}
       <div className="relative min-h-0 flex-1">
@@ -229,7 +233,7 @@ export default function GraphOverview({
             x={menu.x}
             y={menu.y}
             onClose={() => setMenu(null)}
-            items={menuItems(menu, setEntityDialog)}
+            items={menuItems(menu, setEntityDialog, t)}
           />
         )}
       </div>

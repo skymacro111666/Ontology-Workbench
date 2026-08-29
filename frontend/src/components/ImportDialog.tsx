@@ -1,9 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { CloudUploadIcon } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { OntologyMeta } from '../api/types'
 import { ApiErr, api } from '../api/client'
+import { errText } from '../i18n/errText'
 import {
   Dialog,
   DialogContent,
@@ -18,6 +20,7 @@ const ACCEPT = '.ttl,.owl,.rdf,.jsonld,.json'
 
 /** Import dialog: pick/drop an ontology file, upload it, toast the outcome. */
 export default function ImportDialog() {
+  const { t } = useTranslation()
   const open = useUiStore((s) => s.importOpen)
   const setImportOpen = useUiStore((s) => s.setImportOpen)
   const queryClient = useQueryClient()
@@ -28,26 +31,26 @@ export default function ImportDialog() {
   /** Guard the 150MB limit, then upload and report the outcome. */
   async function handleFile(chosen: File) {
     if (chosen.size > MAX_BYTES) {
-      setSizeError(`「${chosen.name}」文件超过 150MB 限制`)
+      setSizeError(t('importDialog.tooLarge', { name: chosen.name }))
       return
     }
     setSizeError(null)
-    setStatus(`正在导入：${chosen.name}`)
+    setStatus(t('importDialog.importing', { name: chosen.name }))
     setUploading(true)
     try {
       await api.upload<OntologyMeta>(chosen)
-      setStatus(`已导入：${chosen.name}`)
-      toast.success('导入成功')
+      setStatus(t('importDialog.imported', { name: chosen.name }))
+      toast.success(t('importDialog.success'))
       void queryClient.invalidateQueries({ queryKey: ['ontologies'] })
       setImportOpen(false)
     } catch (err) {
-      setStatus(`导入失败：${chosen.name}`)
+      setStatus(t('importDialog.failed', { name: chosen.name }))
       if (err instanceof ApiErr) {
         toast.error(
-          err.code === 'DUPLICATE_FILENAME' ? '同名本体已存在，请重命名或先删除' : err.message,
+          err.code === 'DUPLICATE_FILENAME' ? t('importDialog.duplicate') : errText(err, t),
         )
       } else {
-        toast.error('上传失败，请稍后重试')
+        toast.error(t('importDialog.uploadFailed'))
       }
     } finally {
       setUploading(false)
@@ -83,10 +86,8 @@ export default function ImportDialog() {
       <Dialog open={open} onOpenChange={setImportOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>导入本体</DialogTitle>
-            <DialogDescription>
-              支持 .ttl / .owl / .rdf / .jsonld / .json，单个文件最大 150MB
-            </DialogDescription>
+            <DialogTitle>{t('importDialog.title')}</DialogTitle>
+            <DialogDescription>{t('importDialog.desc')}</DialogDescription>
           </DialogHeader>
           <label
             htmlFor="import-file"
@@ -99,7 +100,7 @@ export default function ImportDialog() {
             }}
           >
             <CloudUploadIcon className="text-ink-3 size-8" aria-hidden />
-            <span className="text-ink-2 text-sm">点击或拖拽文件到此处上传</span>
+            <span className="text-ink-2 text-sm">{t('importDialog.dropHint')}</span>
           </label>
           <input
             id="import-file"

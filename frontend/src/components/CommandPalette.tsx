@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useMatch, useNavigate } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { api } from '../api/client'
 import type { SearchHit } from '../api/types'
@@ -20,6 +21,7 @@ import {
  *  Picking a hit routes to /browse/:oid?eid=… and asks the class tree to
  *  expand-reveal it (spec §7.4). */
 export default function CommandPalette() {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
   const debounced = useDebounced(q, 150)
@@ -55,7 +57,7 @@ export default function CommandPalette() {
 
   const choose = (hit: SearchHit) => {
     if (!oid) {
-      toast('先打开一个本体')
+      toast(t('palette.pickFirst'))
       return
     }
     reveal(hit.eid)
@@ -71,21 +73,23 @@ export default function CommandPalette() {
         setOpen(o)
         if (!o) setQ('')
       }}
+      title={t('palette.title')}
+      description={t('palette.desc')}
       commandProps={{ shouldFilter: false }}
     >
       <p className="text-muted-foreground border-border border-b px-3 py-1.5 text-xs">
-        Ctrl/⌘ K 打开 · Esc 关闭
+        {t('palette.hint')}
       </p>
-      <CommandInput value={q} onValueChange={setQ} placeholder="搜索类 / 属性…" />
+      <CommandInput value={q} onValueChange={setQ} placeholder={t('palette.placeholder')} />
       <CommandList>
         {/* No hits is only meaningful once the fetch has settled — while
             isPending (first fetch and every queryKey switch) the empty
             state would flash beside nothing. A rejected search is an error,
             not "no matches". */}
         {isError ? (
-          <CommandEmpty>搜索失败，请稍后重试</CommandEmpty>
+          <CommandEmpty>{t('palette.searchFailed')}</CommandEmpty>
         ) : !isPending && debounced.trim() ? (
-          <CommandEmpty>无匹配结果</CommandEmpty>
+          <CommandEmpty>{t('palette.noMatches')}</CommandEmpty>
         ) : null}
         {(hits ?? []).map((hit) => (
           <CommandItem key={hit.eid} value={hit.eid} onSelect={() => choose(hit)}>
