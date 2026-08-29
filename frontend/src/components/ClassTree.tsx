@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { Tree, type NodeApi, type NodeRendererProps, type TreeApi } from 'react-arborist'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client'
@@ -54,6 +55,7 @@ function KindPill({ type }: { type: string }) {
 /** One row: chevron + curie + instance-count badge (solid primary pill,
  *  white with primary border when the row is selected). */
 function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
+  const { t } = useTranslation()
   return (
     <div
       style={style}
@@ -67,7 +69,7 @@ function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
       {node.isInternal ? (
         <button
           type="button"
-          aria-label={node.isOpen ? '折叠' : '展开'}
+          aria-label={node.isOpen ? t('tree.collapse') : t('tree.expand')}
           onClick={(e) => {
             e.stopPropagation()
             node.toggle()
@@ -96,7 +98,7 @@ function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
       <KindPill type={node.data.type} />
       {(node.data.instanceCount ?? 0) > 0 && (
         <span
-          title="实例数"
+          title={t('tree.instanceCount')}
           className={cn(
             'ml-auto flex h-[17px] min-w-[17px] items-center justify-center rounded-full px-[5px] text-[10px]',
             node.isSelected
@@ -116,6 +118,7 @@ function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
  * property leaf list, and the prefix table, under one client-side filter box.
  */
 export default function ClassTree({ oid }: { oid: string }) {
+  const { t } = useTranslation()
   const selectedEid = useBrowseStore((s) => s.selectedEid)
   const revealEid = useBrowseStore((s) => s.revealEid)
   const setSelected = useBrowseStore((s) => s.setSelected)
@@ -253,9 +256,9 @@ export default function ClassTree({ oid }: { oid: string }) {
   }
 
   const TABS: [Tab, string][] = [
-    ['classes', '类'],
-    ['props', '属性'],
-    ['prefixes', '命名空间'],
+    ['classes', t('tree.tabClasses')],
+    ['props', t('tree.tabProps')],
+    ['prefixes', t('tree.tabPrefixes')],
   ]
 
   return (
@@ -280,7 +283,7 @@ export default function ClassTree({ oid }: { oid: string }) {
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="搜索类 / 属性 / 注释…"
+            placeholder={t('tree.searchPlaceholder')}
             className="bg-panel-2 border-line text-ink focus:border-primary rounded-ctl w-full border py-1.5 pr-2.5 pl-8 text-xs outline-none"
           />
         </div>
@@ -306,12 +309,12 @@ export default function ClassTree({ oid }: { oid: string }) {
         {/* The class tree stays mounted (reveal-expandable) even while the
             property or prefix tab is showing. */}
         <div className={tab === 'classes' ? 'h-full' : 'hidden'}>
-          <Tree ref={treeRef} data={classRows} onToggle={handleToggle} aria-label="类树" {...shared}>
+          <Tree ref={treeRef} data={classRows} onToggle={handleToggle} aria-label={t('tree.classTree')} {...shared}>
             {ClassRow}
           </Tree>
         </div>
         {tab === 'props' && (
-          <Tree ref={propTreeRef} data={propRows} aria-label="属性列表" {...shared}>
+          <Tree ref={propTreeRef} data={propRows} aria-label={t('tree.propList')} {...shared}>
             {ClassRow}
           </Tree>
         )}

@@ -53,6 +53,47 @@
     "loadFailed": "加载失败",
     "noOntologies": "暂无本体"
   },
+  "browse": {
+    "notFound": "本体不存在",
+    "missingHint": "它可能已被删除，或不属于当前用户。",
+    "offline": "无法连接服务器，请确认后端已启动。",
+    "backHome": "返回首页",
+    "expandTree": "展开类树",
+    "collapseTree": "折叠类树",
+    "contentArea": "内容区",
+    "expandInspector": "展开检查器",
+    "collapseInspector": "折叠检查器",
+    "parseOk": "解析 OK",
+    "parseOkMs": "解析 OK · {{ms}}",
+    "statClass": "{{n}} 类",
+    "statProperty": "{{n}} 属性",
+    "statInstance": "{{n}} 实例",
+    "statAxiom": "{{n}} 公理"
+  },
+  "tree": {
+    "expand": "展开",
+    "collapse": "折叠",
+    "instanceCount": "实例数",
+    "tabClasses": "类",
+    "tabProps": "属性",
+    "tabPrefixes": "命名空间",
+    "searchPlaceholder": "搜索类 / 属性 / 注释…",
+    "classTree": "类树",
+    "propList": "属性列表"
+  },
+  "inspector": {
+    "none": "无",
+    "asDomain": "作为定义域",
+    "asRange": "作为值域",
+    "pickHint": "在树或图中选择一个实体",
+    "detail": "实体详情",
+    "labels": "标签",
+    "description": "描述",
+    "parents": "父类",
+    "children": "直接子类",
+    "referencedBy": "被引用",
+    "instances": "实例"
+  },
   "err": {
     "AUTH_REQUIRED": "需要登录",
     "TOKEN_EXPIRED": "登录已过期，请重新登录",

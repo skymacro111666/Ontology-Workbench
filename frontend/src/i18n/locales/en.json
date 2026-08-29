@@ -53,6 +53,47 @@
     "loadFailed": "Failed to load",
     "noOntologies": "No ontologies yet"
   },
+  "browse": {
+    "notFound": "Ontology not found",
+    "missingHint": "It may have been deleted, or it does not belong to the current user.",
+    "offline": "Cannot reach the server — make sure the backend is running.",
+    "backHome": "Back to home",
+    "expandTree": "Expand class tree",
+    "collapseTree": "Collapse class tree",
+    "contentArea": "Content area",
+    "expandInspector": "Expand inspector",
+    "collapseInspector": "Collapse inspector",
+    "parseOk": "Parsed OK",
+    "parseOkMs": "Parsed OK · {{ms}}",
+    "statClass": "{{n}} classes",
+    "statProperty": "{{n}} properties",
+    "statInstance": "{{n}} instances",
+    "statAxiom": "{{n}} axioms"
+  },
+  "tree": {
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "instanceCount": "Instance count",
+    "tabClasses": "Classes",
+    "tabProps": "Properties",
+    "tabPrefixes": "Namespaces",
+    "searchPlaceholder": "Search classes / properties / comments…",
+    "classTree": "Class tree",
+    "propList": "Property list"
+  },
+  "inspector": {
+    "none": "None",
+    "asDomain": "As domain",
+    "asRange": "As range",
+    "pickHint": "Select an entity in the tree or graph",
+    "detail": "Entity detail",
+    "labels": "Labels",
+    "description": "Description",
+    "parents": "Parents",
+    "children": "Direct children",
+    "referencedBy": "Referenced by",
+    "instances": "Instances"
+  },
   "err": {
     "AUTH_REQUIRED": "Sign-in required",
     "TOKEN_EXPIRED": "Session expired, please sign in again",

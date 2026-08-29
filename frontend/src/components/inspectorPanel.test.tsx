@@ -229,8 +229,9 @@ describe('InspectorPanel', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('shows the external-entity note when the query fails', async () => {
+  it('maps the query failure by envelope code (T8①)', async () => {
     renderPanel(stubFetchError())
-    expect(await screen.findByText('外部实体（未在本体中声明），无详情页')).toBeTruthy()
+    // NOT_FOUND maps to localized copy instead of the old blanket sentence.
+    expect(await screen.findByText('未找到请求的资源')).toBeTruthy()
   })
 })

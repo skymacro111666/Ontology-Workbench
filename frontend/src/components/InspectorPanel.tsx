@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
 import type { CounterpartRef, EntityIR, GNode, NodesEdges, Ref, ReferencedRef } from '../api/types'
+import { errText } from '../i18n/errText'
 import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
 import { cn } from '@/lib/utils'
@@ -30,7 +32,8 @@ function Chip({ eid, curie, label }: Ref) {
 
 /** Chip list with the mockup's muted 无 placeholder. */
 function ChipList({ refs }: { refs: Ref[] }) {
-  if (refs.length === 0) return <span className="text-ink-3 text-xs">无</span>
+  const { t } = useTranslation()
+  if (refs.length === 0) return <span className="text-ink-3 text-xs">{t('inspector.none')}</span>
   return (
     <div className="flex flex-wrap gap-1.5">
       {refs.map((r) => (
@@ -80,9 +83,10 @@ function Counterpart({ counterpart, arrow }: { counterpart: CounterpartRef; arro
  *  (`works in → Department` for a domain ref, `reviewed by ← Manager` for
  *  a range ref). */
 function BackRefChips({ refs }: { refs: ReferencedRef[] }) {
+  const { t } = useTranslation()
   const domains = refs.filter((r) => r.relation === 'rdfs:domain')
   const ranges = refs.filter((r) => r.relation === 'rdfs:range')
-  if (domains.length + ranges.length === 0) return <span className="text-ink-3 text-xs">无</span>
+  if (domains.length + ranges.length === 0) return <span className="text-ink-3 text-xs">{t('inspector.none')}</span>
   const group = (title: string, list: ReferencedRef[], arrow: string) =>
     list.length > 0 && (
       <div className="flex flex-col gap-1">
@@ -99,8 +103,8 @@ function BackRefChips({ refs }: { refs: ReferencedRef[] }) {
     )
   return (
     <div className="flex flex-col gap-2">
-      {group('作为定义域', domains, '→')}
-      {group('作为值域', ranges, '←')}
+      {group(t('inspector.asDomain'), domains, '→')}
+      {group(t('inspector.asRange'), ranges, '←')}
     </div>
   )
 }
@@ -109,7 +113,8 @@ function BackRefChips({ refs }: { refs: ReferencedRef[] }) {
  *  individuals have no detail page (selecting one dead-ends on the
  *  external-entity note). Same direct-instances scope as the canvas badge. */
 function InstanceRows({ nodes }: { nodes: GNode[] }) {
-  if (nodes.length === 0) return <span className="text-ink-3 text-xs">无</span>
+  const { t } = useTranslation()
+  if (nodes.length === 0) return <span className="text-ink-3 text-xs">{t('inspector.none')}</span>
   return (
     <div className="flex flex-col gap-1">
       {nodes.map((n) => {
@@ -149,7 +154,8 @@ function Section({
  *  relation chips, property mini table — the workspace's detail surface
  *  (the content column is permanently the overview canvas). */
 export default function InspectorPanel({ oid, eid }: { oid: string; eid: string | null }) {
-  const { data: ent, isError } = useQuery({
+  const { t } = useTranslation()
+  const { data: ent, isError, error } = useQuery({
     enabled: eid !== null,
     queryKey: ['entity', oid, eid],
     queryFn: () =>
@@ -172,19 +178,20 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
   if (eid === null) {
     return (
       <div className="text-ink-3 rounded-card border-line flex h-full items-center justify-center border border-dashed p-6 text-center text-sm">
-        在树或图中选择一个实体
+        {t('inspector.pickHint')}
       </div>
     )
   }
   if (isError) {
+    // T8①: branch on the envelope code instead of one blanket sentence.
     return (
       <div className="text-ink-3 rounded-card border-line flex h-full items-center justify-center border border-dashed p-6 text-center text-sm">
-        外部实体（未在本体中声明），无详情页
+        {errText(error, t)}
       </div>
     )
   }
   if (!ent) {
-    return <div className="text-ink-3 py-10 text-center text-sm">加载中…</div>
+    return <div className="text-ink-3 py-10 text-center text-sm">{t('common.loading')}</div>
   }
 
   return (
@@ -192,7 +199,7 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
       <div className="flex flex-col gap-3">
         {/* mockup head: panel microlabel + type pill */}
         <div className="flex items-center justify-between">
-          <span className="microlabel">实体详情</span>
+          <span className="microlabel">{t('inspector.detail')}</span>
           <span className="bg-primary-soft border-primary-border text-primary rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide">
             {ent.type.toUpperCase()}
           </span>
@@ -206,7 +213,7 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
           </pre>
         </Section>
         {Object.keys(ent.label).length > 0 && (
-          <Section label="标签">
+          <Section label={t('inspector.labels')}>
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(ent.label).map(([lang, value]) => (
                 <span
@@ -222,7 +229,7 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
           </Section>
         )}
         {ent.comment && (
-          <Section label="描述">
+          <Section label={t('inspector.description')}>
             <p className="text-ink-2 line-clamp-2 text-xs" title={ent.comment}>
               {ent.comment}
             </p>
@@ -230,23 +237,23 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
         )}
       </div>
 
-      <Section label="父类" count={ent.parents.length}>
+      <Section label={t('inspector.parents')} count={ent.parents.length}>
         <ChipList refs={ent.parents} />
       </Section>
-      <Section label="直接子类" count={ent.children.length}>
+      <Section label={t('inspector.children')} count={ent.children.length}>
         <ChipList refs={ent.children} />
       </Section>
-      <Section label="被引用" count={dirRefs(ent.referencedBy).length}>
+      <Section label={t('inspector.referencedBy')} count={dirRefs(ent.referencedBy).length}>
         <BackRefChips refs={ent.referencedBy} />
       </Section>
       {ent.type === 'Class' && (
-        <Section label="实例" count={insts?.nodes.length}>
+        <Section label={t('inspector.instances')} count={insts?.nodes.length}>
           {instsError ? (
-            <span className="text-ink-3 text-xs">加载失败</span>
+            <span className="text-ink-3 text-xs">{t('shell.loadFailed')}</span>
           ) : insts ? (
             <InstanceRows nodes={insts.nodes} />
           ) : (
-            <span className="text-ink-3 text-xs">加载中…</span>
+            <span className="text-ink-3 text-xs">{t('common.loading')}</span>
           )}
         </Section>
       )}

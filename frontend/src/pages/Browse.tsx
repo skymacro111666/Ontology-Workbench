@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { lazy, Suspense, useEffect } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { ApiErr, api } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import ClassTree from '../components/ClassTree'
@@ -72,6 +73,7 @@ function Rail({ label, chev, onExpand }: { label: string; chev: '«' | '»'; onE
  *  content view, controls live on the canvas overlay), resident inspector,
  *  status bar (mockup §5.4). Entity details live in the inspector column. */
 export default function Browse() {
+  const { t } = useTranslation()
   const { oid = '' } = useParams()
   const [sp] = useSearchParams()
   const eidParam = sp.get('eid')
@@ -99,25 +101,25 @@ export default function Browse() {
     return (
       <div className="border-line rounded-card text-ink-2 mx-auto mt-16 flex w-full max-w-[420px] flex-col items-center gap-3 border px-6 py-12 text-center">
         <div className="flex flex-col gap-1">
-          <p className="font-medium">{missing ? '本体不存在' : '加载失败'}</p>
+          <p className="font-medium">{missing ? t('browse.notFound') : t('shell.loadFailed')}</p>
           <p className="text-sm">
-            {missing ? '它可能已被删除，或不属于当前用户。' : '无法连接服务器，请确认后端已启动。'}
+            {missing ? t('browse.missingHint') : t('browse.offline')}
           </p>
         </div>
         {missing ? (
           <Button size="sm" asChild>
-            <Link to="/">返回首页</Link>
+            <Link to="/">{t('browse.backHome')}</Link>
           </Button>
         ) : (
           <Button size="sm" variant="outline" onClick={() => void refetch()}>
-            重试
+            {t('common.retry')}
           </Button>
         )}
       </div>
     )
   }
   if (!meta) {
-    return <div className="text-ink-3 py-16 text-center text-sm">加载中…</div>
+    return <div className="text-ink-3 py-16 text-center text-sm">{t('common.loading')}</div>
   }
   return (
     <div
@@ -130,12 +132,12 @@ export default function Browse() {
        *  mounted (display-hidden) so tree expansion state survives. */}
       <aside className="border-line relative min-h-0 overflow-hidden border-r">
         {leftCollapsed ? (
-          <Rail label="展开类树" chev="»" onExpand={() => setLeftCollapsed(false)} />
+          <Rail label={t('browse.expandTree')} chev="»" onExpand={() => setLeftCollapsed(false)} />
         ) : (
           <button
             type="button"
             className={cn(railBtn, 'absolute top-1/2 right-0 -translate-y-1/2 rounded-r-none border-r-0')}
-            aria-label="折叠类树"
+            aria-label={t('browse.collapseTree')}
             aria-expanded
             onClick={() => setLeftCollapsed(true)}
           >
@@ -149,8 +151,8 @@ export default function Browse() {
 
       {/* Zone 2: whole-ontology canvas (graph) or source text (text),
        *  per the topbar's 图形/文本 switch (spec: single content view). */}
-      <section aria-label="内容区" className="border-line min-h-0 border-r p-1">
-        <Suspense fallback={<div className="text-ink-3 py-16 text-center text-sm">加载中…</div>}>
+      <section aria-label={t('browse.contentArea')} className="border-line min-h-0 border-r p-1">
+        <Suspense fallback={<div className="text-ink-3 py-16 text-center text-sm">{t('common.loading')}</div>}>
           {browseView === 'graph' ? (
             <GraphOverview oid={oid} focus={selectedEid} />
           ) : (
@@ -164,12 +166,12 @@ export default function Browse() {
       {browseView === 'graph' && (
         <aside className="relative min-h-0 overflow-hidden">
           {rightCollapsed ? (
-            <Rail label="展开检查器" chev="«" onExpand={() => setRightCollapsed(false)} />
+            <Rail label={t('browse.expandInspector')} chev="«" onExpand={() => setRightCollapsed(false)} />
           ) : (
             <button
               type="button"
               className={cn(railBtn, 'absolute top-1/2 left-0 -translate-y-1/2 rounded-l-none border-l-0')}
-              aria-label="折叠检查器"
+              aria-label={t('browse.collapseInspector')}
               aria-expanded
               onClick={() => setRightCollapsed(true)}
             >
@@ -184,13 +186,15 @@ export default function Browse() {
       {/* Zone 4: status bar (mockup: breathing gaps, no dot separators) */}
       <footer className="border-line bg-panel text-ink-3 row-start-2 col-span-full flex items-center gap-3.5 border-t px-3.5 text-[11.5px]">
         <span className="font-mono">{meta.filename}</span>
-        <span>{meta.classCount} 类</span>
-        <span>{meta.propertyCount} 属性</span>
-        <span>{meta.instanceCount} 实例</span>
-        <span>{meta.axiomCount} 公理</span>
+        <span>{t('browse.statClass', { n: meta.classCount })}</span>
+        <span>{t('browse.statProperty', { n: meta.propertyCount })}</span>
+        <span>{t('browse.statInstance', { n: meta.instanceCount })}</span>
+        <span>{t('browse.statAxiom', { n: meta.axiomCount })}</span>
         <span className="text-success flex items-center gap-1">
           <span aria-hidden="true">●</span>
-          {meta.parseMs != null ? `解析 OK · ${formatParseMs(meta.parseMs)}` : '解析 OK'}
+          {meta.parseMs != null
+            ? t('browse.parseOkMs', { ms: formatParseMs(meta.parseMs) })
+            : t('browse.parseOk')}
         </span>
       </footer>
 
