@@ -154,6 +154,8 @@
     "imported": "Imported: {{name}}",
     "failed": "Import failed: {{name}}",
     "success": "Imported",
+    "uploadProgress": "{{loaded}} / {{total}} MB uploaded ({{pct}}%)",
+    "parsing": "Server-side parsing… large files can take minutes — keep this page open",
     "duplicate": "An ontology with this filename already exists — rename it or delete it first",
     "uploadFailed": "Upload failed, please try again later",
     "title": "Import ontology",

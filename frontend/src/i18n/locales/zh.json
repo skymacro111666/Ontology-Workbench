@@ -154,6 +154,8 @@
     "imported": "已导入：{{name}}",
     "failed": "导入失败：{{name}}",
     "success": "导入成功",
+    "uploadProgress": "已上传 {{loaded}} / {{total}} MB（{{pct}}%）",
+    "parsing": "服务器解析中…大文件可能需要数分钟，请保持页面打开",
     "duplicate": "同名本体已存在，请重命名或先删除",
     "uploadFailed": "上传失败，请稍后重试",
     "title": "导入本体",

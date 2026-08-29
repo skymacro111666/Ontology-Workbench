@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { CloudUploadIcon } from 'lucide-react'
+import { CloudUploadIcon, Loader2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -27,6 +27,10 @@ export default function ImportDialog() {
   const [status, setStatus] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [sizeError, setSizeError] = useState<string | null>(null)
+  /** Upload bytes sent so far (null until the first progress event). */
+  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null)
+  /** Bytes done, response pending: the server is parsing (minutes for 100MB+). */
+  const [parsing, setParsing] = useState(false)
 
   /** Guard the 150MB limit, then upload and report the outcome. */
   async function handleFile(chosen: File) {
@@ -36,9 +40,14 @@ export default function ImportDialog() {
     }
     setSizeError(null)
     setStatus(t('importDialog.importing', { name: chosen.name }))
+    setProgress(null)
+    setParsing(false)
     setUploading(true)
     try {
-      await api.upload<OntologyMeta>(chosen)
+      await api.upload<OntologyMeta>(chosen, (loaded, total) => {
+        setProgress({ loaded, total })
+        if (loaded >= total) setParsing(true)
+      })
       setStatus(t('importDialog.imported', { name: chosen.name }))
       toast.success(t('importDialog.success'))
       void queryClient.invalidateQueries({ queryKey: ['ontologies'] })
@@ -54,6 +63,8 @@ export default function ImportDialog() {
       }
     } finally {
       setUploading(false)
+      setProgress(null)
+      setParsing(false)
     }
   }
 
@@ -114,6 +125,42 @@ export default function ImportDialog() {
             }}
             disabled={uploading}
           />
+          {uploading && !parsing && progress && progress.total > 0 && (
+            <div role="status" className="flex flex-col gap-1">
+              {(() => {
+                const pct = Math.min(100, Math.round((progress.loaded / progress.total) * 100))
+                return (
+                  <>
+                    <div
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={pct}
+                      className="border-line h-1.5 w-full overflow-hidden rounded-full border"
+                    >
+                      <div
+                        className="bg-primary h-full rounded-full transition-[width] duration-150"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="text-ink-3 text-xs">
+                      {t('importDialog.uploadProgress', {
+                        loaded: (progress.loaded / 1048576).toFixed(1),
+                        total: (progress.total / 1048576).toFixed(1),
+                        pct,
+                      })}
+                    </span>
+                  </>
+                )
+              })()}
+            </div>
+          )}
+          {uploading && parsing && (
+            <p role="status" className="text-ink-2 flex items-center gap-2 text-sm">
+              <Loader2Icon className="text-ink-3 size-4 animate-spin" aria-hidden />
+              {t('importDialog.parsing')}
+            </p>
+          )}
           {sizeError && (
             <p className="text-destructive text-sm" role="alert">
               {sizeError}
