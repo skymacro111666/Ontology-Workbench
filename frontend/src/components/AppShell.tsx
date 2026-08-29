@@ -12,6 +12,7 @@ import CommandPalette from './CommandPalette'
 import ImportDialog from './ImportDialog'
 import OntologySwitcher from './OntologySwitcher'
 import PasswordDialog from './PasswordDialog'
+import { LangToggle } from './ui/LangToggle'
 import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
@@ -189,6 +190,8 @@ export default function AppShell({ children }: { children?: ReactNode }) {
           >
             ◐
           </button>
+
+          <LangToggle />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
