@@ -117,7 +117,7 @@ export default function GraphOverview({
       focusNotified.current = key
       toast.info(t('canvas.focusMissingToast'))
     }
-  }, [data, focus, oid])
+  }, [data, focus, oid, t])
   /** Saved canvas positions gate the mount: rendering before they arrive
    *  would auto-layout first and then never rebuild onto the saved spots. */
   const { data: layoutData, isPending: layoutPending } = useQuery({

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { ApiErr, api } from '../api/client'
+import { api } from '../api/client'
 import { errText } from '../i18n/errText'
 import { Button } from '@/components/ui/button'
 import {
