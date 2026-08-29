@@ -101,7 +101,27 @@ export default function Home() {
               重试
             </Button>
           </div>
-        ) : isPending ? null : items.length === 0 ? (
+        ) : isPending ? (
+          <div
+            role="status"
+            aria-label="加载中"
+            className="grid gap-3 md:grid-cols-2 xl:grid-cols-3"
+          >
+            {/* Six ghost cards mirroring the loaded row shape; bg-line adapts
+                to both themes. */}
+            {Array.from({ length: 6 }, (_, i) => (
+              <div
+                key={i}
+                className="border-line bg-panel rounded-card flex flex-col gap-2.5 border px-4 py-3.5"
+              >
+                <div className="bg-line animate-pulse h-4 w-1/2 rounded" />
+                <div className="bg-line animate-pulse h-3 w-1/3 rounded" />
+                <div className="bg-line animate-pulse h-3 w-2/3 rounded" />
+              </div>
+            ))}
+            <span className="sr-only">本体列表加载中</span>
+          </div>
+        ) : items.length === 0 ? (
           <EmptyState
             onLoadSample={() => sample.mutate('pizza')}
             onImport={() => setImportOpen(true)}

@@ -21,7 +21,7 @@ export default function OntologySwitcher() {
   const exportOid = useMatch('/export/:oid')?.params.oid
   const currentOid = browseOid ?? graphOid ?? exportOid
 
-  const { data } = useQuery({
+  const { data, isPending, isError } = useQuery({
     queryKey: ['ontologies'],
     queryFn: () => api.get<{ items: OntologySummary[]; total: number }>('/api/ontologies'),
   })
@@ -42,7 +42,12 @@ export default function OntologySwitcher() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
-        {items.length === 0 ? (
+        {isPending ? (
+          <DropdownMenuItem disabled>加载中…</DropdownMenuItem>
+        ) : isError ? (
+          // A failed fetch must not masquerade as an empty shelf (T4①).
+          <DropdownMenuItem disabled>加载失败</DropdownMenuItem>
+        ) : items.length === 0 ? (
           <DropdownMenuItem disabled>暂无本体</DropdownMenuItem>
         ) : (
           items.map((o) => (

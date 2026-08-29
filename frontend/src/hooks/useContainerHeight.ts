@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
 /**
- * Observe the caller's container height so virtual lists (AntD Tree `height`)
- * can fill the sidebar. Falls back to a sane default where ResizeObserver is
+ * Observe the caller's container height so ClassTree's virtualized rows fill
+ * the sidebar. Falls back to a sane default where ResizeObserver is
  * missing (jsdom).
  */
 export function useContainerHeight<T extends HTMLElement>(fallback = 400) {

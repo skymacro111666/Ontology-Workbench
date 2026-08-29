@@ -150,6 +150,20 @@ describe('Home', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
   })
 
+  it('shows a skeleton while the ontology list is pending', async () => {
+    // Pending used to render null — a blank flash (backlog: Home skeleton).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => {})),
+    )
+    renderHome()
+
+    const status = await screen.findByRole('status')
+    expect(status.textContent).toContain('加载中')
+    // Skeleton cards pulse in the same grid the loaded list uses.
+    expect(status.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0)
+  })
+
   it('shows the empty state with both onboarding buttons wired', async () => {
     const fetchMock = vi.fn(async (url: string | URL) => {
       if (String(url) === '/api/samples/pizza') return ok(summary('oid-pizza'))

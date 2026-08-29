@@ -1,10 +1,11 @@
 import { configure } from '@testing-library/react'
 import { vi } from 'vitest'
 
-// This environment renders AntD slowly; give async queries headroom.
+// jsdom renders slowly; give async queries headroom.
 configure({ asyncUtilTimeout: 10000 })
 
-// jsdom lacks matchMedia; AntD's responsive observer and useSystemTheme need it.
+// jsdom lacks matchMedia; ThemeProvider's prefers-color-scheme probe and
+// sonner's system-theme resolution read it.
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
@@ -19,7 +20,7 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 })
 
-// jsdom lacks ResizeObserver; AntD's virtual list and grid components need it.
+// jsdom lacks ResizeObserver; useContainerHeight (ClassTree row virtualization) needs it.
 class ResizeObserverStub implements ResizeObserver {
   observe(): void {}
   unobserve(): void {}
