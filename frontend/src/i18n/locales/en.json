@@ -1,0 +1,26 @@
+{
+  "common": {
+    "loading": "Loading…",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "deleting": "Deleting…",
+    "open": "Open",
+    "operationFailed": "Operation failed, please try again later"
+  },
+  "err": {
+    "AUTH_REQUIRED": "Sign-in required",
+    "TOKEN_EXPIRED": "Session expired, please sign in again",
+    "AUTH_INVALID_CREDENTIALS": "Invalid username or password",
+    "SETUP_DONE": "Setup already completed",
+    "NOT_FOUND": "The requested resource was not found",
+    "DUPLICATE_FILENAME": "A file with this name already exists",
+    "DUPLICATE_ENTITY": "An entity with this name already exists",
+    "EDIT_CONFLICT": "The file changed since it was loaded — reload and retry",
+    "PARSE_FAILED": "Failed to parse",
+    "UPLOAD_TOO_LARGE": "File exceeds the 150MB limit",
+    "UNSUPPORTED_FORMAT": "Unsupported file format",
+    "VALIDATION_ERROR": "Invalid input",
+    "INTERNAL_ERROR": "Internal server error, please try again later"
+  }
+}

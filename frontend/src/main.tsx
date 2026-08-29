@@ -8,6 +8,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import App from './App'
 import { Toaster } from './components/ui/sonner'
+import './i18n'
 import { ThemeProvider } from './theme/ThemeProvider'
 import './index.css'
 

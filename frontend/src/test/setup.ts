@@ -1,6 +1,10 @@
 import { configure } from '@testing-library/react'
 import { vi } from 'vitest'
 
+// Test language is pinned to zh by src/i18n/index.ts (MODE === 'test' passes
+// lng directly; jsdom's navigator would otherwise resolve en-US). Do not
+// change i18next language from tests except in LangToggle's own tests.
+
 // jsdom renders slowly; give async queries headroom.
 configure({ asyncUtilTimeout: 10000 })
 
