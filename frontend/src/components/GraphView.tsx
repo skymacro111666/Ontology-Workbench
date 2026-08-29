@@ -445,21 +445,6 @@ export default function GraphView({
     // time callbacks fire. Never touch a dead instance.
     const isCurrent = () => graphRef.current === graph
 
-    // TEMP-DIAG — remove after the GO blank-canvas diagnosis closes.
-    const diag = (stage: string, extra: Record<string, unknown> = {}) => {
-      console.info(`[g6diag] ${stage}`, JSON.stringify(extra))
-    }
-    diag('build', {
-      nodes: snap.nodes.length,
-      dataNodes: data.nodes?.length ?? 0,
-      autoLinear,
-      useSaved,
-      placed: Object.keys(positionsRef.current).length,
-      boxW: el.clientWidth,
-      boxH: el.clientHeight,
-    })
-    window.addEventListener('error', (e) => diag('uncaught', { msg: String(e.message) }))
-
     graph.on('node:click', (e) => {
       const evt = e as IPointerEvent & { originalTarget?: HitShape | null }
       const id = evt.target ? (evt.target as unknown as { id: string }).id : undefined
@@ -525,35 +510,17 @@ export default function GraphView({
           // to a readable floor around the viewport center; panning/zoom-out
           // still covers the whole map.
           void graph.fitView().then(() => {
-            diag('fit', { zoom: graph.getZoom() })
             if (graph.getZoom() >= MIN_AUTO_ZOOM) return
             return graph.zoomTo(MIN_AUTO_ZOOM).then(() => {
-              diag('clamped', { zoom: graph.getZoom() })
               setZoomPct(Math.round(graph.getZoom() * 100))
             })
           })
         }
         setZoomPct(Math.round(graph.getZoom() * 100))
-        // TEMP-DIAG — count inked samples on every canvas layer, 2s later.
-        window.setTimeout(() => {
-          if (!isCurrent()) return
-          const inks: number[] = []
-          el.querySelectorAll('canvas').forEach((cv) => {
-            const ctx = cv.getContext('2d')
-            let n = -1
-            if (ctx && cv.width > 0 && cv.height > 0) {
-              const img = ctx.getImageData(0, 0, cv.width, cv.height).data
-              n = 0
-              for (let i = 3; i < img.length; i += 40) if (img[i] !== 0) n++
-            }
-            inks.push(n)
-          })
-          diag('pixels', { layers: inks.length, inks })
-        }, 2000)
       })
-      .catch((e: unknown) => {
-        if (!isCurrent()) return
-        diag('render-error', { err: String(e) })
+      .catch(() => {
+        // Render failures leave the canvas blank; the stale-guard above keeps
+        // us off destroyed instances, and rebuilds (new data/theme) recover.
       })
 
     return () => {
