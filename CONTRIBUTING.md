@@ -50,6 +50,12 @@ A pre-commit config runs ruff and import-linter locally once installed
 (`pre-commit install`). Frontend tests must run from `frontend/` — the vitest
 config lives there.
 
+**Keep npm lifecycle scripts enabled.** `npm ci` applies a carried patch to
+`@antv/g-lite` (see `frontend/patches/`) fixing a stack overflow when rendering
+graphs with 1000+ nodes; running with `ignore-scripts=true` skips it and large
+canvases will stay blank. The patch drops out on its own once upstream ships
+the fix.
+
 **UI text is bilingual.** All user-facing copy renders through
 react-i18next: add keys to `frontend/src/i18n/locales/{zh,en}.json` (keep both
 files key-identical) and reference them with `t('...')` — never hardcode copy in
