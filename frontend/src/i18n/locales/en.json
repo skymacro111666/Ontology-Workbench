@@ -8,6 +8,24 @@
     "open": "Open",
     "operationFailed": "Operation failed, please try again later"
   },
+  "login": {
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in",
+    "usernameMin": "Username needs at least 3 characters",
+    "usernameMax": "Username is at most 64 characters",
+    "passwordMin": "Password needs at least 8 characters",
+    "passwordMax": "Password is at most 128 characters"
+  },
+  "setup": {
+    "title": "Set up Ontology Workbench",
+    "subtitle": "Create the admin account (one time only)",
+    "done": "Setup already completed — sign in directly",
+    "goLogin": "Go to sign-in",
+    "offline": "Cannot reach the server — check that it is running, then retry",
+    "submit": "Create and enter",
+    "footnote": "Credentials stay in the local database and never leave this server"
+  },
   "err": {
     "AUTH_REQUIRED": "Sign-in required",
     "TOKEN_EXPIRED": "Session expired, please sign in again",

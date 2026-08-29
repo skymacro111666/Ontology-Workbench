@@ -8,6 +8,24 @@
     "open": "打开",
     "operationFailed": "操作失败，请稍后重试"
   },
+  "login": {
+    "username": "用户名",
+    "password": "密码",
+    "submit": "登录",
+    "usernameMin": "用户名至少 3 个字符",
+    "usernameMax": "用户名不超过 64 个字符",
+    "passwordMin": "密码至少 8 位",
+    "passwordMax": "密码不超过 128 位"
+  },
+  "setup": {
+    "title": "初始化 Ontology Workbench",
+    "subtitle": "创建管理员账号（仅需一次）",
+    "done": "初始化已完成，请直接登录",
+    "goLogin": "前往登录",
+    "offline": "无法连接服务器，请检查服务状态后重试",
+    "submit": "创建并进入",
+    "footnote": "凭据仅存于本地数据库，不会离开这台服务器"
+  },
   "err": {
     "AUTH_REQUIRED": "需要登录",
     "TOKEN_EXPIRED": "登录已过期，请重新登录",

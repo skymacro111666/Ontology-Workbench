@@ -2,9 +2,11 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { ApiErr } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { credentialsSchema, type Credentials } from '../auth/credentials'
+import { credentialErrorText, credentialsSchema, type Credentials } from '../auth/credentials'
+import { errText } from '../i18n/errText'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -13,6 +15,7 @@ import { Label } from '@/components/ui/label'
 /** JWT login; error copy branches on the envelope code. */
 export default function Login() {
   const { login } = useAuth()
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [formError, setFormError] = useState<string | null>(null)
   const form = useForm<Credentials>({
@@ -27,10 +30,8 @@ export default function Login() {
       await login(values.username, values.password)
       navigate('/')
     } catch (err) {
-      if (err instanceof ApiErr && err.code === 'AUTH_INVALID_CREDENTIALS') {
-        setFormError('用户名或密码错误')
-      } else if (err instanceof ApiErr) {
-        setFormError(err.message)
+      if (err instanceof ApiErr) {
+        setFormError(errText(err, t))
       } else {
         throw err
       }
@@ -60,34 +61,38 @@ export default function Login() {
               </p>
             )}
             <div className="flex flex-col gap-2">
-              <Label htmlFor="username">用户名</Label>
+              <Label htmlFor="username">{t('login.username')}</Label>
               <Input
                 id="username"
-                placeholder="用户名"
+                placeholder={t('login.username')}
                 autoComplete="username"
                 aria-invalid={errors.username ? true : undefined}
                 {...form.register('username')}
               />
               {errors.username && (
-                <p className="text-sm text-destructive">{errors.username.message}</p>
+                <p className="text-sm text-destructive">
+                  {credentialErrorText('username', errors.username.type, t)}
+                </p>
               )}
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="password">密码</Label>
+              <Label htmlFor="password">{t('login.password')}</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="密码"
+                placeholder={t('login.password')}
                 autoComplete="current-password"
                 aria-invalid={errors.password ? true : undefined}
                 {...form.register('password')}
               />
               {errors.password && (
-                <p className="text-sm text-destructive">{errors.password.message}</p>
+                <p className="text-sm text-destructive">
+                  {credentialErrorText('password', errors.password.type, t)}
+                </p>
               )}
             </div>
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-              登录
+              {t('login.submit')}
             </Button>
           </form>
         </CardContent>

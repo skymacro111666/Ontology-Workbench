@@ -2,9 +2,11 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { ApiErr, api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { credentialsSchema, type Credentials } from '../auth/credentials'
+import { credentialErrorText, credentialsSchema, type Credentials } from '../auth/credentials'
+import { errText } from '../i18n/errText'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -12,6 +14,7 @@ import { Label } from '@/components/ui/label'
 
 /** One-shot first-run page: create the single admin account and enter. */
 export default function Setup() {
+  const { t } = useTranslation()
   const { login, needSetup, ready, probeError } = useAuth()
   const navigate = useNavigate()
   const [formError, setFormError] = useState<string | null>(null)
@@ -34,7 +37,7 @@ export default function Setup() {
       if (err instanceof ApiErr && err.code === 'SETUP_DONE') {
         setDone(true)
       } else if (err instanceof ApiErr) {
-        setFormError(err.message)
+        setFormError(errText(err, t))
       } else {
         throw err
       }
@@ -54,21 +57,21 @@ export default function Setup() {
       />
       <Card className="relative w-full max-w-[400px] rounded-modal">
         <CardHeader className="text-center">
-          <CardTitle className="text-xl">初始化 Ontology Workbench</CardTitle>
-          <CardDescription>创建管理员账号（仅需一次）</CardDescription>
+          <CardTitle className="text-xl">{t('setup.title')}</CardTitle>
+          <CardDescription>{t('setup.subtitle')}</CardDescription>
         </CardHeader>
         <CardContent>
           {showDoneNotice && (
             <p role="status" className="text-sm text-muted-foreground">
-              初始化已完成，请直接登录
+              {t('setup.done')}
               <Link to="/login" className="ml-1 text-primary underline underline-offset-2">
-                前往登录
+                {t('setup.goLogin')}
               </Link>
             </p>
           )}
           {ready && probeError && (
             <p role="status" className="text-sm text-muted-foreground">
-              无法连接服务器，请检查服务状态后重试
+              {t('setup.offline')}
             </p>
           )}
           <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
@@ -78,38 +81,42 @@ export default function Setup() {
               </p>
             )}
             <div className="flex flex-col gap-2">
-              <Label htmlFor="username">用户名</Label>
+              <Label htmlFor="username">{t('login.username')}</Label>
               <Input
                 id="username"
-                placeholder="用户名"
+                placeholder={t('login.username')}
                 autoComplete="username"
                 aria-invalid={errors.username ? true : undefined}
                 {...form.register('username')}
               />
               {errors.username && (
-                <p className="text-sm text-destructive">{errors.username.message}</p>
+                <p className="text-sm text-destructive">
+                  {credentialErrorText('username', errors.username.type, t)}
+                </p>
               )}
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="password">密码</Label>
+              <Label htmlFor="password">{t('login.password')}</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="密码"
+                placeholder={t('login.password')}
                 autoComplete="new-password"
                 aria-invalid={errors.password ? true : undefined}
                 {...form.register('password')}
               />
               {errors.password && (
-                <p className="text-sm text-destructive">{errors.password.message}</p>
+                <p className="text-sm text-destructive">
+                  {credentialErrorText('password', errors.password.type, t)}
+                </p>
               )}
             </div>
             <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
-              创建并进入
+              {t('setup.submit')}
             </Button>
           </form>
           <p className="mt-4 text-center text-xs text-muted-foreground">
-            凭据仅存于本地数据库，不会离开这台服务器
+            {t('setup.footnote')}
           </p>
         </CardContent>
       </Card>
