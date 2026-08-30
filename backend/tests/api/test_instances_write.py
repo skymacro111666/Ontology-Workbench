@@ -5,13 +5,10 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-LIB = "https://example.org/library#"
-SF = f"{LIB}ScienceFiction"
 TB = "http://example.org/ThreeBody"
-CREATOR = f"{LIB}LiuCixin"
-HAS_CREATOR = f"{LIB}hasCreator"
 
-# 最小本体:一个类、一个对象属性、一个实例、一条对象断言
+# 最小本体:两个类、一个对象属性、两个实例、三条断言
+# ThreeBody: 自引用 inspiredBy + 被 FanSequel 引用(对象端)
 MINI_INST = b"""@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -21,6 +18,8 @@ ex:FanFic a owl:Class .
 ex:inspiredBy a owl:ObjectProperty ; rdfs:domain ex:Novel ; rdfs:range ex:Novel .
 ex:ThreeBody a owl:NamedIndividual , ex:Novel ;
   rdfs:label "ThreeBody" ; ex:inspiredBy ex:ThreeBody .
+ex:FanSequel a owl:NamedIndividual , ex:FanFic ;
+  ex:inspiredBy ex:ThreeBody ; ex:knows ex:ThreeBody .
 """
 
 
@@ -94,11 +93,22 @@ def test_create_instance_guards(client: TestClient) -> None:
 def test_delete_instance_removes_assertions_both_ends(client: TestClient) -> None:
     """Delete instance removes subject and object property assertions."""
     oid, meta = _upload(client)
-    # ThreeBody inspiredBy 自身:主语与宾语两端各一条
+    # ThreeBody: 自引用(subject) + 被 FanSequel 引用(object)
+    # 删除后: FanSequel ex:inspiredBy ex:ThreeBody 应被删除,但 ex:knows(非声明属性)应保留
     r = client.delete(
         f"/api/ontologies/{oid}/instances/{TB}", params={"baseFileHash": meta["fileHash"]}
     )
     assert r.status_code == 200
-    assert r.json()["data"]["removed"] >= 4  # type×2 + label + inspiredBy(主语) + inspiredBy(宾语)
-    assert "ex:ThreeBody" not in _source(client, oid)
+    # 移除数: ThreeBody 的 type×2 + label + inspiredBy 自引用 + FanSequel 的 inspiredBy(object端)
+    assert r.json()["data"]["removed"] >= 5
+    src = _source(client, oid)
+    # FanSequel ex:inspiredBy ex:ThreeBody 必须被删除(对象端清理)
+    assert "ex:FanSequel" in src
+    assert "ex:inspiredBy ex:ThreeBody" not in src
+    # ex:knows ex:ThreeBody 必须保留(保守剪裁:非声明属性不断开)
+    assert "ex:knows ex:ThreeBody" in src
+    # ThreeBody 的主语三元组必须全部删除(包括 NamedIndividual 类型断言)
+    assert "ex:ThreeBody a owl:NamedIndividual" not in src
+    assert "ex:ThreeBody a ex:Novel" not in src
+    assert "ex:ThreeBody rdfs:label" not in src
     assert client.get(f"/api/ontologies/{oid}/entities/{TB}").status_code == 404
