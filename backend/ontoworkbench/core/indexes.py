@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from ontoworkbench.core.ir import EntityIR, IRBundle
+from ontoworkbench.core.ir import EntityIR, IndividualIR, IRBundle
 
 MAX_OVERVIEW_NODES = 5000
 
@@ -65,6 +65,16 @@ class Indexes:
         """Look up one entity by eid (full IRI)."""
         return self._ir.entities.get(eid)
 
+    # -- individuals ------------------------------------------------------
+    @property
+    def ir(self) -> IRBundle:
+        """The underlying bundle (lint / schema walks need more than lookups)."""
+        return self._ir
+
+    def individual(self, eid: str) -> IndividualIR | None:
+        """Look up one named individual by eid (full IRI)."""
+        return self._ir.individuals.get(eid)
+
     # -- tree -----------------------------------------------------------
     def tree(self, parent_eid: str | None) -> list[TreeNode]:
         """Direct children of parent (or roots when None).
@@ -94,25 +104,52 @@ class Indexes:
         ]
 
     # -- search ---------------------------------------------------------
-    def search(self, q: str, limit: int = 20) -> list[SearchHit]:
-        """Case-insensitive substring search over localname/label/comment."""
+    def search(self, q: str, limit: int = 20, type_: str | None = None) -> list[SearchHit]:
+        """Case-insensitive substring search over localname/label/comment.
+
+        Individuals join with type='Instance' (localname/label only); type_
+        filters to one entity type ('Instance' picks individuals).
+        """
         ql = q.lower()
         hits: list[SearchHit] = []
+
+        def _match(curie: str, label: dict[str, str], comment: str | None) -> str | None:
+            if ql in curie.split(":")[-1].lower():
+                return "localname"
+            if any(ql in v.lower() for v in label.values()):
+                return "label"
+            if comment and ql in comment.lower():
+                return "comment"
+            return None
+
         for e in sorted(self._ir.entities.values(), key=lambda x: x.curie):
-            local = e.curie.split(":")[-1].lower()
-            if ql in local:
-                field = "localname"
-            elif any(ql in v.lower() for v in e.label.values()):
-                field = "label"
-            elif e.comment and ql in e.comment.lower():
-                field = "comment"
-            else:
+            if type_ and e.type != type_:
                 continue
-            hits.append(
-                SearchHit(eid=e.eid, curie=e.curie, label=e.label, type=e.type, matched_field=field)
-            )
-            if len(hits) >= limit:
-                break
+            field = _match(e.curie, e.label, e.comment)
+            if field:
+                hits.append(
+                    SearchHit(
+                        eid=e.eid, curie=e.curie, label=e.label, type=e.type, matched_field=field
+                    )
+                )
+                if len(hits) >= limit:
+                    return hits
+        if type_ and type_ != "Instance":
+            return hits
+        for ind in sorted(self._ir.individuals.values(), key=lambda x: x.curie):
+            field = _match(ind.curie, ind.label, None)
+            if field:
+                hits.append(
+                    SearchHit(
+                        eid=ind.eid,
+                        curie=ind.curie,
+                        label=ind.label,
+                        type="Instance",
+                        matched_field=field,
+                    )
+                )
+                if len(hits) >= limit:
+                    break
         return hits
 
     # -- graph ----------------------------------------------------------

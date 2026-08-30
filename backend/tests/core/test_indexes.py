@@ -282,3 +282,29 @@ def test_search_hits_label_branch() -> None:
     hits = ix.search("小狗狗")
     assert [h.curie for h in hits] == ["ex:Dog"]
     assert hits[0].matched_field == "label"
+
+
+def test_individual_lookup_and_instance_search() -> None:
+    """individual() 命中;search 覆盖实例并支持 type 过滤。."""
+    from pathlib import Path
+
+    from ontoworkbench.core.ir import build_ir
+    from ontoworkbench.core.parsing import parse_graph
+
+    data = (Path(__file__).parents[2] / "ontoworkbench" / "samples" / "library.ttl").read_bytes()
+    ix = build_indexes(build_ir(parse_graph(data, "turtle")))
+
+    tb_eid = "https://github.com/skymacro111666/ontology-workbench/samples/library#ThreeBody"
+    assert ix.individual(tb_eid) is not None and ix.individual(tb_eid).kind == "instance"
+    assert (
+        ix.individual("https://github.com/skymacro111666/ontology-workbench/samples/library#Nope")
+        is None
+    )
+    assert ix.ir.counts.individual_count > 0  # ir 暴露
+
+    hits = ix.search("three", 20)
+    assert any(h.type == "Instance" and h.eid == tb_eid for h in hits)
+    only_inst = ix.search("three", 20, type_="Instance")
+    assert only_inst and all(h.type == "Instance" for h in only_inst)
+    only_cls = ix.search("three", 20, type_="Class")
+    assert all(h.type != "Instance" for h in only_cls)
