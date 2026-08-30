@@ -14,8 +14,9 @@ import type { Pt } from './layoutPositions'
 import { Button } from '@/components/ui/button'
 
 /** Menu rows for a right-click report: blank area offers creation, a class
- *  node additionally offers subclass/edit/delete, property nodes the
- *  property edit set (competitor parity, spec §4). */
+ *  node additionally offers subclass/instance/edit/delete, property nodes the
+ *  property edit set, instance nodes reveal/delete (competitor parity,
+ *  spec §4). */
 function menuItems(
   menu: { targetId?: string; kind?: string; curie?: string },
   setEntityDialog: (s: {
@@ -23,6 +24,8 @@ function menuItems(
     parent?: string
     eid?: string
   }) => void,
+  setInstanceDialog: (s: { mode: 'create' | 'delete'; parent?: string; eid?: string } | null) => void,
+  reveal: (eid: string) => void,
   t: TFunction,
 ): MenuItem[] {
   if (!menu.targetId) {
@@ -45,11 +48,31 @@ function menuItems(
       },
     ]
   }
+  if (menu.kind === 'instance') {
+    return [
+      {
+        key: 'edit',
+        label: t('canvas.editInstance'),
+        onSelect: () => reveal(menu.targetId as string),
+      },
+      {
+        key: 'delete',
+        label: t('canvas.deleteCurie', { name: menu.curie ? localName(menu.curie) : '' }),
+        danger: true,
+        onSelect: () => setInstanceDialog({ mode: 'delete', eid: menu.targetId }),
+      },
+    ]
+  }
   return [
     {
       key: 'subclass',
       label: t('canvas.newSubclass'),
       onSelect: () => setEntityDialog({ mode: 'subclass', parent: menu.targetId }),
+    },
+    {
+      key: 'instance',
+      label: t('canvas.newInstance'),
+      onSelect: () => setInstanceDialog({ mode: 'create', parent: menu.targetId }),
     },
     {
       key: 'objectProperty',
@@ -90,6 +113,7 @@ export default function GraphOverview({
   const { t } = useTranslation()
   const reveal = useBrowseStore((s) => s.reveal)
   const setEntityDialog = useUiStore((s) => s.setEntityDialog)
+  const setInstanceDialog = useUiStore((s) => s.setInstanceDialog)
   const queryClient = useQueryClient()
   /** Open canvas context menu: blank-area or node right-click report. */
   const [menu, setMenu] = useState<{
@@ -233,7 +257,7 @@ export default function GraphOverview({
             x={menu.x}
             y={menu.y}
             onClose={() => setMenu(null)}
-            items={menuItems(menu, setEntityDialog, t)}
+            items={menuItems(menu, setEntityDialog, setInstanceDialog, reveal, t)}
           />
         )}
       </div>

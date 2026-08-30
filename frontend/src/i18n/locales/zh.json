@@ -136,7 +136,12 @@
     "pickInstance": "搜索实例…",
     "literalValue": "值",
     "assertSection": "属性",
-    "saving": "保存中…"
+    "saving": "保存中…",
+    "createTitle": "添加实例",
+    "createDesc": "名称、类型与描述;创建后可直接补属性",
+    "deleteTitle": "删除实例",
+    "deleteDesc": "此操作连带删除其全部属性行",
+    "confirmDelete": "确认删除 <name>{{name}}</name>？"
   },
   "sourceview": {
     "dirty": "● 未保存",
@@ -190,10 +195,12 @@
   "canvas": {
     "newClass": "＋ 新建类",
     "newSubclass": "新建子类",
+    "newInstance": "添加实例",
     "newObjectProp": "新建对象属性",
     "newDataProp": "新建数据属性",
     "editClass": "编辑类",
     "editProperty": "编辑属性",
+    "editInstance": "编辑实例",
     "deleteCurie": "删除 {{name}}",
     "focusMissingToast": "焦点实体未出现在总览中（可能已被截断），详情见右侧检查器",
     "layoutSaveFailed": "布局保存失败，稍后自动重试拖动即可",

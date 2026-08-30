@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import type { InstanceIR, NodesEdges, OntologyMeta, SchemaProp, SearchHit } from '../api/types'
 import { errText } from '../i18n/errText'
 import { localName } from '../lib/localName'
+import { useUiStore } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
 import { ClassPicker, XSD_TYPES } from './EntityDialogs'
 import { Chip, Section } from './InspectorPanel'
@@ -240,6 +241,21 @@ export default function InstanceDetail({ oid, eid, inst }: { oid: string; eid: s
     setEditing(true)
   }
 
+  // Create-then-land-in-edit (spec §0): InstanceDialogs flags the freshly
+  // created eid; this detail's first render enters edit mode straight away
+  // so assertions can join inline, then clears the flag.
+  const justCreated = useUiStore((s) => s.instanceJustCreated)
+  const setInstanceJustCreated = useUiStore((s) => s.setInstanceJustCreated)
+  const setInstanceDialog = useUiStore((s) => s.setInstanceDialog)
+  useEffect(() => {
+    if (!justCreated || justCreated !== eid) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    enterEdit()
+    setInstanceJustCreated(null)
+    // Fires only on the flag/eid change; after acting, the guard returns.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [justCreated, eid])
+
   const { data: meta } = useQuery({
     enabled: editing,
     queryKey: ['ontology', oid],
@@ -342,6 +358,13 @@ export default function InstanceDetail({ oid, eid, inst }: { oid: string; eid: s
             className="border-line text-ink-2 rounded-ctl border px-2 py-0.5 text-[11px]"
           >
             {t('instance.edit')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setInstanceDialog({ mode: 'delete', eid })}
+            className="border-line text-red-600 dark:text-red-400 rounded-ctl border px-2 py-0.5 text-[11px]"
+          >
+            {t('common.delete')}
           </button>
         </div>
       </div>

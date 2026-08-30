@@ -136,7 +136,12 @@
     "pickInstance": "Search instances…",
     "literalValue": "Value",
     "assertSection": "Properties",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "createTitle": "Add instance",
+    "createDesc": "Name, types and description; assertions join inline after creation",
+    "deleteTitle": "Delete instance",
+    "deleteDesc": "This deletes the instance and all its assertion rows",
+    "confirmDelete": "Delete <name>{{name}}</name>?"
   },
   "sourceview": {
     "dirty": "● Unsaved",
@@ -190,10 +195,12 @@
   "canvas": {
     "newClass": "＋ New class",
     "newSubclass": "New subclass",
+    "newInstance": "Add instance",
     "newObjectProp": "New object property",
     "newDataProp": "New data property",
     "editClass": "Edit class",
     "editProperty": "Edit property",
+    "editInstance": "Edit instance",
     "deleteCurie": "Delete {{name}}",
     "focusMissingToast": "The focus entity is not on the (possibly truncated) overview — see the inspector for details",
     "layoutSaveFailed": "Layout save failed — dragging again will retry automatically",

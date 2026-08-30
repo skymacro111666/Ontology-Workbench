@@ -1,9 +1,10 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Envelope } from '../api/types'
 import { useBrowseStore } from '../stores/browseStore'
+import { useUiStore } from '../stores/uiStore'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import InspectorPanel from './InspectorPanel'
 
@@ -70,6 +71,7 @@ function draw() {
 
 beforeEach(() => {
   useBrowseStore.setState({ selectedEid: null, revealEid: null })
+  useUiStore.setState({ instanceDialog: null, instanceJustCreated: null })
 })
 
 afterEach(() => {
@@ -94,6 +96,23 @@ describe('InstanceDetail view', () => {
     draw()
     await userEvent.click(await screen.findByRole('button', { name: /复制/ }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(TB))
+  })
+
+  it('lands in edit mode when flagged as just created', async () => {
+    draw()
+    await screen.findAllByText('ThreeBody')
+    // InstanceDialogs sets the flag after POST; the detail enters edit mode
+    // straight away so assertions can join inline, then clears the flag.
+    act(() => useUiStore.getState().setInstanceJustCreated(TB))
+    expect(await screen.findByRole('button', { name: /添加属性/ })).toBeTruthy()
+    expect(useUiStore.getState().instanceJustCreated).toBeNull()
+  })
+
+  it('routes the header delete button to the delete dialog', async () => {
+    draw()
+    await screen.findAllByText('ThreeBody')
+    await userEvent.click(screen.getByRole('button', { name: '删除' }))
+    expect(useUiStore.getState().instanceDialog).toEqual({ mode: 'delete', eid: TB })
   })
 })
 

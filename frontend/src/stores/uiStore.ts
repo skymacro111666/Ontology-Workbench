@@ -25,6 +25,15 @@ export interface EntityDialogState {
   eid?: string
 }
 
+/** What the B2 instance dialogs are editing (canvas / inspector open one). */
+export interface InstanceDialogState {
+  mode: 'create' | 'delete'
+  /** Class eid: pre-fills the create type list; unused for delete. */
+  parent?: string
+  /** Instance IRI for delete. */
+  eid?: string
+}
+
 /** Cross-component UI state (import dialog flag, workspace view mode). */
 export const useUiStore = create<{
   importOpen: boolean
@@ -44,6 +53,12 @@ export const useUiStore = create<{
   registerSourceSave: (fn: SourceSaveFn | null) => void
   entityDialog: EntityDialogState | null
   setEntityDialog: (s: EntityDialogState | null) => void
+  instanceDialog: InstanceDialogState | null
+  setInstanceDialog: (s: InstanceDialogState | null) => void
+  /** Freshly created instance eid: InstanceDetail observes it to land
+   *  straight in edit mode (spec §0 create flow), then clears the flag. */
+  instanceJustCreated: string | null
+  setInstanceJustCreated: (eid: string | null) => void
 }>((set) => ({
   importOpen: false,
   setImportOpen: (importOpen) => set({ importOpen }),
@@ -61,4 +76,8 @@ export const useUiStore = create<{
   registerSourceSave: (sourceSaveFn) => set({ sourceSaveFn }),
   entityDialog: null,
   setEntityDialog: (entityDialog) => set({ entityDialog }),
+  instanceDialog: null,
+  setInstanceDialog: (instanceDialog) => set({ instanceDialog }),
+  instanceJustCreated: null,
+  setInstanceJustCreated: (instanceJustCreated) => set({ instanceJustCreated }),
 }))

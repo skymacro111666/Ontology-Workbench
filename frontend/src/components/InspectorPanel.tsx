@@ -6,6 +6,7 @@ import type { CounterpartRef, EntityIR, GNode, InstanceIR, NodesEdges, Ref, Refe
 import { errText } from '../i18n/errText'
 import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
+import { useUiStore } from '../stores/uiStore'
 import { cn } from '@/lib/utils'
 import InstanceDetail from './InstanceDetail'
 
@@ -110,23 +111,17 @@ function BackRefChips({ refs }: { refs: ReferencedRef[] }) {
   )
 }
 
-/** Instance rows: human label + mono curie — plain rows, not chips, because
- *  individuals have no detail page (selecting one dead-ends on the
- *  external-entity note). Same direct-instances scope as the canvas badge. */
+/** Instance chips: individuals have their own detail page since B2, so each
+ *  row navigates there (label or local curie name in a chip; the full curie
+ *  rides in the tooltip). Same direct-instances scope as the canvas badge. */
 function InstanceRows({ nodes }: { nodes: GNode[] }) {
   const { t } = useTranslation()
   if (nodes.length === 0) return <span className="text-ink-3 text-xs">{t('inspector.none')}</span>
   return (
-    <div className="flex flex-col gap-1">
-      {nodes.map((n) => {
-        const label = Object.values(n.label)[0]
-        return (
-          <div key={n.id} className="flex items-baseline justify-between gap-2 text-xs">
-            <span className="text-ink font-medium">{label ?? n.curie}</span>
-            {label && <span className="text-ink-3 font-mono break-all">{n.curie}</span>}
-          </div>
-        )
-      })}
+    <div className="flex flex-wrap gap-1.5">
+      {nodes.map((n) => (
+        <Chip key={n.id} eid={n.id} curie={n.curie} label={n.label} />
+      ))}
     </div>
   )
 }
@@ -134,18 +129,24 @@ function InstanceRows({ nodes }: { nodes: GNode[] }) {
 export function Section({
   label,
   count,
+  action,
   children,
 }: {
   label: string
   count?: number
+  /** Header-affordance control (e.g. the instances section's ＋). */
+  action?: ReactNode
   children: ReactNode
 }) {
   return (
     <section className="flex flex-col gap-1.5">
-      <span className="microlabel">
-        {label}
-        {count !== undefined && ` (${count})`}
-      </span>
+      <div className="flex items-center justify-between">
+        <span className="microlabel">
+          {label}
+          {count !== undefined && ` (${count})`}
+        </span>
+        {action}
+      </div>
       {children}
     </section>
   )
@@ -156,6 +157,7 @@ export function Section({
  *  (the content column is permanently the overview canvas). */
 export default function InspectorPanel({ oid, eid }: { oid: string; eid: string | null }) {
   const { t } = useTranslation()
+  const setInstanceDialog = useUiStore((s) => s.setInstanceDialog)
   const { data: ent, isError, error } = useQuery({
     enabled: eid !== null,
     queryKey: ['entity', oid, eid],
@@ -260,7 +262,21 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
         <BackRefChips refs={ent.referencedBy} />
       </Section>
       {ent.type === 'Class' && (
-        <Section label={t('inspector.instances')} count={insts?.nodes.length}>
+        <Section
+          label={t('inspector.instances')}
+          count={insts?.nodes.length}
+          action={
+            <button
+              type="button"
+              aria-label={t('canvas.newInstance')}
+              title={t('canvas.newInstance')}
+              onClick={() => setInstanceDialog({ mode: 'create', parent: ent.eid })}
+              className="border-line text-ink-2 hover:text-primary rounded-ctl border px-1.5 text-[11px] leading-4"
+            >
+              ＋
+            </button>
+          }
+        >
           {instsError ? (
             <span className="text-ink-3 text-xs">{t('shell.loadFailed')}</span>
           ) : insts ? (

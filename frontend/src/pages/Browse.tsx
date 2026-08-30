@@ -6,6 +6,7 @@ import { ApiErr, api } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import ClassTree from '../components/ClassTree'
 import EntityDialogs from '../components/EntityDialogs'
+import InstanceDialogs from '../components/InstanceDialogs'
 import InspectorPanel from '../components/InspectorPanel'
 // Zone-2 views load lazily: each drags a heavy editor/graph stack (G6,
 // CodeMirror) that must not sit in the entry chunk.
@@ -198,8 +199,9 @@ export default function Browse() {
         </span>
       </footer>
 
-      {/* A2 canvas-editing dialogs (right-click menu opens one). */}
+      {/* A2 canvas-editing dialogs + B2 instance dialogs (menus/inspector). */}
       <EntityDialogs oid={oid} />
+      <InstanceDialogs oid={oid} />
     </div>
   )
 }

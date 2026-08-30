@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import { Toaster } from './ui/sonner'
 import type { Envelope, NodesEdges } from '../api/types'
+import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { lastG6, resetG6 } from '../test/g6Mock'
@@ -74,7 +75,8 @@ function draw(fetchMock: ReturnType<typeof stubFetch>, focus?: string) {
 beforeEach(() => {
   resetG6()
   savedBody = undefined
-  useUiStore.setState({ entityDialog: null })
+  useUiStore.setState({ entityDialog: null, instanceDialog: null })
+  useBrowseStore.setState({ selectedEid: null, revealEid: null })
 })
 
 afterEach(() => {
@@ -173,6 +175,43 @@ describe('GraphOverview context menu', () => {
       mode: 'subclass',
       parent: 'a',
     })
+  })
+
+  it('class menu offers 添加实例; instance nodes get 编辑实例/删除实例 (B2)', async () => {
+    const overview: NodesEdges = {
+      nodes: [
+        { id: 'a', curie: 'ex:A', label: {}, kind: 'class' },
+        { id: 'i1', curie: 'ex:Inst', label: {}, kind: 'instance' },
+      ],
+      edges: [],
+      truncated: false,
+      totalCount: 2,
+    }
+    draw(stubFetch(null, overview))
+    await waitForGraph()
+    const g = lastG6()!
+    const rightClick = (id: string) =>
+      g.handlers['node:contextmenu']({
+        target: { id },
+        originalTarget: null,
+        client: { x: 10, y: 12 },
+        preventDefault: vi.fn(),
+      })
+
+    // Class menu: 添加实例 pre-fills the create dialog with the class eid.
+    rightClick('a')
+    await userEvent.click(await screen.findByText('添加实例'))
+    expect(useUiStore.getState().instanceDialog).toEqual({ mode: 'create', parent: 'a' })
+
+    // Instance node: 编辑实例 reveals (select + focus); 删除实例 opens the
+    // delete dialog with the instance's local name in the label.
+    rightClick('i1')
+    await userEvent.click(await screen.findByText('编辑实例'))
+    expect(useBrowseStore.getState().selectedEid).toBe('i1')
+    expect(useBrowseStore.getState().revealEid).toBe('i1')
+    rightClick('i1')
+    await userEvent.click(await screen.findByText('删除 Inst'))
+    expect(useUiStore.getState().instanceDialog).toEqual({ mode: 'delete', eid: 'i1' })
   })
 })
 

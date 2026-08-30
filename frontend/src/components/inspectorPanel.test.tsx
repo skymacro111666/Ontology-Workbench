@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import InspectorPanel from './InspectorPanel'
 import { useBrowseStore } from '../stores/browseStore'
+import { useUiStore } from '../stores/uiStore'
 import type { Envelope, EntityIR, NodesEdges } from '../api/types'
 
 const EID = 'http://example.org/Dog'
@@ -93,6 +94,7 @@ function renderPanel(
 
 beforeEach(() => {
   useBrowseStore.setState({ selectedEid: null, revealEid: null })
+  useUiStore.setState({ instanceDialog: null, instanceJustCreated: null })
 })
 
 afterEach(() => {
@@ -173,7 +175,7 @@ describe('InspectorPanel', () => {
     expect(useBrowseStore.getState().selectedEid).toBe('http://example.org/Dept')
   })
 
-  it('lists a class\'s direct instances below the backrefs (label + curie rows)', async () => {
+  it('lists a class\'s direct instances as navigable chips', async () => {
     const insts: NodesEdges = {
       nodes: [
         { id: 'http://example.org/james', curie: 'hr:james-anderson', label: { en: 'James Anderson' }, kind: 'instance' },
@@ -182,13 +184,24 @@ describe('InspectorPanel', () => {
       edges: [],
     }
     const { fetchMock } = renderPanel(stubFetch(entity(), insts))
-    expect(await screen.findByText('James Anderson')).toBeTruthy()
-    // Labeled instance shows both label and mono curie; labelless falls back to curie only.
-    expect(screen.getByText('hr:james-anderson')).toBeTruthy()
-    expect(screen.getByText('hr:sofia-cruz')).toBeTruthy()
+    // B2: instances are first-class — each row is a chip (label, or the local
+    // curie name when labelless) with the full curie in the tooltip.
+    const james = await screen.findByRole('button', { name: 'James Anderson' })
+    expect(james.title).toBe('hr:james-anderson')
+    expect(screen.getByRole('button', { name: 'sofia-cruz' }).title).toBe('hr:sofia-cruz')
     // The panel hit the instances endpoint once, after the class loaded.
     const urls = fetchMock.mock.calls.map(([u]) => String(u))
     expect(urls.filter((u) => u.endsWith('/instances'))).toHaveLength(1)
+    // Chip click navigates to the instance's own detail page.
+    await userEvent.click(james)
+    expect(useBrowseStore.getState().selectedEid).toBe('http://example.org/james')
+  })
+
+  it('opens the create-instance dialog from the section header ＋', async () => {
+    renderPanel()
+    expect(await screen.findByText('实例 (0)')).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: '添加实例' }))
+    expect(useUiStore.getState().instanceDialog).toEqual({ mode: 'create', parent: EID })
   })
 
   it('shows 无 for a class without instances', async () => {
