@@ -215,6 +215,109 @@ describe('GraphOverview context menu', () => {
   })
 })
 
+describe('GraphOverview assertion edges', () => {
+  /** Two classes whose badges each reveal one instance; the instances share
+   *  one object-property assertion (mirrors the Task 6 backend contract). */
+  function assertionStub(opts: { truncated?: boolean } = {}) {
+    return vi.fn(async (url: string | URL) => {
+      const u = String(url)
+      if (u.endsWith('/overview'))
+        return env({
+          nodes: [
+            { id: 'a', curie: 'ex:A', label: {}, kind: 'class', instanceCount: 1 },
+            { id: 'b', curie: 'ex:B', label: {}, kind: 'class', instanceCount: 1 },
+          ],
+          edges: [],
+          truncated: false,
+          totalCount: 2,
+        })
+      if (u.includes('/entities/a/instances'))
+        return env({
+          nodes: [{ id: 'i1', curie: 'ex:I1', label: {}, kind: 'instance' }],
+          edges: [],
+        })
+      if (u.includes('/entities/b/instances'))
+        return env({
+          nodes: [{ id: 'i2', curie: 'ex:I2', label: {}, kind: 'instance' }],
+          edges: [],
+        })
+      if (u.includes('/assertion-edges'))
+        return env({
+          edges: [{ source: 'i1', target: 'i2', label: 'inspiredBy' }],
+          truncated: !!opts.truncated,
+          total: opts.truncated ? 900 : 1,
+        })
+      return env({ positions: {} })
+    })
+  }
+
+  /** Badge-shaped click on the latest mounted graph (body clicks select). */
+  const clickBadge = (id: string) =>
+    lastG6()!.handlers['node:click']({
+      target: { id },
+      originalTarget: { className: 'badge-0', parentElement: null },
+    })
+
+  /** Canvas edge rows as MockGraph stores them (post toG6Edges mapping). */
+  const canvasEdges = () =>
+    (lastG6()!.options.data as { edges?: {
+      source: string
+      target: string
+      data?: { kind?: string }
+      style?: { labelText?: string }
+    }[] }).edges ?? []
+
+  it('badge reveal pulls assertion edges between revealed instances', async () => {
+    draw(assertionStub())
+    await waitForGraph()
+    clickBadge('a')
+    // The revealed instance joins the canvas (a rebuild mounts a new graph).
+    await vi.waitFor(() =>
+      expect(
+        (lastG6()!.options.data as { nodes?: { id: string }[] }).nodes?.some((n) => n.id === 'i1'),
+      ).toBe(true),
+    )
+    clickBadge('b')
+    await vi.waitFor(() =>
+      expect(
+        (lastG6()!.options.data as { nodes?: { id: string }[] }).nodes?.some((n) => n.id === 'i2'),
+      ).toBe(true),
+    )
+    // With both ends revealed, the assertion edge lands as a green-ish
+    // canvas edge carrying the property's local name as its label.
+    await vi.waitFor(() => {
+      const hit = canvasEdges().find((e) => e.source === 'i1' && e.target === 'i2')
+      expect(hit?.data?.kind).toBe('assertion')
+      expect(hit?.style?.labelText).toBe('inspiredBy')
+    })
+  })
+
+  it('truncated assertion edges toast once per revealed set', async () => {
+    draw(assertionStub({ truncated: true }))
+    await waitForGraph()
+    clickBadge('a')
+    await vi.waitFor(() =>
+      expect(
+        (lastG6()!.options.data as { nodes?: { id: string }[] }).nodes?.some((n) => n.id === 'i1'),
+      ).toBe(true),
+    )
+    clickBadge('b')
+    await vi.waitFor(() => expect(screen.getByText(/断言边过多/)).toBeTruthy())
+    // Collapsing and re-expanding the same badge set hits the same cached
+    // truncated payload — the notice must not repeat.
+    clickBadge('b')
+    await new Promise((r) => setTimeout(r, 50))
+    clickBadge('b')
+    await vi.waitFor(() =>
+      expect(
+        (lastG6()!.options.data as { nodes?: { id: string }[] }).nodes?.some((n) => n.id === 'i2'),
+      ).toBe(true),
+    )
+    await new Promise((r) => setTimeout(r, 100))
+    expect(screen.getAllByText(/断言边过多/)).toHaveLength(1)
+  })
+})
+
 function waitForGraph() {
   return vi.waitFor(() => {
     if (!lastG6()) throw new Error('graph not mounted yet')

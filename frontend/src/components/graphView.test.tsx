@@ -30,6 +30,7 @@ const TOKENS = {
   ink: '#0f172a',
   ink3: '#94a3b8',
   edgeSub: '#8b5cf6',
+  success: '#10b981',
   mono: 'mono',
 }
 

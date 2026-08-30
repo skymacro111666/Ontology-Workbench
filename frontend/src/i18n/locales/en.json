@@ -210,6 +210,8 @@
     "edgeObjectProp": "object property",
     "edgeDataProp": "data property",
     "edgeInstance": "instance",
+    "edgeAssertion": "instance property",
+    "assertionTruncated": "Too many assertion edges; showing first 500",
     "fit": "Fit",
     "relayout": "Relayout",
     "labels": "Labels",

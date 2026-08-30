@@ -210,6 +210,8 @@
     "edgeObjectProp": "对象属性",
     "edgeDataProp": "数据属性",
     "edgeInstance": "实例",
+    "edgeAssertion": "实例间属性",
+    "assertionTruncated": "断言边过多，仅显示前 500",
     "fit": "适配",
     "relayout": "重排",
     "labels": "标签",

@@ -133,7 +133,9 @@ export interface GNode {
 export interface GEdge {
   source: string
   target: string
-  kind: 'subClassOf' | 'property' | 'datatype' | 'instance' | string
+  kind: 'subClassOf' | 'property' | 'datatype' | 'instance' | 'assertion' | string
+  /** Assertion edges carry the property's local name for their label. */
+  label?: string
 }
 
 /** Nodes/edges payload; truncated marks the >5000-node degradation to 3 levels. */

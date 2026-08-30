@@ -52,6 +52,7 @@ export interface CanvasTokens {
   ink: string
   ink3: string
   edgeSub: string
+  success: string
   mono: string
 }
 
@@ -66,17 +67,22 @@ export function readCanvasTokens(): CanvasTokens {
     ink: v('--color-ink'),
     ink3: v('--color-ink-3'),
     edgeSub: v('--color-edge-sub'),
+    success: v('--color-success'),
     mono: v('--font-mono'),
   }
 }
 
 /** Edge semantics (spec §7.3): subclass dashed purple, object property solid
- *  indigo, data property dotted slate, instance plain grey — each with a
- *  matching arrowhead. */
-function edgeVisualFor(kind: string, t: CanvasTokens): { stroke: string; dash?: number[] } {
+ *  indigo, data property dotted slate, instance plain grey, assertion thin
+ *  green — each with a matching arrowhead. */
+function edgeVisualFor(
+  kind: string,
+  t: CanvasTokens,
+): { stroke: string; dash?: number[]; lineWidth?: number } {
   if (kind === 'subClassOf') return { stroke: t.edgeSub, dash: [6, 5] }
   if (kind === 'datatype') return { stroke: t.ink3, dash: [1, 4] }
   if (kind === 'instance') return { stroke: t.ink3 }
+  if (kind === 'assertion') return { stroke: t.success, lineWidth: 1 }
   return { stroke: t.primary }
 }
 
@@ -87,6 +93,7 @@ const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
   { label: 'canvas.edgeObjectProp', visual: { stroke: 'var(--color-primary)' } },
   { label: 'canvas.edgeDataProp', visual: { stroke: 'var(--color-ink-3)', dash: '1 4' } },
   { label: 'canvas.edgeInstance', visual: { stroke: 'var(--color-ink-3)' } },
+  { label: 'canvas.edgeAssertion', visual: { stroke: 'var(--color-success)' } },
 ]
 
 /** Two-stage layout pipeline: dagre fixes the ranks and sibling order
@@ -194,13 +201,16 @@ export function toG6Edges(
     .map((e, i) => {
       const v = edgeVisualFor(e.kind, t)
       // Edge labels: relation words for attach edges (subClassOf, instance),
-      // the target property's local name for property edges.
+      // the assertion property's local name for assertion edges (dynamic
+      // data, not i18n), the target property's local name for property edges.
       const label =
         e.kind === 'subClassOf'
           ? 'subClassOf'
           : e.kind === 'instance'
             ? 'instance'
-            : localName(visible.get(e.target) ?? e.kind)
+            : e.kind === 'assertion'
+              ? (e.label ?? '→')
+              : localName(visible.get(e.target) ?? e.kind)
       // Attach edges (subClassOf child→parent, instance→class) are swapped:
       // dagre TB places a datum's source above its target, so swapping puts
       // parents above children and instances below their class. The arrow
@@ -215,7 +225,7 @@ export function toG6Edges(
         data: { kind: e.kind },
         style: {
           stroke: v.stroke,
-          lineWidth: 1.5,
+          lineWidth: v.lineWidth ?? 1.5,
           ...(v.dash ? { lineDash: v.dash } : {}),
           ...(swapped
             ? { startArrow: true, startArrowSize: 8, startArrowFill: v.stroke }

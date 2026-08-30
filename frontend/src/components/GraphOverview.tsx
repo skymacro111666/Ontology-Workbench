@@ -4,7 +4,7 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
-import type { NodesEdges } from '../api/types'
+import type { AssertionEdgePayload, NodesEdges } from '../api/types'
 import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
@@ -201,9 +201,37 @@ export default function GraphOverview({
     ],
     [data, focus, revealed],
   )
+  /** Revealed instance eids across all badges — the assertion-edge scope:
+   *  the backend joins every pair whose both ends are expanded. */
+  const revealedIds = useMemo(
+    () => Object.values(revealed).flatMap((p) => (p?.nodes ?? []).map((n) => n.id)),
+    [revealed],
+  )
+  const edgeKey = useMemo(() => [...revealedIds].sort().join(','), [revealedIds])
+  const { data: aEdges } = useQuery({
+    enabled: revealedIds.length >= 2,
+    queryKey: ['assertion-edges', oid, edgeKey],
+    queryFn: () =>
+      api.get<AssertionEdgePayload>(
+        `/api/ontologies/${oid}/assertion-edges?eids=${revealedIds.map(encodeURIComponent).join(',')}`,
+      ),
+    retry: false,
+  })
+  /** A truncated assertion-edge payload warns once per revealed set — the
+   *  same cached payload re-notifying on collapse/expand would nag. */
+  const truncNotified = useRef<string | null>(null)
+  useEffect(() => {
+    if (!aEdges?.truncated || truncNotified.current === edgeKey) return
+    truncNotified.current = edgeKey
+    toast.info(t('canvas.assertionTruncated'))
+  }, [aEdges, edgeKey, t])
   const edges = useMemo(
-    () => [...(data?.edges ?? []), ...Object.values(revealed).flatMap((p) => p?.edges ?? [])],
-    [data, revealed],
+    () => [
+      ...(data?.edges ?? []),
+      ...Object.values(revealed).flatMap((p) => p?.edges ?? []),
+      ...(aEdges?.edges ?? []).map((e) => ({ ...e, kind: 'assertion' as const })),
+    ],
+    [data, revealed, aEdges],
   )
 
   if (isError) {
