@@ -2,7 +2,7 @@
 
 import rdflib
 
-from ontoworkbench.core.indexes import build_indexes
+from ontoworkbench.core.indexes import Indexes, build_indexes
 from ontoworkbench.core.ir import build_ir
 
 MINI = """@prefix ex: <http://example.org/> .
@@ -308,3 +308,94 @@ def test_individual_lookup_and_instance_search() -> None:
     assert only_inst and all(h.type == "Instance" for h in only_inst)
     only_cls = ix.search("three", 20, type_="Class")
     assert all(h.type != "Instance" for h in only_cls)
+
+
+ASSERT_MINI = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+ex:Parent a owl:Class .
+ex:Child a owl:Class ; rdfs:subClassOf ex:Parent .
+ex:directProp a owl:ObjectProperty ; rdfs:domain ex:Child ; rdfs:range ex:Parent .
+ex:parentProp a owl:DatatypeProperty ; rdfs:domain ex:Parent ; rdfs:range xsd:integer .
+ex:freeProp a owl:ObjectProperty .
+ex:multiProp a owl:ObjectProperty ; rdfs:domain ex:Parent , ex:Child ; rdfs:range ex:Parent .
+"""
+
+
+def test_assertion_schema_branches() -> None:
+    """Direct / inherited / domainless / multi-domain props with their targets."""
+    from ontoworkbench.core.parsing import parse_graph
+
+    ix = build_indexes(build_ir(parse_graph(ASSERT_MINI.encode(), "turtle")))
+    props = {p.curie: p for p in ix.assertion_schema(["http://example.org/Child"])}
+    assert set(props) == {"ex:directProp", "ex:parentProp", "ex:freeProp", "ex:multiProp"}
+
+    direct = props["ex:directProp"]
+    assert direct.inherited is False and direct.via is None
+    assert direct.target is not None
+    assert direct.target.kind == "class"
+    assert direct.target.curie == "ex:Parent" and direct.target.declared is True
+
+    inherited = props["ex:parentProp"]
+    assert inherited.inherited is True and inherited.via == "ex:Parent"
+    assert inherited.target is not None
+    assert inherited.target.kind == "datatype" and inherited.target.declared is None
+
+    free = props["ex:freeProp"]
+    assert free.inherited is False and free.via is None and free.target is None
+
+    # A direct domain hit wins over an ancestor hit regardless of row order.
+    multi = props["ex:multiProp"]
+    assert multi.inherited is False and multi.via is None
+
+
+def _linked(n: int, cap: int | None = None) -> tuple[Indexes, list[str], int]:
+    """Build n individuals with ex:knows between every ordered pair (i != j).
+
+    cap stops emitting pairs early; returns indexes, eids, and the true
+    edge count — the fixture for truthful truncation totals.
+    """
+    from ontoworkbench.core.parsing import parse_graph
+
+    ttl = (
+        "@prefix ex: <http://example.org/> .\n"
+        "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+        "ex:knows a owl:ObjectProperty .\n"
+    )
+    ttl += "".join(f"ex:w{i} a owl:NamedIndividual .\n" for i in range(n))
+    count = 0
+    for i in range(n):
+        for j in range(n):
+            if i == j or (cap is not None and count >= cap):
+                continue
+            ttl += f"ex:w{i} ex:knows ex:w{j} .\n"
+            count += 1
+    ix = build_indexes(build_ir(parse_graph(ttl.encode(), "turtle")))
+    return ix, [f"http://example.org/w{i}" for i in range(n)], count
+
+
+def test_assertion_edges_over_cap_totals_truthful() -> None:
+    """Past the cap: 500 returned, truncated flagged, total is the TRUE count."""
+    ix, eids, true_total = _linked(23)  # 23 * 22 = 506 matching pairs
+    out = ix.assertion_edges(eids)
+    assert len(out["edges"]) == 500
+    assert out["truncated"] is True
+    assert out["total"] == true_total == 506
+
+
+def test_assertion_edges_exactly_at_cap_not_truncated() -> None:
+    """Exactly 500 matching edges: nothing is dropped, truncated stays False."""
+    ix, eids, true_total = _linked(23, cap=500)
+    out = ix.assertion_edges(eids)
+    assert out["truncated"] is False
+    assert out["total"] == len(out["edges"]) == 500 == true_total
+
+
+def test_assertion_edges_sub_cap_full_payload() -> None:
+    """Under the cap every matching edge returns with honest totals."""
+    ix, eids, _ = _linked(5)  # 5 * 4 = 20 pairs
+    out = ix.assertion_edges(eids)
+    assert out["truncated"] is False
+    assert out["total"] == len(out["edges"]) == 20
+    assert {e["label"] for e in out["edges"]} == {"knows"}

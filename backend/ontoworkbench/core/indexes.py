@@ -10,6 +10,9 @@ from ontoworkbench.core.ir import EntityIR, IndividualIR, IRBundle
 
 MAX_OVERVIEW_NODES = 5000
 
+# Payload cap for assertion-edges: totals stay truthful, only the list is cut.
+MAX_ASSERTION_EDGES = 500
+
 # xsd namespace: range rows landing here are datatypes, not declared classes.
 XSD_NS = "http://www.w3.org/2001/XMLSchema#"
 
@@ -326,7 +329,11 @@ class Indexes:
                 continue
             domains = [r for r in e.referenced_by if r.relation == "rdfs:domain"]
             if domains:
-                hit = next((r for r in domains if r.eid in closure), None)
+                # Prefer a directly-given class over an ancestor hit; both
+                # walks are otherwise parse-order dependent (multi-domain).
+                hit = next((r for r in domains if r.eid in direct), None) or next(
+                    (r for r in domains if r.eid in closure), None
+                )
                 if hit is None:
                     continue
                 inherited = hit.eid not in direct
@@ -336,7 +343,7 @@ class Indexes:
             ranges = [r for r in e.referenced_by if r.relation == "rdfs:range"]
             target = None
             if ranges:
-                r0 = ranges[0]
+                r0 = sorted(ranges, key=lambda r: r.curie)[0]
                 is_dt = r0.eid is None or r0.eid.startswith(XSD_NS)
                 target = SchemaTarget(
                     kind="datatype" if is_dt else "class",
@@ -356,7 +363,11 @@ class Indexes:
         return list(out.values())
 
     def assertion_edges(self, eids: list[str]) -> dict[str, object]:
-        """Object assertions whose BOTH ends are in the given set (cap 500)."""
+        """Object assertions whose BOTH ends are in the given set.
+
+        Walks every matching edge so total/truncated stay truthful; the
+        payload list is capped at MAX_ASSERTION_EDGES.
+        """
         want = set(eids)
         edges: list[dict[str, str]] = []
         for eid in sorted(want):
@@ -372,9 +383,12 @@ class Indexes:
                             "label": a.property.curie.split(":")[-1],
                         }
                     )
-                    if len(edges) >= 500:
-                        return {"edges": edges, "truncated": True, "total": len(edges) + 1}
-        return {"edges": edges, "truncated": False, "total": len(edges)}
+        total = len(edges)
+        return {
+            "edges": edges[:MAX_ASSERTION_EDGES],
+            "truncated": total > MAX_ASSERTION_EDGES,
+            "total": total,
+        }
 
 
 def build_indexes(ir: IRBundle) -> Indexes:
