@@ -9,8 +9,9 @@ concerns stay out of instance concerns.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import Field
-from rdflib import OWL, RDF, RDFS, Graph, Literal, URIRef
+from pydantic import Field, field_validator
+from rdflib import OWL, RDF, RDFS, Graph, URIRef
+from rdflib import Literal as RDFLiteral
 from sqlalchemy.orm import Session
 
 from ontoworkbench.core.parsing import literal_type_ok
@@ -65,9 +66,17 @@ class AssertionInput(CamelModel):
     """One assertion row (UI 属性行);整体列表随 PUT 全量替换。."""
 
     property: str
-    kind: str  # object | data
+    kind: str  # validated at parse time
     value: str
     datatype: str | None = None
+
+    @field_validator("kind")
+    @classmethod
+    def validate_kind(cls, v: str) -> str:
+        """Validate kind is either 'object' or 'data'."""
+        if v not in ("object", "data"):
+            raise ValueError("kind must be 'object' or 'data'")
+        return v
 
 
 class InstanceUpdate(CamelModel):
@@ -119,7 +128,7 @@ def _replace_assertions(graph: Graph, iri: URIRef, rows: list[AssertionInput]) -
                     ErrorCode.VALIDATION_ERROR,
                     f"'{row.value}' is not a valid {datatype.rsplit('#', 1)[-1]}",
                 )
-            graph.add((iri, p, Literal(row.value, datatype=URIRef(datatype))))
+            graph.add((iri, p, RDFLiteral(row.value, datatype=URIRef(datatype))))
 
 
 @router.post("/ontologies/{ontology_id}/instances")
@@ -139,9 +148,9 @@ def create_instance(
     graph.add((iri, RDF.type, OWL.NamedIndividual))
     for c in body.classes:
         graph.add((iri, RDF.type, _declared_class(graph, c)))
-    graph.add((iri, RDFS.label, Literal(body.name)))
+    graph.add((iri, RDFS.label, RDFLiteral(body.name)))
     if body.comment:
-        graph.add((iri, RDFS.comment, Literal(body.comment)))
+        graph.add((iri, RDFS.comment, RDFLiteral(body.comment)))
     row, _ = _persist(request, session, row, graph)
     return respond({"meta": meta_of(row), "entity": _entity_payload(graph, iri, "Instance")})
 
@@ -192,10 +201,11 @@ def update_instance(
     graph = _load_graph(row)
     iri = _individual(graph, eid)
     touched = body.model_fields_set
+    # null = no-op (only comment clears via null); frontend sends [] to clear
     if "comment" in touched:
         graph.remove((iri, RDFS.comment, None))
         if body.comment:
-            graph.add((iri, RDFS.comment, Literal(body.comment)))
+            graph.add((iri, RDFS.comment, RDFLiteral(body.comment)))
     if "classes" in touched and body.classes is not None:
         for c in [o for o in graph.objects(iri, RDF.type) if isinstance(o, URIRef)]:
             if (c, RDF.type, OWL.Class) in graph:

@@ -125,6 +125,7 @@ def test_update_instance_replaces_assertions(client: TestClient) -> None:
     """Update instance comment, classes, and assertions with full replacement."""
     oid, meta = _upload(client)
     new_hash = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
+    # Replace the self-loop (ThreeBody → ThreeBody) with ThreeBody → FanSequel
     r = _put(
         client,
         oid,
@@ -136,7 +137,7 @@ def test_update_instance_replaces_assertions(client: TestClient) -> None:
                 {
                     "property": "http://example.org/inspiredBy",
                     "kind": "object",
-                    "value": "http://example.org/ThreeBody",
+                    "value": "http://example.org/FanSequel",  # DIFFERENT from fixture's self-loop
                 },
             ],
             "baseFileHash": new_hash,
@@ -147,11 +148,36 @@ def test_update_instance_replaces_assertions(client: TestClient) -> None:
     assert got["comment"] == "updated"
     assert [c["curie"] for c in got["classes"]] == ["ex:FanFic"]
     assert len(got["objectAssertions"]) == 1
-    assert "ex:inspiredBy" in _source(client, oid)
+    # Old self-loop must be GONE (this fails if sweep loop is deleted)
+    src = _source(client, oid)
+    assert "ex:ThreeBody ex:inspiredBy ex:ThreeBody" not in src
+    # New assertion must be present (Turtle serializer uses ; separator)
+    assert "ex:inspiredBy ex:FanSequel" in src
+
+
+def test_update_instance_clears_all_assertions(client: TestClient) -> None:
+    """Empty assertions list clears all declared assertions; undeclared references survive."""
+    oid, meta = _upload(client)
+    new_hash = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
+    r = _put(client, oid, TB, {"assertions": [], "baseFileHash": new_hash})
+    assert r.status_code == 200
+    got = client.get(f"/api/ontologies/{oid}/entities/{TB}").json()["data"]
+    # All declared assertions cleared
+    assert got["objectAssertions"] == []
+    assert got["dataAssertions"] == []
+    # Verify old assertion is gone from source
+    src = _source(client, oid)
+    assert "ex:ThreeBody ex:inspiredBy ex:ThreeBody" not in src
+    # UNDECLARED ex:knows reference (FanSequel → ThreeBody) must survive
+    # This is the object-end of an undeclared property pointing at TB
+    assert "ex:knows ex:ThreeBody" in src
 
 
 def test_update_instance_validation(client: TestClient) -> None:
-    """Validate assertion updates: undeclared property, non-instance object value, kind mismatch."""
+    """Validate assertion updates.
+
+    Undeclared property, non-instance object value, kind mismatch, bad kind value.
+    """
     oid, _ = _upload(client)
     h = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
     # 属性未声明
@@ -200,6 +226,23 @@ def test_update_instance_validation(client: TestClient) -> None:
                     "kind": "data",
                     "value": "x",
                     "datatype": "http://www.w3.org/2001/XMLSchema#string",
+                }
+            ],
+            "baseFileHash": h,
+        },
+    )
+    assert r.status_code == 422
+    # kind 值无效 (banana 不是 "object" 或 "data")
+    r = _put(
+        client,
+        oid,
+        TB,
+        {
+            "assertions": [
+                {
+                    "property": "http://example.org/inspiredBy",
+                    "kind": "banana",
+                    "value": "http://example.org/ThreeBody",
                 }
             ],
             "baseFileHash": h,
