@@ -69,3 +69,38 @@ def timed_parse(data: bytes, fmt: str) -> tuple[rdflib.Graph, float]:
     start = time.perf_counter()
     graph = parse_graph(data, fmt)
     return graph, (time.perf_counter() - start) * 1000.0
+
+
+def literal_type_ok(value: str, datatype: str) -> bool:
+    """Whether a lexical form parses as the xsd/rdfs datatype.
+
+    Lint + write validation share this; unknown datatypes accept — xsd:anyURI etc.
+    """
+    from datetime import date, datetime
+
+    from rdflib.namespace import XSD
+
+    def _try(fn) -> bool:
+        try:
+            fn()
+            return True
+        except ValueError:
+            return False
+
+    table = {
+        str(XSD.integer): lambda v: v.lstrip("+-").isdigit() and v.lstrip("+-") != "",
+        str(XSD.decimal): lambda v: _is_decimal(v),
+        str(XSD.boolean): lambda v: v in ("true", "false", "0", "1"),
+        str(XSD.date): lambda v: _try(lambda: date.fromisoformat(v)),
+        str(XSD.dateTime): lambda v: _try(lambda: datetime.fromisoformat(v)),
+    }
+    check = table.get(datatype)
+    return True if check is None else bool(check(value))
+
+
+def _is_decimal(v: str) -> bool:
+    try:
+        float(v)
+        return True
+    except ValueError:
+        return False

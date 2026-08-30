@@ -28,6 +28,7 @@ from ontoworkbench.server.routers import auth as auth_router
 from ontoworkbench.server.routers import browse as browse_router
 from ontoworkbench.server.routers import entities as entities_router
 from ontoworkbench.server.routers import export as export_router
+from ontoworkbench.server.routers import instances as instances_router
 from ontoworkbench.server.routers import ontologies as ontologies_router
 from ontoworkbench.server.staticfiles import SPAStaticFiles
 
@@ -90,6 +91,7 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     app.include_router(ontologies_router.router)
     app.include_router(browse_router.router)
     app.include_router(entities_router.router)
+    app.include_router(instances_router.router)
     app.include_router(export_router.router)
     configure_metrics(app)
 
