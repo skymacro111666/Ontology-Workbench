@@ -85,5 +85,37 @@ def test_missing_label_and_orphan() -> None:
     labeled = {f.subject for f in run_rule("missing-label", g, ir).findings}
     assert "http://example.org/Orphan" in labeled
     assert "http://example.org/GoodBook" not in labeled
+
+
+R789_TTL = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+ex:Novel a owl:Class ; rdfs:subClassOf foaf:Document ; rdfs:label "n" .
+ex:Lonely a owl:Class ; rdfs:label "n" .
+ex:deadProp a owl:ObjectProperty .
+ex:i1 a owl:NamedIndividual , ex:Novel ; rdfs:label "same" .
+ex:i2 a owl:NamedIndividual , ex:Novel ; rdfs:label "same" .
+"""
+
+
+def test_unused_property_and_undeclared_ref() -> None:
+    """Flag deadProp (no assertions, no wiring) and the undeclared parent.
+
+    Novel's subClassOf points at the never-declared foaf:Document.
+    """
+    g, ir = parse_graph(R789_TTL.encode(), "turtle"), _ir(R789_TTL)
+    assert "http://example.org/deadProp" in {
+        f.subject for f in run_rule("unused-property", g, ir).findings
+    }
+    refs = {f.subject for f in run_rule("undeclared-ref", g, ir).findings}
+    assert "http://example.org/Novel" in refs  # foaf:Document 未声明
+
+
+def test_duplicate_label_groups() -> None:
+    """i1/i2 share the label "same"; the group surfaces with its params."""
+    g, ir = parse_graph(R789_TTL.encode(), "turtle"), _ir(R789_TTL)
+    res = run_rule("duplicate-label", g, ir)
+    assert any(f.params.get("label") == "same" for f in res.findings)
     # The Task 16/17 config surface names rules by id; pin the first three.
     assert {"disjoint-parents", "instance-disjoint", "subclass-cycle"} <= set(RULES)

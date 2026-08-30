@@ -294,3 +294,53 @@ def _orphan_class(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, s
         wired = any(r.relation != "subClassOf" for r in e.referenced_by)
         if not wired:
             yield e.eid, {}
+
+
+@rule("unused-property", "warning")
+def _unused_property(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+    """Flag declared properties with no assertions anywhere and no domain/range."""
+    used: set[str] = set()
+    for ind in ir.individuals.values():
+        for oa in ind.object_assertions:
+            used.add(oa.property.eid)
+        for da in ind.data_assertions:
+            used.add(da.property.eid)
+    for e in ir.entities.values():
+        if e.type == "Class" or e.eid in used:
+            continue
+        wired = any(r.relation in ("rdfs:domain", "rdfs:range") for r in e.referenced_by)
+        if not wired:
+            yield e.eid, {}
+
+
+@rule("undeclared-ref", "info")
+def _undeclared_ref(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+    """Flag external IRIs used as parents / ranges / assertion values.
+
+    Legal vocabulary reuse — informational only.
+    """
+    for e in ir.entities.values():
+        for p in e.parents:
+            if p.eid not in ir.entities:
+                yield e.eid, {"ref": p.curie}
+        for r in e.referenced_by:
+            if r.relation == "rdfs:range" and r.eid and r.eid not in ir.entities:
+                if not r.eid.startswith(XSD_NS):
+                    yield e.eid, {"ref": r.curie}
+    for ind in ir.individuals.values():
+        for oa in ind.object_assertions:
+            if oa.object.eid not in ir.individuals and oa.object.eid not in ir.entities:
+                yield ind.eid, {"ref": oa.object.curie}
+
+
+@rule("duplicate-label", "info")
+def _duplicate_label(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+    """Flag the same (lang, value) label shared by several entities/individuals."""
+    groups: dict[tuple[str, str], list[str]] = {}
+    for coll in (ir.entities.values(), ir.individuals.values()):
+        for item in coll:
+            for lang, value in item.label.items():
+                groups.setdefault((lang, value), []).append(item.eid)
+    for (lang, value), eids in sorted(groups.items()):
+        if len(eids) > 1:
+            yield sorted(eids)[0], {"label": value, "lang": lang, "count": str(len(eids))}
