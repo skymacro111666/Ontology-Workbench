@@ -1,0 +1,145 @@
+{
+  "_comment": "Sample: GET /api/ontologies/{oid}/assertion-schema?classes={ScienceFiction} -> 200. Usable assertion properties for inline instance editing (spec §4.1): declared properties whose domain lies in the classes superclass closure (inherited=true, via=pulling class curie) united with domainless properties; target.kind datatype marks xsd ranges (declared null), class marks declared range classes. Bounded, unordered-equivalent list sorted by curie.",
+  "code": "OK",
+  "message": "success",
+  "data": [
+    {
+      "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#available",
+      "curie": "lib:available",
+      "label": {
+        "zh-Cn": "可外借",
+        "en": "available"
+      },
+      "ptype": "DatatypeProperty",
+      "inherited": true,
+      "via": "lib:LibraryMaterial",
+      "target": {
+        "kind": "datatype",
+        "curie": "xsd:boolean",
+        "eid": "http://www.w3.org/2001/XMLSchema#boolean",
+        "declared": null
+      }
+    },
+    {
+      "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#hasCreator",
+      "curie": "lib:hasCreator",
+      "label": {
+        "zh-Cn": "创作者",
+        "en": "has creator"
+      },
+      "ptype": "ObjectProperty",
+      "inherited": true,
+      "via": "lib:Book",
+      "target": {
+        "kind": "class",
+        "curie": "lib:Person",
+        "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#Person",
+        "declared": true
+      }
+    },
+    {
+      "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#hasTranslator",
+      "curie": "lib:hasTranslator",
+      "label": {
+        "zh-Cn": "译者",
+        "en": "has translator"
+      },
+      "ptype": "ObjectProperty",
+      "inherited": true,
+      "via": "lib:Book",
+      "target": {
+        "kind": "class",
+        "curie": "lib:Person",
+        "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#Person",
+        "declared": true
+      }
+    },
+    {
+      "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#isbn",
+      "curie": "lib:isbn",
+      "label": {
+        "zh-Cn": "ISBN",
+        "en": "ISBN"
+      },
+      "ptype": "DatatypeProperty",
+      "inherited": true,
+      "via": "lib:Book",
+      "target": {
+        "kind": "datatype",
+        "curie": "xsd:string",
+        "eid": "http://www.w3.org/2001/XMLSchema#string",
+        "declared": null
+      }
+    },
+    {
+      "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#locatedIn",
+      "curie": "lib:locatedIn",
+      "label": {
+        "zh-Cn": "位于",
+        "en": "located in"
+      },
+      "ptype": "ObjectProperty",
+      "inherited": true,
+      "via": "lib:LibraryMaterial",
+      "target": {
+        "kind": "class",
+        "curie": "lib:Location",
+        "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#Location",
+        "declared": true
+      }
+    },
+    {
+      "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#pageCount",
+      "curie": "lib:pageCount",
+      "label": {
+        "zh-Cn": "页数",
+        "en": "page count"
+      },
+      "ptype": "DatatypeProperty",
+      "inherited": true,
+      "via": "lib:Book",
+      "target": {
+        "kind": "datatype",
+        "curie": "xsd:integer",
+        "eid": "http://www.w3.org/2001/XMLSchema#integer",
+        "declared": null
+      }
+    },
+    {
+      "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#publicationYear",
+      "curie": "lib:publicationYear",
+      "label": {
+        "zh-Cn": "出版年",
+        "en": "publication year"
+      },
+      "ptype": "DatatypeProperty",
+      "inherited": true,
+      "via": "lib:LibraryMaterial",
+      "target": {
+        "kind": "datatype",
+        "curie": "xsd:integer",
+        "eid": "http://www.w3.org/2001/XMLSchema#integer",
+        "declared": null
+      }
+    },
+    {
+      "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#title",
+      "curie": "lib:title",
+      "label": {
+        "zh-Cn": "题名",
+        "en": "title"
+      },
+      "ptype": "DatatypeProperty",
+      "inherited": true,
+      "via": "lib:LibraryMaterial",
+      "target": {
+        "kind": "datatype",
+        "curie": "xsd:string",
+        "eid": "http://www.w3.org/2001/XMLSchema#string",
+        "declared": null
+      }
+    }
+  ],
+  "hint": null,
+  "request_id": "ac97c19e107b"
+}

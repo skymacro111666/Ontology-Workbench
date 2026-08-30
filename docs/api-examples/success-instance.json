@@ -1,0 +1,108 @@
+{
+  "_comment": "Sample: GET /api/ontologies/{id}/entities/{eid} for a named individual (lib:ThreeBody of the bundled library sample) -> 200. Instance payloads dispatch by eid (IndividualIR, spec 2026-08-30 §2): classes / objectAssertions / dataAssertions carry Ref-shaped far ends; camelCase per the browse data contract.",
+  "code": "OK",
+  "message": "success",
+  "data": {
+    "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#ThreeBody",
+    "curie": "lib:ThreeBody",
+    "kind": "instance",
+    "label": {
+      "zh-Cn": "三体",
+      "en": "The Three-Body Problem"
+    },
+    "comment": null,
+    "classes": [
+      {
+        "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#ScienceFiction",
+        "curie": "lib:ScienceFiction",
+        "label": {
+          "zh-Cn": "科幻小说",
+          "en": "Science Fiction"
+        }
+      }
+    ],
+    "objectAssertions": [
+      {
+        "property": {
+          "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#hasCreator",
+          "curie": "lib:hasCreator",
+          "label": {
+            "zh-Cn": "创作者",
+            "en": "has creator"
+          },
+          "ptype": "ObjectProperty"
+        },
+        "object": {
+          "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#LiuCixin",
+          "curie": "lib:LiuCixin",
+          "label": {
+            "zh-Cn": "刘慈欣",
+            "en": "Liu Cixin"
+          }
+        }
+      },
+      {
+        "property": {
+          "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#locatedIn",
+          "curie": "lib:locatedIn",
+          "label": {
+            "zh-Cn": "位于",
+            "en": "located in"
+          },
+          "ptype": "ObjectProperty"
+        },
+        "object": {
+          "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#MainStacks",
+          "curie": "lib:MainStacks",
+          "label": {
+            "zh-Cn": "主书库",
+            "en": "Main Stacks"
+          }
+        }
+      }
+    ],
+    "dataAssertions": [
+      {
+        "property": {
+          "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#available",
+          "curie": "lib:available",
+          "label": {
+            "zh-Cn": "可外借",
+            "en": "available"
+          },
+          "ptype": "DatatypeProperty"
+        },
+        "value": "true",
+        "datatype": "http://www.w3.org/2001/XMLSchema#boolean"
+      },
+      {
+        "property": {
+          "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#pageCount",
+          "curie": "lib:pageCount",
+          "label": {
+            "zh-Cn": "页数",
+            "en": "page count"
+          },
+          "ptype": "DatatypeProperty"
+        },
+        "value": "302",
+        "datatype": "http://www.w3.org/2001/XMLSchema#integer"
+      },
+      {
+        "property": {
+          "eid": "https://github.com/skymacro111666/ontology-workbench/samples/library#publicationYear",
+          "curie": "lib:publicationYear",
+          "label": {
+            "zh-Cn": "出版年",
+            "en": "publication year"
+          },
+          "ptype": "DatatypeProperty"
+        },
+        "value": "2008",
+        "datatype": "http://www.w3.org/2001/XMLSchema#integer"
+      }
+    ]
+  },
+  "hint": null,
+  "request_id": "fb51d0bd3da6"
+}

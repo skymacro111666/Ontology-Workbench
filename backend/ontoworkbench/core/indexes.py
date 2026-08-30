@@ -10,6 +10,9 @@ from ontoworkbench.core.ir import EntityIR, IndividualIR, IRBundle
 
 MAX_OVERVIEW_NODES = 5000
 
+# xsd namespace: range rows landing here are datatypes, not declared classes.
+XSD_NS = "http://www.w3.org/2001/XMLSchema#"
+
 # Sentinel parent for the sidebar's property tab: tree(parent=__props__)
 # lists property entities (eids are full IRIs, so this cannot collide).
 PROPS_PARENT = "__props__"
@@ -34,6 +37,27 @@ class SearchHit(BaseModel):
     label: dict[str, str] = {}
     type: str
     matched_field: str
+
+
+class SchemaTarget(BaseModel):
+    """An assertion property's far end: a class or an xsd datatype."""
+
+    kind: str  # class | datatype
+    curie: str
+    eid: str | None = None
+    declared: bool | None = None
+
+
+class SchemaProp(BaseModel):
+    """One usable assertion property for a set of classes (spec §4.1)."""
+
+    eid: str
+    curie: str
+    label: dict[str, str] = {}
+    ptype: str
+    inherited: bool = False
+    via: str | None = None  # curie of the class pulling it in (inherited only)
+    target: SchemaTarget | None = None
 
 
 class Indexes:
@@ -283,6 +307,74 @@ class Indexes:
             "truncated": depth_cap is not None,
             "total_count": len(self._ir.entities),
         }
+
+    # -- assertion schema / edges ----------------------------------------
+    def assertion_schema(self, class_eids: list[str]) -> list[SchemaProp]:
+        """Usable assertion properties: superclass-closure domains plus domainless (spec §3)."""
+        direct = {e for e in class_eids if e in self._ir.entities}
+        closure: set[str] = set()
+        stack = list(direct)
+        while stack:
+            eid = stack.pop()
+            if eid in closure or eid not in self._ir.entities:
+                continue
+            closure.add(eid)
+            stack.extend(p.eid for p in self._ir.entities[eid].parents)
+        out: dict[str, SchemaProp] = {}
+        for e in sorted(self._ir.entities.values(), key=lambda x: x.curie):
+            if e.type == "Class":
+                continue
+            domains = [r for r in e.referenced_by if r.relation == "rdfs:domain"]
+            if domains:
+                hit = next((r for r in domains if r.eid in closure), None)
+                if hit is None:
+                    continue
+                inherited = hit.eid not in direct
+                via = hit.curie if inherited else None
+            else:
+                inherited, via = False, None  # domainless: universal
+            ranges = [r for r in e.referenced_by if r.relation == "rdfs:range"]
+            target = None
+            if ranges:
+                r0 = ranges[0]
+                is_dt = r0.eid is None or r0.eid.startswith(XSD_NS)
+                target = SchemaTarget(
+                    kind="datatype" if is_dt else "class",
+                    curie=r0.curie,
+                    eid=r0.eid,
+                    declared=None if is_dt else (r0.eid in self._ir.entities),
+                )
+            out[e.eid] = SchemaProp(
+                eid=e.eid,
+                curie=e.curie,
+                label=e.label,
+                ptype=e.type,
+                inherited=inherited,
+                via=via,
+                target=target,
+            )
+        return list(out.values())
+
+    def assertion_edges(self, eids: list[str]) -> dict[str, object]:
+        """Object assertions whose BOTH ends are in the given set (cap 500)."""
+        want = set(eids)
+        edges: list[dict[str, str]] = []
+        for eid in sorted(want):
+            ind = self._ir.individuals.get(eid)
+            if not ind:
+                continue
+            for a in ind.object_assertions:
+                if a.object.eid in want:
+                    edges.append(
+                        {
+                            "source": eid,
+                            "target": a.object.eid,
+                            "label": a.property.curie.split(":")[-1],
+                        }
+                    )
+                    if len(edges) >= 500:
+                        return {"edges": edges, "truncated": True, "total": len(edges) + 1}
+        return {"edges": edges, "truncated": False, "total": len(edges)}
 
 
 def build_indexes(ir: IRBundle) -> Indexes:

@@ -283,3 +283,45 @@ def _upload_library(client: TestClient) -> str:
     )
     assert r.status_code == 201
     return r.json()["data"]["id"]
+
+
+def test_assertion_schema_closure_and_domainless(client: TestClient) -> None:
+    """Novel 的 schema 含自身 domain 属性;继承与无 domain 属性并入."""
+    from urllib.parse import quote
+
+    # 引号拼进 URL(引 IRI 走线上一重编码;params= 会把 % 再编码一次)
+    oid = _upload_library(client)
+    cls = quote(
+        "https://github.com/skymacro111666/ontology-workbench/samples/library#ScienceFiction",
+        safe="",
+    )
+    r = client.get(f"/api/ontologies/{oid}/assertion-schema?classes={cls}")
+    assert r.status_code == 200
+    props = {p["curie"]: p for p in r.json()["data"]}
+    assert "lib:hasCreator" in props  # domain 覆盖(含父类闭包或直接)
+    for p in r.json()["data"]:
+        assert p["ptype"] in ("ObjectProperty", "DatatypeProperty", "Property")
+
+
+def test_assertion_edges_only_between_given(client: TestClient) -> None:
+    """给定集合内的对象断言成边;集合外的不画."""
+    from urllib.parse import quote
+
+    oid = _upload_library(client)
+    tb, lx = (
+        quote(
+            "https://github.com/skymacro111666/ontology-workbench/samples/library#ThreeBody",
+            safe="",
+        ),
+        quote(
+            "https://github.com/skymacro111666/ontology-workbench/samples/library#LiuCixin",
+            safe="",
+        ),
+    )
+    r = client.get(f"/api/ontologies/{oid}/assertion-edges?eids={tb},{lx}")
+    assert r.status_code == 200
+    edges = r.json()["data"]["edges"]
+    assert any(e["label"] == "hasCreator" for e in edges)
+    # 只给 ThreeBody:断言对象不在集合 → 无边
+    r = client.get(f"/api/ontologies/{oid}/assertion-edges?eids={tb}")
+    assert r.json()["data"]["edges"] == []

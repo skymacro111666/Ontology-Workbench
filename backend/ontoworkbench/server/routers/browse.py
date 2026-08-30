@@ -169,6 +169,34 @@ def source(
     )
 
 
+@router.get("/{ontology_id}/assertion-schema")
+def assertion_schema(
+    ontology_id: str,
+    request: Request,
+    classes: str = Query(default=""),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Usable assertion properties for the comma-joined classes."""
+    _, ix = _owned(request, user, ontology_id, session)
+    want = [c for c in classes.split(",") if c]
+    return respond(_camel([p.model_dump() for p in ix.assertion_schema(want)]))
+
+
+@router.get("/{ontology_id}/assertion-edges")
+def assertion_edges(
+    ontology_id: str,
+    request: Request,
+    eids: str = Query(default=""),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Instance-to-instance assertion edges within the given set (cap 500)."""
+    _, ix = _owned(request, user, ontology_id, session)
+    want = [e for e in eids.split(",") if e]
+    return respond(_camel(ix.assertion_edges(want)))
+
+
 @router.get("/{ontology_id}/search")
 def search(
     ontology_id: str,
