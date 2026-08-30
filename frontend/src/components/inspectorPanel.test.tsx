@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import InspectorPanel from './InspectorPanel'
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
-import type { Envelope, EntityIR, NodesEdges } from '../api/types'
+import type { Envelope, EntityIR, NodesEdges, SchemaProp } from '../api/types'
 
 const EID = 'http://example.org/Dog'
 const PARENT = 'http://example.org/Animal'
@@ -54,13 +54,16 @@ function okEnvelope(data: unknown) {
   } satisfies Envelope<unknown>)
 }
 
-function stubFetch(data: EntityIR = entity(), insts: NodesEdges = { nodes: [], edges: [] }) {
-  return vi.fn(async (url: string | URL) =>
-    new Response(
-      okEnvelope(String(url).endsWith('/instances') ? insts : data),
-      { headers: { 'Content-Type': 'application/json' } },
-    ),
-  )
+function stubFetch(
+  data: EntityIR = entity(),
+  insts: NodesEdges = { nodes: [], edges: [] },
+  schema: SchemaProp[] = [],
+) {
+  return vi.fn(async (url: string | URL) => {
+    const u = String(url)
+    const body = u.endsWith('/instances') ? insts : u.includes('/assertion-schema') ? schema : data
+    return new Response(okEnvelope(body), { headers: { 'Content-Type': 'application/json' } })
+  })
 }
 
 /** External entity: envelope carries a non-OK code so unwrap throws. */
@@ -124,7 +127,8 @@ describe('InspectorPanel', () => {
     expect(screen.getByText('Corgi')).toBeTruthy()
     expect(screen.getByText('Kennel')).toBeTruthy()
     // Section titles carry counts (competitor's Subclasses (3) pattern); the
-    // props mini table is gone — 被引用's domain rows carry the same properties.
+    // property section rides the assertion-schema endpoint and stays absent
+    // while that schema is empty.
     expect(screen.getByText('父类 (1)')).toBeTruthy()
     expect(screen.getByText('直接子类 (1)')).toBeTruthy()
     expect(screen.queryByText(/属性 \(/)).toBeNull()
@@ -202,6 +206,49 @@ describe('InspectorPanel', () => {
     expect(await screen.findByText('实例 (0)')).toBeTruthy()
     await userEvent.click(screen.getByRole('button', { name: '添加实例' }))
     expect(useUiStore.getState().instanceDialog).toEqual({ mode: 'create', parent: EID })
+  })
+
+  it('class detail lists usable properties with inherited grouping', async () => {
+    // Shapes mirror the backend assertion-schema contract: an object prop
+    // points at a declared range class, a datatype prop at an xsd curie.
+    const schema: SchemaProp[] = [
+      {
+        eid: 'http://example.org/wrote',
+        curie: 'lib:wrote',
+        label: {},
+        ptype: 'ObjectProperty',
+        inherited: false,
+        via: null,
+        target: { kind: 'class', curie: 'lib:Book', eid: 'http://example.org/Book', declared: true },
+      },
+      {
+        eid: 'http://example.org/title',
+        curie: 'lib:title',
+        label: {},
+        ptype: 'DatatypeProperty',
+        inherited: true,
+        via: 'lib:Book',
+        target: { kind: 'datatype', curie: 'xsd:string', eid: null, declared: null },
+      },
+    ]
+    const { fetchMock } = renderPanel(stubFetch(entity(), { nodes: [], edges: [] }, schema))
+    // Section appears only when the schema is non-empty; counts carry both rows.
+    expect(await screen.findByText('属性 (2)')).toBeTruthy()
+    // Property names render as bare local names; the range class is a
+    // navigable chip with the full curie in its tooltip.
+    const book = screen.getByText('Book')
+    expect(book.title).toBe('lib:Book')
+    expect(screen.getByText('wrote')).toBeTruthy()
+    // Inherited rows dim and carry the 「继承自 via」 suffix; datatype
+    // targets read as `= localName(xsd curie)`.
+    expect(screen.getByText('继承自', { exact: false }).textContent).toContain('lib:Book')
+    expect(screen.getByText('= string').tagName).toBe('SPAN')
+    // The schema endpoint was queried with this class's eid.
+    const urls = fetchMock.mock.calls.map(([u]) => String(u))
+    expect(urls.some((u) => u.includes('/assertion-schema?classes='))).toBe(true)
+    // Range-class chip click navigates to that class.
+    await userEvent.click(book)
+    expect(useBrowseStore.getState().selectedEid).toBe('http://example.org/Book')
   })
 
   it('shows 无 for a class without instances', async () => {

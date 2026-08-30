@@ -121,6 +121,7 @@
     "children": "Direct children",
     "referencedBy": "Referenced by",
     "instances": "Instances",
+    "properties": "Properties",
     "inheritedFrom": "inherited from"
   },
   "instance": {

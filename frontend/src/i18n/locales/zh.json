@@ -121,6 +121,7 @@
     "children": "直接子类",
     "referencedBy": "被引用",
     "instances": "实例",
+    "properties": "属性",
     "inheritedFrom": "继承自"
   },
   "instance": {

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
-import type { CounterpartRef, EntityIR, GNode, InstanceIR, NodesEdges, Ref, ReferencedRef } from '../api/types'
+import type { CounterpartRef, EntityIR, GNode, InstanceIR, NodesEdges, Ref, ReferencedRef, SchemaProp } from '../api/types'
 import { errText } from '../i18n/errText'
 import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
@@ -123,6 +123,59 @@ function InstanceRows({ nodes }: { nodes: GNode[] }) {
         <Chip key={n.id} eid={n.id} curie={n.curie} label={n.label} />
       ))}
     </div>
+  )
+}
+
+/** A class's usable properties (own + inherited): where assertion editing
+ *  draws its property list, and the class page's capability sheet. Inherited
+ *  rows dim with a 「继承自 via」 suffix (competitor's pattern); object
+ *  properties pair with a navigable range-class link, datatype properties
+ *  with `= localName(xsd curie)`. Same query key shape as InstanceDetail's
+ *  single-class schema lookups, so the entries share cache. */
+function ClassPropSection({ oid, cls }: { oid: string; cls: string }) {
+  const { t } = useTranslation()
+  const setSelected = useBrowseStore((s) => s.setSelected)
+  const { data: props } = useQuery({
+    queryKey: ['assertion-schema', oid, cls],
+    queryFn: () =>
+      api.get<SchemaProp[]>(
+        `/api/ontologies/${oid}/assertion-schema?classes=${encodeURIComponent(cls)}`,
+      ),
+  })
+  if (!props?.length) return null
+  return (
+    <Section label={t('inspector.properties')} count={props.length}>
+      <div className="flex flex-col gap-1">
+        {props.map((p) => (
+          <div
+            key={p.eid}
+            className={cn('flex flex-wrap items-baseline gap-1.5 text-xs', p.inherited && 'opacity-60')}
+          >
+            <span className="text-ink-2 font-mono">{localName(p.curie)}</span>
+            {p.target?.kind === 'class' ? (
+              <>
+                <span className="text-ink-3">→</span>
+                <button
+                  type="button"
+                  title={p.target.curie}
+                  onClick={() => p.target?.eid && setSelected(p.target.eid)}
+                  className="text-primary hover:underline underline decoration-dotted underline-offset-2"
+                >
+                  {localName(p.target.curie)}
+                </button>
+              </>
+            ) : (
+              <span className="text-ink-3">= {localName(p.target?.curie ?? '')}</span>
+            )}
+            {p.inherited && p.via && (
+              <span className="text-ink-3 text-[10px]">
+                {t('inspector.inheritedFrom')} {p.via}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </Section>
   )
 }
 
@@ -258,6 +311,7 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
       <Section label={t('inspector.children')} count={ent.children.length}>
         <ChipList refs={ent.children} />
       </Section>
+      {ent.type === 'Class' && <ClassPropSection oid={oid} cls={ent.eid} />}
       <Section label={t('inspector.referencedBy')} count={dirRefs(ent.referencedBy).length}>
         <BackRefChips refs={ent.referencedBy} />
       </Section>
