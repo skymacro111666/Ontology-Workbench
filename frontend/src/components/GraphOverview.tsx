@@ -10,6 +10,7 @@ import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
 import GraphContextMenu, { type MenuItem } from './GraphContextMenu'
 import GraphView, { type GraphViewNode } from './GraphView'
+import { useLint } from './LintPanel'
 import type { Pt } from './layoutPositions'
 import { Button } from '@/components/ui/button'
 
@@ -115,6 +116,9 @@ export default function GraphOverview({
   const setEntityDialog = useUiStore((s) => s.setEntityDialog)
   const setInstanceDialog = useUiStore((s) => s.setInstanceDialog)
   const queryClient = useQueryClient()
+  /** B3 lint slices: the button rides the control cluster, the drawer
+   *  anchors to the relative canvas container (not the cluster box). */
+  const lint = useLint(oid)
   /** Open canvas context menu: blank-area or node right-click report. */
   const [menu, setMenu] = useState<{
     x: number
@@ -279,7 +283,9 @@ export default function GraphOverview({
           onLayoutChange={(positions) => saveLayout.mutate(positions)}
           onResetLayout={() => void resetLayout()}
           onContextMenu={(info) => setMenu(info)}
+          extraControls={lint.button}
         />
+        {lint.drawer}
         {menu && (
           <GraphContextMenu
             x={menu.x}

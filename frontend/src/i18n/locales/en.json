@@ -200,6 +200,49 @@
       "Instance": "Instance"
     }
   },
+  "lint": {
+    "check": "Check",
+    "checking": "Checking…",
+    "results": "Results",
+    "stale": "Stale — re-run",
+    "settings": "Rule settings",
+    "error": "Errors",
+    "warning": "Warnings",
+    "info": "Notes",
+    "tookMs": "{{ms}}ms",
+    "showing": "showing first {{n}}",
+    "timeout": "rule timed out (10s)",
+    "noIssues": "No issues found",
+    "newRule": "New rule",
+    "nameLabel": "Name",
+    "severity": "Severity",
+    "query": "Query",
+    "test": "Test",
+    "builtin": "Built-in",
+    "custom": "Custom",
+    "ruleName": {
+      "disjoint-parents": "Disjoint parents",
+      "instance-disjoint": "Instance disjointness",
+      "subclass-cycle": "Subclass cycle",
+      "domain-range": "Domain-range",
+      "missing-label": "Missing label",
+      "orphan-class": "Orphan class",
+      "unused-property": "Unused property",
+      "undeclared-ref": "Undeclared reference",
+      "duplicate-label": "Duplicate label"
+    },
+    "rule": {
+      "disjoint-parents": "parents {{parent1}} and {{parent2}} are disjoint",
+      "instance-disjoint": "type closure spans disjoint {{class1}} / {{class2}}",
+      "subclass-cycle": "subclass hierarchy cycle",
+      "domain-range": "{{property}} value {{value}} violates its range {{expected}}",
+      "missing-label": "missing rdfs:label",
+      "orphan-class": "orphan: no parents/children/instances/references",
+      "unused-property": "declared but never used",
+      "undeclared-ref": "references undeclared {{ref}}",
+      "duplicate-label": "label \"{{label}}\" ({{lang}}) shared by {{count}}"
+    }
+  },
   "canvas": {
     "newClass": "＋ New class",
     "newSubclass": "New subclass",

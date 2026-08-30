@@ -200,6 +200,49 @@
       "Instance": "实例"
     }
   },
+  "lint": {
+    "check": "检查",
+    "checking": "检查中…",
+    "results": "检查结果",
+    "stale": "已过期，请重新检查",
+    "settings": "规则设置",
+    "error": "错误",
+    "warning": "警告",
+    "info": "提示",
+    "tookMs": "{{ms}}ms",
+    "showing": "仅显示前 {{n}} 条",
+    "timeout": "规则超时（10s）",
+    "noIssues": "未发现问题",
+    "newRule": "新建规则",
+    "nameLabel": "名称",
+    "severity": "级别",
+    "query": "查询",
+    "test": "测试",
+    "builtin": "内置规则",
+    "custom": "自定义规则",
+    "ruleName": {
+      "disjoint-parents": "不相交父类",
+      "instance-disjoint": "实例不相交违反",
+      "subclass-cycle": "子类环",
+      "domain-range": "domain-range 违反",
+      "missing-label": "缺标签",
+      "orphan-class": "孤类",
+      "unused-property": "未使用属性",
+      "undeclared-ref": "未声明引用",
+      "duplicate-label": "重复标签"
+    },
+    "rule": {
+      "disjoint-parents": "父类 {{parent1}} 与 {{parent2}} 互不相交",
+      "instance-disjoint": "类型闭包横跨不相交的 {{class1}} 与 {{class2}}",
+      "subclass-cycle": "类层次成环",
+      "domain-range": "{{property}} 的值 {{value}} 不符声明范围{{expected}}",
+      "missing-label": "缺少 rdfs:label",
+      "orphan-class": "孤类：无父、无子、无实例、无引用",
+      "unused-property": "声明后从未使用",
+      "undeclared-ref": "引用了未声明的 {{ref}}",
+      "duplicate-label": "标签「{{label}}」（{{lang}}）被 {{count}} 个实体共用"
+    }
+  },
   "canvas": {
     "newClass": "＋ 新建类",
     "newSubclass": "新建子类",

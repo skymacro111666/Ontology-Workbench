@@ -97,6 +97,35 @@ export interface AssertionEdgePayload {
   total: number
 }
 
+/** One lint hit (POST /lint/run camelCase contract). */
+export interface LintFindingT {
+  ruleId: string
+  severity: string
+  subject: string
+  subjectCurie: string
+  params: Record<string, string>
+}
+
+/** One rule's outcome in a lint report. */
+export interface LintRuleResultT {
+  ruleId: string
+  name: string | null
+  severity: string | null
+  durationMs: number
+  findings: LintFindingT[]
+  total: number
+  truncated: boolean
+  error: string | null
+}
+
+/** The whole manual lint run payload (B3). */
+export interface LintReportT {
+  fileHash: string
+  durationMs: number
+  counts: Record<string, number>
+  results: LintRuleResultT[]
+}
+
 /** One node of the lazily-loaded class tree (GET /tree). */
 export interface TreeNode {
   eid: string

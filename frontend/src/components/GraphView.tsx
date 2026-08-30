@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Graph } from '@antv/g6'
 import type { EdgeData, GraphData, IPointerEvent, NodeData } from '@antv/g6'
@@ -290,6 +291,7 @@ export default function GraphView({
   onLayoutChange,
   onResetLayout,
   onContextMenu,
+  extraControls,
 }: {
   nodes: GraphViewNode[]
   edges: GEdge[]
@@ -301,6 +303,8 @@ export default function GraphView({
   focusId?: string
   /** Whether the zoom/fit control cluster is rendered (default true). */
   showControls?: boolean
+  /** Caller buttons mounted into the control cluster (e.g. B3's 检查). */
+  extraControls?: ReactNode
   /** Initial uncontrolled kind filter (the canvas stays all-on; callers
    *  with class-only semantics — e.g. the overview — seed it here). */
   defaultKinds?: KindFilter
@@ -627,6 +631,7 @@ export default function GraphView({
               {tr('canvas.relayout')}
             </button>
           )}
+          {extraControls}
         </div>
       )}
 
