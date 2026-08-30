@@ -6,18 +6,23 @@ trigger only, spec §0).
 
 from __future__ import annotations
 
+import time
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
+from ontoworkbench.core.lint import CustomRuleSpec
+from ontoworkbench.core.lint import run as run_lint_engine
 from ontoworkbench.db.models import User
 from ontoworkbench.db.repositories import LintRuleRepository
 from ontoworkbench.db.session import get_session
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
+from ontoworkbench.server.routers.browse import _camel, _owned
+from ontoworkbench.server.routers.entities import _load_graph
 
 router = APIRouter(prefix="/api/ontologies", tags=["lint"])
 
@@ -101,3 +106,50 @@ def put_config(
     customs = [c.model_dump() for c in body.custom]
     LintRuleRepository(session).replace_all(oid, body.disabled, customs)
     return respond(_config_payload(session, oid))
+
+
+class LintRunIn(CamelModel):
+    """Run request: optionally scope to one rule (settings「测试」button)."""
+
+    only_rule_id: str | None = None
+
+
+@router.post("/{ontology_id}/lint/run")
+def run_lint(
+    ontology_id: str,
+    body: LintRunIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Run the whole lint set manually (spec §0: 仅手动).
+
+    Reparses the stored file — that cost is why runs are never automatic.
+    """
+    row, ix = _owned(request, user, ontology_id, session)
+    rows = LintRuleRepository(session).list_for(row.id)
+    disabled = {r.key for r in rows if r.kind == "builtin" and r.key is not None}
+    custom = [
+        CustomRuleSpec(
+            id=str(r.id),
+            name=r.name or "",
+            severity=r.severity or "info",
+            sparql=r.sparql or "",
+        )
+        for r in rows
+        if r.kind == "custom" and r.enabled
+    ]
+    t0 = time.perf_counter()
+    report = run_lint_engine(
+        _load_graph(row), ix.ir, disabled, custom, only_rule_id=body.only_rule_id
+    )
+    return respond(
+        _camel(
+            {
+                "fileHash": row.file_hash,
+                "durationMs": round((time.perf_counter() - t0) * 1000, 1),
+                "counts": report.counts,
+                "results": [r.model_dump() for r in report.results],
+            }
+        )
+    )

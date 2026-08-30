@@ -117,5 +117,41 @@ def test_duplicate_label_groups() -> None:
     g, ir = parse_graph(R789_TTL.encode(), "turtle"), _ir(R789_TTL)
     res = run_rule("duplicate-label", g, ir)
     assert any(f.params.get("label") == "same" for f in res.findings)
+
+
+def test_custom_rule_rows_to_findings() -> None:
+    """A SPARQL SELECT's rows land as findings under the spec's id."""
+    from ontoworkbench.core.lint import CustomRuleSpec, run
+
+    src = R456_TTL.replace('ex:year "二〇〇八"', 'ex:year "1937"^^xsd:integer')
+    spec = CustomRuleSpec(
+        id="c1",
+        name="老书",
+        severity="info",
+        sparql="SELECT ?s WHERE { ?s <http://example.org/year> ?y . FILTER(?y < 1950) }",
+    )
+    g = parse_graph(src.encode(), "turtle")
+    report = run(g, _ir(src), disabled=set(), custom=[spec])
+    custom = next(r for r in report.results if r.rule_id == "c1")
+    assert custom.error is None
+    assert "http://example.org/GoodBook" in {f.subject for f in custom.findings}
+
+
+def test_custom_rule_timeout(monkeypatch) -> None:
+    """A hung SPARQL query returns TIMEOUT instead of blocking the run."""
+    import time as _time
+
+    from rdflib import Graph as _Graph
+
+    from ontoworkbench.core.lint import CustomRuleSpec, _run_custom
+
+    def slow_query(self, q):
+        _time.sleep(0.3)
+        return []
+
+    monkeypatch.setattr(_Graph, "query", slow_query)
+    spec = CustomRuleSpec(id="c2", name="x", severity="info", sparql="SELECT ?s WHERE {}")
+    res = _run_custom(spec, None, _Graph(), timeout_s=0.05)
+    assert res.error == "TIMEOUT" and res.findings == []
     # The Task 16/17 config surface names rules by id; pin the first three.
     assert {"disjoint-parents", "instance-disjoint", "subclass-cycle"} <= set(RULES)

@@ -344,3 +344,108 @@ def _duplicate_label(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str
     for (lang, value), eids in sorted(groups.items()):
         if len(eids) > 1:
             yield sorted(eids)[0], {"label": value, "lang": lang, "count": str(len(eids))}
+
+
+class CustomRuleSpec(BaseModel):
+    """A user-authored SPARQL rule (from lint config's custom rows)."""
+
+    id: str
+    name: str
+    severity: str
+    sparql: str
+
+
+def _run_custom(
+    spec: CustomRuleSpec, ir: IRBundle | None, graph: Graph, timeout_s: float = 10.0
+) -> RuleResult:
+    """Run one custom SPARQL SELECT with a hard timeout.
+
+    rdflib has no query timeout, so an executor we refuse to join is the
+    escape hatch (a hung worker leaks until it eventually finishes —
+    recorded tradeoff).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as FutTimeout
+
+    t0 = time.perf_counter()
+
+    def _query() -> list:
+        return list(graph.query(spec.sparql))
+
+    try:
+        ex = ThreadPoolExecutor(max_workers=1)
+        try:
+            rows = ex.submit(_query).result(timeout=timeout_s)
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
+    except FutTimeout:
+        return RuleResult(
+            rule_id=spec.id,
+            name=spec.name,
+            severity=spec.severity,
+            duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+            findings=[],
+            total=0,
+            truncated=False,
+            error="TIMEOUT",
+        )
+    except Exception as exc:  # syntax errors etc. — a finding, not a crash
+        return RuleResult(
+            rule_id=spec.id,
+            name=spec.name,
+            severity=spec.severity,
+            duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+            findings=[],
+            total=0,
+            truncated=False,
+            error=f"SPARQL_ERROR: {exc}",
+        )
+    findings = []
+    for row in rows[:MAX_FINDINGS]:
+        terms = list(row)
+        subject = str(terms[0]) if terms else ""
+        findings.append(
+            Finding(
+                rule_id=spec.id,
+                severity=spec.severity,
+                subject=subject,
+                subject_curie=_curie_of(ir, subject) if ir else subject.rsplit("/", 1)[-1],
+                params={f"v{i}": str(t) for i, t in enumerate(terms[1:], start=1)},
+            )
+        )
+    return RuleResult(
+        rule_id=spec.id,
+        name=spec.name,
+        severity=spec.severity,
+        duration_ms=round((time.perf_counter() - t0) * 1000, 1),
+        findings=findings,
+        total=len(rows),
+        truncated=len(rows) > MAX_FINDINGS,
+    )
+
+
+def run(
+    graph: Graph,
+    ir: IRBundle,
+    disabled: set[str],
+    custom: list[CustomRuleSpec],
+    only_rule_id: str | None = None,
+    timeout_s: float = 10.0,
+) -> LintReport:
+    """Assemble the full report: enabled builtins + enabled custom rules."""
+    results: list[RuleResult] = []
+    for defn in RULES.values():
+        if only_rule_id and defn.rule_id != only_rule_id:
+            continue
+        if defn.rule_id in disabled:
+            continue
+        results.append(run_rule(defn.rule_id, graph, ir))
+    for spec in custom:
+        if only_rule_id and spec.id != only_rule_id:
+            continue
+        results.append(_run_custom(spec, ir, graph, timeout_s))
+    counts = {"error": 0, "warning": 0, "info": 0}
+    for r in results:
+        for f in r.findings:
+            counts[f.severity] = counts.get(f.severity, 0) + 1
+    return LintReport(counts=counts, results=results)
