@@ -120,7 +120,8 @@
     "parents": "Parents",
     "children": "Direct children",
     "referencedBy": "Referenced by",
-    "instances": "Instances"
+    "instances": "Instances",
+    "inheritedFrom": "inherited from"
   },
   "instance": {
     "badge": "INSTANCE",
@@ -129,7 +130,13 @@
     "typeSection": "Types",
     "objectProps": "Object properties",
     "dataProps": "Data properties",
-    "edit": "Edit"
+    "edit": "Edit",
+    "addProp": "Add property",
+    "removeRow": "Remove row",
+    "pickInstance": "Search instances…",
+    "literalValue": "Value",
+    "assertSection": "Properties",
+    "saving": "Saving…"
   },
   "sourceview": {
     "dirty": "● Unsaved",

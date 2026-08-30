@@ -96,3 +96,75 @@ describe('InstanceDetail view', () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(TB))
   })
 })
+
+describe('InstanceDetail edit mode', () => {
+  const SCHEMA = [
+    { eid: 'http://example.org/library#hasCreator', curie: 'lib:hasCreator', label: {}, ptype: 'ObjectProperty', inherited: false, via: null, target: { kind: 'class', curie: 'lib:Person', eid: 'http://example.org/library#Person', declared: true } },
+    { eid: 'http://example.org/library#publicationYear', curie: 'lib:publicationYear', label: {}, ptype: 'DatatypeProperty', inherited: false, via: null, target: { kind: 'datatype', curie: 'xsd:integer', eid: null, declared: null } },
+  ]
+  const SEARCH_HITS = [
+    { eid: LCX, curie: 'lib:LiuCixin', label: { en: '刘慈ixin' }, type: 'Instance', matchedField: 'label' },
+  ]
+  // Edit-mode rows seed from the instance's assertions; hasCreator must be
+  // unused (addable) and the single seeded row deletable, so drop the object
+  // assertion the view tests rely on.
+  const EDIT_INSTANCE = { ...INSTANCE, objectAssertions: [] }
+  let put: { url: string; body: Record<string, unknown> }[] = []
+
+  function drawEdit() {
+    put = []
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const u = String(url)
+      const method = init?.method ?? 'GET'
+      if (method === 'PUT') {
+        put.push({ url: u, body: JSON.parse(String(init?.body)) as Record<string, unknown> })
+        return env({ meta: {}, entity: { eid: TB, curie: 'lib:ThreeBody', type: 'Instance' } })
+      }
+      if (u.includes('/assertion-schema')) return env(SCHEMA)
+      if (u.includes('/search')) return env(SEARCH_HITS)
+      if (u.includes('/entities/')) return env(EDIT_INSTANCE)
+      if (u.endsWith('/meta')) return env({ fileHash: 'hash-2' })
+      if (u.includes('/overview')) return env({ nodes: [{ id: SF, curie: 'lib:ScienceFiction', label: {}, kind: 'class' }], edges: [] })
+      return env({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return render(
+      <QueryClientProvider client={qc}>
+        <ThemeProvider><InspectorPanel oid={OID} eid={TB} /></ThemeProvider>
+      </QueryClientProvider>,
+    )
+  }
+
+  it('batch-saves comment/classes/assertions in one PUT', async () => {
+    drawEdit()
+    await screen.findAllByText('ThreeBody')
+    await userEvent.click(screen.getByRole('button', { name: /编辑/ }))
+    // 新属性行:选 hasCreator,搜索选实例
+    await userEvent.click(await screen.findByRole('button', { name: /添加属性/ }))
+    await userEvent.click(await screen.findByRole('button', { name: /hasCreator/ }))
+    const search = await screen.findByPlaceholderText(/搜索实例/)
+    await userEvent.type(search, '刘慈')
+    await userEvent.click(await screen.findByRole('button', { name: '刘慈ixin' }))
+    await userEvent.click(screen.getByRole('button', { name: /保存/ }))
+    await waitFor(() => expect(put).toHaveLength(1))
+    expect(put[0].url).toContain(`/instances/`)
+    expect(put[0].body.baseFileHash).toBe('hash-2')
+    // 全量替换:未动的 publicationYear 原行 + 新加的 hasCreator 行
+    expect(put[0].body.assertions).toEqual([
+      expect.objectContaining({ property: 'http://example.org/library#publicationYear', kind: 'data', value: '2008', datatype: 'http://www.w3.org/2001/XMLSchema#integer' }),
+      expect.objectContaining({ property: 'http://example.org/library#hasCreator', kind: 'object', value: LCX }),
+    ])
+  })
+
+  it('remove buttons drop rows before save', async () => {
+    drawEdit()
+    await screen.findAllByText('ThreeBody')
+    await userEvent.click(screen.getByRole('button', { name: /编辑/ }))
+    const del = await screen.findAllByRole('button', { name: /删除行|×/ })
+    await userEvent.click(del[0])
+    await userEvent.click(screen.getByRole('button', { name: /保存/ }))
+    await waitFor(() => expect(put).toHaveLength(1))
+    expect(put[0].body.assertions).toEqual([])
+  })
+})

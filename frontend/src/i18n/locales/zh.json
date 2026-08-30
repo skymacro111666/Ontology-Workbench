@@ -120,7 +120,8 @@
     "parents": "父类",
     "children": "直接子类",
     "referencedBy": "被引用",
-    "instances": "实例"
+    "instances": "实例",
+    "inheritedFrom": "继承自"
   },
   "instance": {
     "badge": "实例",
@@ -129,7 +130,13 @@
     "typeSection": "类型",
     "objectProps": "对象属性",
     "dataProps": "数据属性",
-    "edit": "编辑"
+    "edit": "编辑",
+    "addProp": "添加属性",
+    "removeRow": "删除行",
+    "pickInstance": "搜索实例…",
+    "literalValue": "值",
+    "assertSection": "属性",
+    "saving": "保存中…"
   },
   "sourceview": {
     "dirty": "● 未保存",

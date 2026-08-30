@@ -27,7 +27,7 @@ import {
  *  Design spec 2026-08-26 §4 (frontend): every submit invalidates the whole
  *  tree so overview/tree/inspector/source all re-read the rewritten file. */
 
-const XSD_TYPES = [
+export const XSD_TYPES = [
   ['http://www.w3.org/2001/XMLSchema#string', 'xsd:string'],
   ['http://www.w3.org/2001/XMLSchema#integer', 'xsd:integer'],
   ['http://www.w3.org/2001/XMLSchema#decimal', 'xsd:decimal'],
@@ -43,7 +43,7 @@ const isProperty = (m: EntityDialogMode) => m === 'objectProperty' || m === 'dat
 const isEdit = (m: EntityDialogMode) => m === 'editClass' || m === 'editProperty'
 
 /** Filterable class list; multi for parents/domains, single for range. */
-function ClassPicker({
+export function ClassPicker({
   classes,
   value,
   onChange,
