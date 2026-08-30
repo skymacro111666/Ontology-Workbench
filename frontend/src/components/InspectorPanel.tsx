@@ -2,16 +2,17 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
-import type { CounterpartRef, EntityIR, GNode, NodesEdges, Ref, ReferencedRef } from '../api/types'
+import type { CounterpartRef, EntityIR, GNode, InstanceIR, NodesEdges, Ref, ReferencedRef } from '../api/types'
 import { errText } from '../i18n/errText'
 import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
 import { cn } from '@/lib/utils'
+import InstanceDetail from './InstanceDetail'
 
 /** Clickable entity chip (mockup linklist): soft primary pill; the human
  *  label when present, the local curie name otherwise — the full curie
  *  rides along in the tooltip. Selecting navigates the workspace along. */
-function Chip({ eid, curie, label }: Ref) {
+export function Chip({ eid, curie, label }: Ref) {
   const setSelected = useBrowseStore((s) => s.setSelected)
   const human = Object.values(label ?? {})[0]
   return (
@@ -130,7 +131,7 @@ function InstanceRows({ nodes }: { nodes: GNode[] }) {
   )
 }
 
-function Section({
+export function Section({
   label,
   count,
   children,
@@ -192,6 +193,11 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
   }
   if (!ent) {
     return <div className="text-ink-3 py-10 text-center text-sm">{t('common.loading')}</div>
+  }
+
+  // Dispatch to InstanceDetail for instances (entities have kind: 'entity' or undefined)
+  if (ent.kind === 'instance') {
+    return <InstanceDetail oid={oid} eid={eid as string} inst={ent as InstanceIR} />
   }
 
   return (

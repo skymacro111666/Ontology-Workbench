@@ -122,6 +122,14 @@
     "referencedBy": "Referenced by",
     "instances": "Instances"
   },
+  "instance": {
+    "badge": "INSTANCE",
+    "copyUri": "Copy",
+    "copied": "Copied",
+    "typeSection": "Types",
+    "objectProps": "Object properties",
+    "dataProps": "Data properties"
+  },
   "sourceview": {
     "dirty": "● Unsaved",
     "findReplace": "Find/Replace (Ctrl+F)",

@@ -64,6 +64,37 @@ export interface EntityIR {
   referencedBy: ReferencedRef[]
   axioms: { turtle: string }[]
   stats: EntityStats
+  kind?: 'entity'
+}
+
+/** Instance detail page payload (GET /entities/{eid}). */
+export interface InstanceIR {
+  eid: string
+  curie: string
+  kind: 'instance'
+  label: LocalizedLabels
+  comment: string | null
+  classes: Ref[]
+  objectAssertions: { property: PropRef; object: Ref }[]
+  dataAssertions: { property: PropRef; value: string; datatype: string }[]
+}
+
+/** Schema property reference used in property tables. */
+export interface SchemaProp {
+  eid: string
+  curie: string
+  label: LocalizedLabels
+  ptype: string
+  inherited: boolean
+  via: string | null
+  target: { kind: 'class' | 'datatype'; curie: string; eid: string | null; declared: boolean | null } | null
+}
+
+/** Assertion edge payload for graph queries. */
+export interface AssertionEdgePayload {
+  edges: { source: string; target: string; label: string }[]
+  truncated: boolean
+  total: number
 }
 
 /** One node of the lazily-loaded class tree (GET /tree). */

@@ -122,6 +122,14 @@
     "referencedBy": "被引用",
     "instances": "实例"
   },
+  "instance": {
+    "badge": "实例",
+    "copyUri": "复制",
+    "copied": "已复制",
+    "typeSection": "类型",
+    "objectProps": "对象属性",
+    "dataProps": "数据属性"
+  },
   "sourceview": {
     "dirty": "● 未保存",
     "findReplace": "查找/替换（Ctrl+F）",
