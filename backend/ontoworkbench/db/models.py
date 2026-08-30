@@ -15,6 +15,7 @@ from sqlalchemy import (
     Integer,
     MetaData,
     String,
+    Text,
     UniqueConstraint,
     func,
     text,
@@ -110,3 +111,25 @@ class OntologyLayout(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTimeTZ, server_default=func.now(), onupdate=_now
     )
+
+
+class LintRule(Base):
+    """Per-ontology lint configuration (B3).
+
+    Builtin toggles (disabled rows) and custom SPARQL rules. Pure tool
+    config — never touches ontology files.
+    """
+
+    __tablename__ = "lint_rules"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    ontology_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ontologies.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(16))  # builtin | custom
+    key: Mapped[str | None] = mapped_column(String(64))
+    name: Mapped[str | None] = mapped_column(String(128))
+    severity: Mapped[str | None] = mapped_column(String(16))
+    sparql: Mapped[str | None] = mapped_column(Text)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())

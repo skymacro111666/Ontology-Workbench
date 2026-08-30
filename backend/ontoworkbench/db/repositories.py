@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ontoworkbench.db.models import Ontology, OntologyLayout, User
+from ontoworkbench.db.models import LintRule, Ontology, OntologyLayout, User
 
 
 class UserRepository:
@@ -253,3 +253,56 @@ class LayoutRepository:
         if row:
             self._s.delete(row)
             self._s.commit()
+
+
+class LintRuleRepository:
+    """Access to lint_rules: per-ontology builtin toggles + custom rules."""
+
+    def __init__(self, session: Session) -> None:
+        """Initialize the repository with a SQLAlchemy session.
+
+        Args:
+            session: SQLAlchemy database session.
+        """
+        self._s = session
+
+    def list_for(self, ontology_id: UUID) -> list[LintRule]:
+        """All config rows for an ontology, insertion-ordered.
+
+        Args:
+            ontology_id: UUID of the ontology.
+
+        Returns:
+            The LintRule rows (builtin toggles and custom rules alike).
+        """
+        stmt = (
+            select(LintRule)
+            .where(LintRule.ontology_id == ontology_id)
+            .order_by(LintRule.created_at)
+        )
+        return list(self._s.scalars(stmt))
+
+    def replace_all(self, ontology_id: UUID, disabled: list[str], customs: list[dict]) -> None:
+        """Whole-config overwrite (PUT semantics; idempotent, no locks).
+
+        Args:
+            ontology_id: UUID of the ontology.
+            disabled: builtin rule ids to switch off.
+            customs: custom rule dicts (name/severity/sparql/enabled).
+        """
+        for row in self.list_for(ontology_id):
+            self._s.delete(row)
+        for key in disabled:
+            self._s.add(LintRule(ontology_id=ontology_id, kind="builtin", key=key, enabled=False))
+        for c in customs:
+            self._s.add(
+                LintRule(
+                    ontology_id=ontology_id,
+                    kind="custom",
+                    name=c["name"],
+                    severity=c["severity"],
+                    sparql=c["sparql"],
+                    enabled=c.get("enabled", True),
+                )
+            )
+        self._s.commit()
