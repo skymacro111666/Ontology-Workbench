@@ -18,6 +18,8 @@ from ontoworkbench.core.ir import IRBundle
 
 MAX_FINDINGS = 200
 
+XSD_NS = "http://www.w3.org/2001/XMLSchema#"
+
 
 class Finding(BaseModel):
     """One rule hit: the offending entity plus params for the copy."""
@@ -213,3 +215,82 @@ def _subclass_cycle(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str,
                 stack.pop()
     for eid in sorted(on_cycle):
         yield eid, {}
+
+
+def _range_index(ir: IRBundle) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Map property eid → declared class ranges / xsd datatype ranges."""
+    rng_classes: dict[str, list[str]] = {}
+    rng_dts: dict[str, list[str]] = {}
+    for e in ir.entities.values():
+        if e.type == "Class":
+            continue
+        for r in e.referenced_by:
+            if r.relation != "rdfs:range" or not r.eid:
+                continue
+            if r.eid.startswith(XSD_NS):
+                rng_dts.setdefault(e.eid, []).append(r.eid)
+            else:
+                rng_classes.setdefault(e.eid, []).append(r.eid)
+    return rng_classes, rng_dts
+
+
+@rule("domain-range", "error")
+def _domain_range(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+    """Flag assertions outside the property's declared range.
+
+    Object assertion values whose type closure misses every declared class
+    range; data assertions whose literal fails the declared xsd range.
+    """
+    from ontoworkbench.core.parsing import literal_type_ok
+
+    rng_classes, rng_dts = _range_index(ir)
+    closure = _ancestors_factory(ir)
+    for ind in ir.individuals.values():
+        for a in ind.object_assertions:
+            want = rng_classes.get(a.property.eid)
+            if not want:
+                continue
+            target = ir.individuals.get(a.object.eid)
+            ttypes: set[str] = set()
+            if target:
+                for c in target.classes:
+                    ttypes |= closure(c.eid)
+            if not any(w in ttypes for w in want):
+                yield ind.eid, {"property": a.property.curie, "value": a.object.curie}
+        for da in ind.data_assertions:
+            for dt in rng_dts.get(da.property.eid, []):
+                if not literal_type_ok(da.value, dt):
+                    yield (
+                        ind.eid,
+                        {
+                            "property": da.property.curie,
+                            "value": da.value,
+                            "expected": dt.rsplit("#", 1)[-1],
+                        },
+                    )
+
+
+@rule("missing-label", "warning")
+def _missing_label(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+    """Flag declared entities and individuals with no rdfs:label at all."""
+    for e in ir.entities.values():
+        if not e.label:
+            yield e.eid, {}
+    for ind in ir.individuals.values():
+        if not ind.label:
+            yield ind.eid, {}
+
+
+@rule("orphan-class", "warning")
+def _orphan_class(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+    """Flag classes with no parents, children, instances or domain/range wiring."""
+    for e in ir.entities.values():
+        if e.type != "Class":
+            continue
+        if e.parents or e.children or e.stats.direct_children:
+            continue
+        if ir.instances.get(e.eid):
+            continue
+        wired = any(r.relation != "subClassOf" for r in e.referenced_by)
+        if not wired:
+            yield e.eid, {}

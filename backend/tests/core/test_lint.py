@@ -46,5 +46,44 @@ def test_subclass_cycle_detected() -> None:
 def test_builtin_rule_registry_covers_first_three() -> None:
     """The Task 16/17 config surface names rules by id; pin the first three."""
     assert {"disjoint-parents", "instance-disjoint", "subclass-cycle"} <= set(RULES)
+
+
+R456_TTL = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+ex:Novel a owl:Class ; rdfs:label "novel" .
+ex:Orphan a owl:Class .
+ex:wrote a owl:ObjectProperty ; rdfs:domain ex:Novel ; rdfs:range ex:Novel .
+ex:year a owl:DatatypeProperty ; rdfs:domain ex:Novel ; rdfs:range xsd:integer .
+ex:GoodBook a owl:NamedIndividual , ex:Novel ; rdfs:label "gb" ;
+  ex:wrote ex:BadBook ; ex:year "二〇〇八" .
+ex:BadBook a owl:NamedIndividual ; rdfs:label "gb" .
+"""
+
+
+def test_domain_range_flags_object_and_data() -> None:
+    """GoodBook breaks both branches of the range check.
+
+    wrote→typeless BadBook (object out of range) and year "二〇〇八"
+    against xsd:integer (data out of range).
+    """
+    g = parse_graph(R456_TTL.encode(), "turtle")
+    res = run_rule("domain-range", g, _ir(R456_TTL))
+    subs = {f.subject for f in res.findings}
+    assert "http://example.org/GoodBook" in subs
+    assert "http://example.org/BadBook" not in subs
+
+
+def test_missing_label_and_orphan() -> None:
+    """Orphan has no label and no wiring; Novel is labeled and instanced."""
+    g = parse_graph(R456_TTL.encode(), "turtle")
+    ir = _ir(R456_TTL)
+    orphan = {f.subject for f in run_rule("orphan-class", g, ir).findings}
+    assert "http://example.org/Orphan" in orphan
+    assert "http://example.org/Novel" not in orphan
+    labeled = {f.subject for f in run_rule("missing-label", g, ir).findings}
+    assert "http://example.org/Orphan" in labeled
+    assert "http://example.org/GoodBook" not in labeled
     # The Task 16/17 config surface names rules by id; pin the first three.
     assert {"disjoint-parents", "instance-disjoint", "subclass-cycle"} <= set(RULES)
