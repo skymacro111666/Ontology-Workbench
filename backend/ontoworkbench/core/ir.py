@@ -201,8 +201,14 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
         (s for s in graph.subjects(RDF.type, OWL.Class) if isinstance(s, URIRef)),
         key=str,
     )
-    object_props = set(graph.subjects(RDF.type, OWL.ObjectProperty))
-    datatype_props = set(graph.subjects(RDF.type, OWL.DatatypeProperty))
+    object_props: set[URIRef] = set()
+    datatype_props: set[URIRef] = set()
+    for s in graph.subjects(RDF.type, OWL.ObjectProperty):
+        if isinstance(s, URIRef):
+            object_props.add(s)
+    for s in graph.subjects(RDF.type, OWL.DatatypeProperty):
+        if isinstance(s, URIRef):
+            datatype_props.add(s)
     props = sorted(
         (s for s in (object_props | datatype_props) if isinstance(s, URIRef)),
         key=str,
@@ -351,19 +357,24 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
         cls: list[Ref] = []
         obj_asserts: list[ObjectAssertion] = []
         data_asserts: list[DataAssertion] = []
-        for p, o in graph.predicate_objects(ind):
-            if p == RDF.type:
-                if o in class_set:
-                    instances.setdefault(str(o), []).append(_ref(graph, ind))
-                    cls.append(_ref(graph, o))
-            elif p in object_props and isinstance(o, URIRef):
+        for pred, obj in graph.predicate_objects(ind):
+            if pred == RDF.type:
+                if obj in class_set and isinstance(obj, URIRef):
+                    instances.setdefault(str(obj), []).append(_ref(graph, ind))
+                    cls.append(_ref(graph, obj))
+            elif isinstance(pred, URIRef) and pred in object_props and isinstance(obj, URIRef):
                 obj_asserts.append(
-                    ObjectAssertion(property=_prop_ref(graph, p), object=_ref(graph, o))
+                    ObjectAssertion(property=_prop_ref(graph, pred), object=_ref(graph, obj))
                 )
-            elif p in datatype_props and isinstance(o, Literal) and o.datatype is not None:
+            elif (
+                isinstance(pred, URIRef)
+                and pred in datatype_props
+                and isinstance(obj, Literal)
+                and obj.datatype is not None
+            ):
                 data_asserts.append(
                     DataAssertion(
-                        property=_prop_ref(graph, p), value=str(o), datatype=str(o.datatype)
+                        property=_prop_ref(graph, pred), value=str(obj), datatype=str(obj.datatype)
                     )
                 )
         individuals_out[str(ind)] = IndividualIR(

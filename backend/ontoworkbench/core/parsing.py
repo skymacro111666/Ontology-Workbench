@@ -76,11 +76,12 @@ def literal_type_ok(value: str, datatype: str) -> bool:
 
     Lint + write validation share this; unknown datatypes accept — xsd:anyURI etc.
     """
+    from collections.abc import Callable
     from datetime import date, datetime
 
     from rdflib.namespace import XSD
 
-    def _try(fn) -> bool:
+    def _try(fn: Callable[[], object]) -> bool:
         try:
             fn()
             return True

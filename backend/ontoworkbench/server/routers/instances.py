@@ -210,8 +210,8 @@ def update_instance(
         for c in [o for o in graph.objects(iri, RDF.type) if isinstance(o, URIRef)]:
             if (c, RDF.type, OWL.Class) in graph:
                 graph.remove((iri, RDF.type, c))
-        for c in body.classes:
-            graph.add((iri, RDF.type, _declared_class(graph, c)))
+        for cls_iri in body.classes:
+            graph.add((iri, RDF.type, _declared_class(graph, cls_iri)))
     if "assertions" in touched and body.assertions is not None:
         _replace_assertions(graph, iri, body.assertions)
     row, _ = _persist(request, session, row, graph)
