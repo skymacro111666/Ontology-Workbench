@@ -105,13 +105,12 @@ describe('InstanceDetail edit mode', () => {
   const SEARCH_HITS = [
     { eid: LCX, curie: 'lib:LiuCixin', label: { en: '刘慈ixin' }, type: 'Instance', matchedField: 'label' },
   ]
-  // Edit-mode rows seed from the instance's assertions; hasCreator must be
-  // unused (addable) and the single seeded row deletable, so drop the object
-  // assertion the view tests rely on.
+  // Edit-mode rows seed from the instance's assertions; dropping the object
+  // assertion keeps the seeded row count at one (deletable → assertions []).
   const EDIT_INSTANCE = { ...INSTANCE, objectAssertions: [] }
   let put: { url: string; body: Record<string, unknown> }[] = []
 
-  function drawEdit() {
+  function drawEdit(inst: unknown = EDIT_INSTANCE) {
     put = []
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
       const u = String(url)
@@ -122,7 +121,7 @@ describe('InstanceDetail edit mode', () => {
       }
       if (u.includes('/assertion-schema')) return env(SCHEMA)
       if (u.includes('/search')) return env(SEARCH_HITS)
-      if (u.includes('/entities/')) return env(EDIT_INSTANCE)
+      if (u.includes('/entities/')) return env(inst)
       if (u.endsWith('/meta')) return env({ fileHash: 'hash-2' })
       if (u.includes('/overview')) return env({ nodes: [{ id: SF, curie: 'lib:ScienceFiction', label: {}, kind: 'class' }], edges: [] })
       return env({})
@@ -136,6 +135,14 @@ describe('InstanceDetail edit mode', () => {
     )
   }
 
+  /** Save stays disabled until meta (baseFileHash) resolves — the tests wait
+   *  for it just like a user would. */
+  async function awaitSaveEnabled() {
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: /保存/ }) as HTMLButtonElement).disabled).toBe(false),
+    )
+  }
+
   it('batch-saves comment/classes/assertions in one PUT', async () => {
     drawEdit()
     await screen.findAllByText('ThreeBody')
@@ -146,6 +153,7 @@ describe('InstanceDetail edit mode', () => {
     const search = await screen.findByPlaceholderText(/搜索实例/)
     await userEvent.type(search, '刘慈')
     await userEvent.click(await screen.findByRole('button', { name: '刘慈ixin' }))
+    await awaitSaveEnabled()
     await userEvent.click(screen.getByRole('button', { name: /保存/ }))
     await waitFor(() => expect(put).toHaveLength(1))
     expect(put[0].url).toContain(`/instances/`)
@@ -163,8 +171,78 @@ describe('InstanceDetail edit mode', () => {
     await userEvent.click(screen.getByRole('button', { name: /编辑/ }))
     const del = await screen.findAllByRole('button', { name: /删除行|×/ })
     await userEvent.click(del[0])
+    await awaitSaveEnabled()
     await userEvent.click(screen.getByRole('button', { name: /保存/ }))
     await waitFor(() => expect(put).toHaveLength(1))
     expect(put[0].body.assertions).toEqual([])
+  })
+
+  it('same property can gain a second row (multi-value)', async () => {
+    drawEdit(INSTANCE) // 已有一条 hasCreator 行
+    await screen.findAllByText('ThreeBody')
+    await userEvent.click(screen.getByRole('button', { name: /编辑/ }))
+    await userEvent.click(await screen.findByRole('button', { name: /添加属性/ }))
+    // hasCreator 已在行里,仍可再加一条(spec §0 同属性可多行)
+    await userEvent.click(await screen.findByRole('button', { name: /hasCreator/ }))
+    const search = await screen.findByPlaceholderText(/搜索实例/)
+    await userEvent.type(search, '刘慈')
+    await userEvent.click(await screen.findByRole('button', { name: '刘慈ixin' }))
+    await awaitSaveEnabled()
+    await userEvent.click(screen.getByRole('button', { name: /保存/ }))
+    await waitFor(() => expect(put).toHaveLength(1))
+    const has = (put[0].body.assertions as { property: string }[]).filter(
+      (a) => a.property === 'http://example.org/library#hasCreator',
+    )
+    expect(has).toHaveLength(2) // 种子行 + 新行
+  })
+
+  it('rows left without a value are dropped from the save', async () => {
+    drawEdit()
+    await screen.findAllByText('ThreeBody')
+    await userEvent.click(screen.getByRole('button', { name: /编辑/ }))
+    await userEvent.click(await screen.findByRole('button', { name: /添加属性/ }))
+    await userEvent.click(await screen.findByRole('button', { name: /hasCreator/ })) // 不选值
+    await awaitSaveEnabled()
+    await userEvent.click(screen.getByRole('button', { name: /保存/ }))
+    await waitFor(() => expect(put).toHaveLength(1))
+    expect(put[0].body.assertions).toEqual([
+      expect.objectContaining({ property: 'http://example.org/library#publicationYear', kind: 'data', value: '2008' }),
+    ])
+  })
+
+  it('edit state resets when switching to another (cached) instance', async () => {
+    const OB = 'http://example.org/library#OtherBook'
+    const B_INSTANCE = { ...INSTANCE, eid: OB, curie: 'lib:OtherBook', label: {}, objectAssertions: [], dataAssertions: [] }
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const u = String(url)
+      if ((init?.method ?? 'GET') === 'PUT') return env({ meta: {}, entity: {} })
+      if (u.includes('/assertion-schema')) return env(SCHEMA)
+      if (u.includes('/search')) return env(SEARCH_HITS)
+      if (u.includes(encodeURIComponent(OB))) return env(B_INSTANCE)
+      if (u.includes('/entities/')) return env(INSTANCE)
+      if (u.endsWith('/meta')) return env({ fileHash: 'hash-2' })
+      if (u.includes('/overview')) return env({ nodes: [{ id: SF, curie: 'lib:ScienceFiction', label: {}, kind: 'class' }], edges: [] })
+      return env({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const ui = (eid: string) => (
+      <QueryClientProvider client={qc}>
+        <ThemeProvider><InspectorPanel oid={OID} eid={eid} /></ThemeProvider>
+      </QueryClientProvider>
+    )
+    const view = render(ui(TB))
+    await screen.findAllByText('ThreeBody')
+    view.rerender(ui(OB)) // 先访问 B,让 react-query 缓存它
+    await screen.findByText('OtherBook')
+    view.rerender(ui(TB))
+    await screen.findAllByText('ThreeBody')
+    await userEvent.click(screen.getByRole('button', { name: /编辑/ }))
+    expect(await screen.findByRole('button', { name: /添加属性/ })).toBeTruthy()
+    // 缓存的 B 同步返回、没有 undefined 间隙——没有 key 就会带着 A 的草稿停在编辑态
+    view.rerender(ui(OB))
+    expect(await screen.findByText('OtherBook')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /添加属性/ })).toBeNull() // 编辑态 UI 消失
+    expect(screen.getByRole('button', { name: /编辑/ })).toBeTruthy() // 回到查看态
   })
 })

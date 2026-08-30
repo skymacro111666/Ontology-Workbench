@@ -164,8 +164,12 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
     retry: false,
   })
 
-  /** Instances join only for classes (same endpoint as the canvas badge). */
-  const isClass = ent && 'type' in ent && ent.type === 'Class'
+  /** Instances join only for classes (same endpoint as the canvas badge).
+   *  Boolean coercion matters: `ent && …` alone is undefined pre-resolve, and
+   *  react-query reads `enabled: undefined` as the default true — firing an
+   *  instances fetch before the entity (even /entities/null/instances when
+   *  nothing is selected). */
+  const isClass = !!ent && 'type' in ent && ent.type === 'Class'
   const { data: insts, isError: instsError } = useQuery({
     enabled: isClass,
     queryKey: ['instances', oid, eid],
@@ -195,9 +199,12 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
     return <div className="text-ink-3 py-10 text-center text-sm">{t('common.loading')}</div>
   }
 
-  // Dispatch to InstanceDetail for instances (entities have kind: 'entity' or undefined)
+  // Dispatch to InstanceDetail for instances (entities have kind: 'entity' or
+  //  undefined). The key remounts per instance: a cached entity returns
+  //  synchronously (no undefined gap → no unmount), which would otherwise
+  //  carry instance A's edit draft onto instance B's page — and its PUT.
   if (ent && ent.kind === 'instance') {
-    return <InstanceDetail oid={oid} eid={eid as string} inst={ent} />
+    return <InstanceDetail key={eid as string} oid={oid} eid={eid as string} inst={ent} />
   }
 
   return (

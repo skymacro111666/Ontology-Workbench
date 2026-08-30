@@ -62,8 +62,9 @@ function InstancePickerRow({ oid, onPick }: { oid: string; onPick: (eid: string)
 
 /** Inline assertion row editor (spec §4.2 edit mode): each row pairs a
  *  schema property with an instance search (object) or typed literal (data);
- *  + 添加属性 lists the class-schema properties not already on a row.
- *  Exported for the Task 9 instance-create dialog. */
+ *  + 添加属性 lists every schema property — the same property may carry
+ *  several rows (spec §0 同属性可多行). Exported for the Task 9 dialog.
+ */
 export function AssertionRows({
   oid,
   schema,
@@ -77,7 +78,6 @@ export function AssertionRows({
 }) {
   const { t } = useTranslation()
   const [adding, setAdding] = useState(false)
-  const unused = schema.filter((p) => !rows.some((r) => r.property === p.eid))
   const setRow = (i: number, patch: Partial<Row>) =>
     setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   return (
@@ -145,7 +145,7 @@ export function AssertionRows({
       })}
       {adding ? (
         <div className="flex flex-col gap-0.5">
-          {unused.map((p) => (
+          {schema.map((p) => (
             <button
               key={p.eid}
               type="button"
@@ -172,7 +172,7 @@ export function AssertionRows({
               )}
             </button>
           ))}
-          {unused.length === 0 && (
+          {schema.length === 0 && (
             <span className="text-ink-3 px-2 py-1 text-xs">{t('inspector.none')}</span>
           )}
           <button type="button" onClick={() => setAdding(false)} className="text-ink-3 px-2 py-1 text-xs">
@@ -320,7 +320,7 @@ export default function InstanceDetail({ oid, eid, inst }: { oid: string; eid: s
           <Button variant="outline" size="sm" onClick={() => setEditing(false)}>
             {t('common.cancel')}
           </Button>
-          <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>
+          <Button size="sm" disabled={save.isPending || !meta} onClick={() => save.mutate()}>
             {save.isPending ? t('instance.saving') : t('common.save')}
           </Button>
         </div>
