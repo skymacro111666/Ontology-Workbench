@@ -78,6 +78,35 @@ class EntityIR(BaseModel):
     referenced_by: list[ReferencedRef] = []
     axioms: list[Axiom] = []
     stats: Stats = Stats()
+    kind: str = "entity"
+
+
+class ObjectAssertion(BaseModel):
+    """实例 → 另一实例(谓词为已声明 ObjectProperty)."""
+
+    property: PropRef
+    object: Ref
+
+
+class DataAssertion(BaseModel):
+    """实例 → 类型字面量(谓词为已声明 DatatypeProperty,无语言标签)."""
+
+    property: PropRef
+    value: str
+    datatype: str
+
+
+class IndividualIR(BaseModel):
+    """实例详情页载荷(spec 2026-08-30 §2)."""
+
+    eid: str
+    curie: str
+    kind: str = "instance"
+    label: dict[str, str] = {}
+    comment: str | None = None
+    classes: list[Ref] = []
+    object_assertions: list[ObjectAssertion] = []
+    data_assertions: list[DataAssertion] = []
 
 
 class Counts(BaseModel):
@@ -98,6 +127,7 @@ class IRBundle(BaseModel):
     # class eid → its direct named individuals (on-demand canvas data,
     # deliberately outside entities so schema walks/counts stay unchanged)
     instances: dict[str, list[Ref]] = {}
+    individuals: dict[str, IndividualIR] = {}
 
 
 def _curie(graph: rdflib.Graph, uri: URIRef) -> str:
@@ -138,6 +168,14 @@ def _ptype_of(graph: rdflib.Graph, uri: URIRef) -> str:
         if (uri, RDF.type, rdf_type) in graph:
             return name
     return "Property"
+
+
+XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
+
+
+def _prop_ref(graph: rdflib.Graph, uri: URIRef) -> PropRef:
+    """PropRef for a declared property URI."""
+    return PropRef(**_ref(graph, uri).model_dump(), ptype=_ptype_of(graph, uri))
 
 
 def _is_class(graph: rdflib.Graph, uri: Node) -> bool:
@@ -299,15 +337,50 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
     # typing only — no subclass inference, matching the badge's direct count).
     class_set = set(classes)
     instances: dict[str, list[Ref]] = {}
+    individuals_out: dict[str, IndividualIR] = {}
     individuals: set[str] = set()
     for ind in sorted(
         (s for s in graph.subjects(RDF.type, OWL.NamedIndividual) if isinstance(s, URIRef)),
         key=str,
     ):
         individuals.add(str(ind))
-        for t in graph.objects(ind, RDF.type):
-            if t in class_set:
-                instances.setdefault(str(t), []).append(_ref(graph, ind))
+        comment = next(
+            (str(c) for c in graph.objects(ind, RDFS.comment) if isinstance(c, Literal)),
+            None,
+        )
+        cls: list[Ref] = []
+        obj_asserts: list[ObjectAssertion] = []
+        data_asserts: list[DataAssertion] = []
+        for p, o in graph.predicate_objects(ind):
+            if p == RDF.type:
+                if o in class_set:
+                    instances.setdefault(str(o), []).append(_ref(graph, ind))
+                    cls.append(_ref(graph, o))
+            elif p in object_props and isinstance(o, URIRef):
+                obj_asserts.append(
+                    ObjectAssertion(property=_prop_ref(graph, p), object=_ref(graph, o))
+                )
+            elif p in datatype_props and isinstance(o, Literal) and o.datatype is not None:
+                data_asserts.append(
+                    DataAssertion(
+                        property=_prop_ref(graph, p), value=str(o), datatype=str(o.datatype)
+                    )
+                )
+        individuals_out[str(ind)] = IndividualIR(
+            eid=str(ind),
+            curie=_curie(graph, ind),
+            label=_labels(graph, ind),
+            comment=comment,
+            classes=sorted(cls, key=lambda r: r.curie),
+            object_assertions=sorted(obj_asserts, key=lambda a: a.property.curie),
+            data_assertions=sorted(data_asserts, key=lambda a: a.property.curie),
+        )
 
     counts.individual_count = len(individuals)
-    return IRBundle(entities=entities, counts=counts, prefixes=prefixes, instances=instances)
+    return IRBundle(
+        entities=entities,
+        counts=counts,
+        prefixes=prefixes,
+        instances=instances,
+        individuals=individuals_out,
+    )

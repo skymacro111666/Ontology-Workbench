@@ -196,3 +196,46 @@ def test_ir_individuals_grouped_by_direct_class() -> None:
     }
     assert ir.counts.class_count == 2
     assert "http://example.org/rex" not in ir.entities
+
+
+def test_individuals_collect_assertions() -> None:
+    """library.ttl 的 ThreeBody:类型、对象断言、数据断言齐备."""
+    from pathlib import Path
+
+    from ontoworkbench.core.parsing import parse_graph
+
+    data = (Path(__file__).parents[2] / "ontoworkbench" / "samples" / "library.ttl").read_bytes()
+    ir = build_ir(parse_graph(data, "turtle"))
+
+    tb = ir.individuals[
+        "https://github.com/skymacro111666/ontology-workbench/samples/library#ThreeBody"
+    ]
+    assert tb.kind == "instance"
+    assert tb.curie == "lib:ThreeBody"
+    assert [c.curie for c in tb.classes] == ["lib:ScienceFiction"]
+    objs = {a.property.curie: a.object.curie for a in tb.object_assertions}
+    assert objs == {"lib:hasCreator": "lib:LiuCixin", "lib:locatedIn": "lib:MainStacks"}
+    data_values = {a.property.curie: a.value for a in tb.data_assertions}
+    # lib:isbn is a plain literal without explicit datatype (^^(xsd:string)) so it's NOT collected
+    # (only explicitly-typed literals are collected per spec)
+    assert data_values == {
+        "lib:publicationYear": "2008",
+        "lib:pageCount": "302",
+        "lib:available": "true",
+    }
+    year = next(a for a in tb.data_assertions if a.property.curie == "lib:publicationYear")
+    assert year.datatype == "http://www.w3.org/2001/XMLSchema#integer"
+    # 既有 instances 映射不回归(徽章口径)
+    assert any(
+        r.eid == tb.eid
+        for r in ir.instances[
+            "https://github.com/skymacro111666/ontology-workbench/samples/library#ScienceFiction"
+        ]
+    )
+    # 实体也带 kind 字段
+    assert (
+        ir.entities[
+            "https://github.com/skymacro111666/ontology-workbench/samples/library#Book"
+        ].kind
+        == "entity"
+    )
