@@ -191,7 +191,14 @@
     "hint": "Ctrl/⌘ K opens · Esc closes",
     "placeholder": "Search classes / properties…",
     "searchFailed": "Search failed, please try again later",
-    "noMatches": "No matches"
+    "noMatches": "No matches",
+    "type": {
+      "Class": "Class",
+      "Property": "Property",
+      "ObjectProperty": "Object property",
+      "DatatypeProperty": "Data property",
+      "Instance": "Instance"
+    }
   },
   "canvas": {
     "newClass": "＋ New class",

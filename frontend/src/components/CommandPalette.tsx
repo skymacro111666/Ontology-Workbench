@@ -95,7 +95,9 @@ export default function CommandPalette() {
           <CommandItem key={hit.eid} value={hit.eid} onSelect={() => choose(hit)}>
             <span className="font-mono text-sm">{hit.curie}</span>
             <Badge variant="secondary">{hit.matchedField}</Badge>
-            <span className="text-muted-foreground ml-auto text-xs">{hit.type}</span>
+            <span className="text-muted-foreground ml-auto text-xs">
+              {t(`palette.type.${hit.type}`, { defaultValue: hit.type })}
+            </span>
           </CommandItem>
         ))}
       </CommandList>

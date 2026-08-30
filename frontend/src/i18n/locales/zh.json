@@ -191,7 +191,14 @@
     "hint": "Ctrl/⌘ K 打开 · Esc 关闭",
     "placeholder": "搜索类 / 属性…",
     "searchFailed": "搜索失败，请稍后重试",
-    "noMatches": "无匹配结果"
+    "noMatches": "无匹配结果",
+    "type": {
+      "Class": "类",
+      "Property": "属性",
+      "ObjectProperty": "对象属性",
+      "DatatypeProperty": "数据属性",
+      "Instance": "实例"
+    }
   },
   "canvas": {
     "newClass": "＋ 新建类",

@@ -108,7 +108,8 @@ describe('CommandPalette', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(screen.getByText('pizza:Margherita')).toBeTruthy()
     expect(screen.getByText('label')).toBeTruthy()
-    expect(screen.getByText('Class')).toBeTruthy()
+    // Type badges localize (B2 Task 12): raw 'Class' must not leak through.
+    expect(screen.getByText('类')).toBeTruthy()
   })
 
   it('does not flash 无匹配结果 while the search fetch is in flight', async () => {
@@ -151,5 +152,22 @@ describe('CommandPalette', () => {
     expect(await screen.findByText(`probe:oid-1:${EID}`)).toBeTruthy()
     expect(useBrowseStore.getState().selectedEid).toBe(EID)
     expect(useBrowseStore.getState().revealEid).toBe(EID)
+  })
+
+  it('instance hits render the localized type and navigate on choose', async () => {
+    const TB = 'http://example.org/ThreeBody'
+    const instHits: SearchHit[] = [
+      { eid: TB, curie: 'lib:ThreeBody', label: {}, type: 'Instance', matchedField: 'label' },
+    ]
+    renderPalette(vi.fn(async () => ok(instHits)))
+    const input = await openPalette()
+    await userEvent.type(input, 'three')
+    // B2: instance hits ride the same search endpoint; the badge shows the
+    // localized 实例, never the raw 'Instance'.
+    expect(await screen.findByText('实例')).toBeTruthy()
+    expect(screen.queryByText('Instance')).toBeNull()
+    await userEvent.click(screen.getByText('lib:ThreeBody'))
+    expect(await screen.findByText(`probe:oid-1:${TB}`)).toBeTruthy()
+    expect(useBrowseStore.getState().selectedEid).toBe(TB)
   })
 })
