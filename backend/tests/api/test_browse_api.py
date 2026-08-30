@@ -262,6 +262,16 @@ def test_entity_endpoint_dispatches_instance(client: TestClient) -> None:
     assert len(hits) == 2  # ThreeBody and ThreeBodyAudiobook both match
     assert all(h["type"] == "Instance" for h in hits)
 
+    # Regression test: first-letter normalization preserves camelCase.
+    # (ObjectProperty not Objectproperty - capitalize() would mangle).
+    r = client.get(
+        f"/api/ontologies/{oid}/search",
+        params={"q": "located", "type": "ObjectProperty"},
+    )
+    hits = r.json()["data"]
+    assert len(hits) == 1
+    assert hits[0]["type"] == "ObjectProperty"
+
 
 def _upload_library(client: TestClient) -> str:
     """Upload the bundled library sample; returns oid."""

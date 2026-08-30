@@ -181,8 +181,9 @@ def search(
 ) -> dict:
     """Search hits over localname/label/comment; individuals join as Instance."""
     _, ix = _owned(request, user, ontology_id, session)
-    # Normalize type param: 'instance' -> 'Instance' for Indexes.search
-    type_normalized = type.capitalize() if type else None
+    # Exact-match vocabulary in Indexes.search ('instance' → 'Instance');
+    # first-letter-only — capitalize() would mangle 'ObjectProperty'.
+    type_normalized = (type[:1].upper() + type[1:]) if type else None
     return respond(_camel([h.model_dump() for h in ix.search(q, limit, type_=type_normalized)]))
 
 
