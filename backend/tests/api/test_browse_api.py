@@ -240,3 +240,36 @@ def test_search_limit_must_be_positive(client: TestClient) -> None:
     r = client.get(f"/api/ontologies/{oid}/search", params={"q": "dog", "limit": 0})
     assert r.status_code == 422
     assert r.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_entity_endpoint_dispatches_instance(client: TestClient) -> None:
+    """GET /entities/{eid} 对实例返回 kind=instance 载荷;search 支持 type 过滤."""
+    oid = _upload_library(client)
+    eid = quote(
+        "https://github.com/skymacro111666/ontology-workbench/samples/library#ThreeBody",
+        safe="",
+    )
+    r = client.get(f"/api/ontologies/{oid}/entities/{eid}")
+    assert r.status_code == 200
+    data = r.json()["data"]
+    assert data["kind"] == "instance"
+    assert data["curie"] == "lib:ThreeBody"
+    assert any(a["object"]["curie"] == "lib:LiuCixin" for a in data["objectAssertions"])
+    assert any(a["value"] == "2008" for a in data["dataAssertions"])
+
+    r = client.get(f"/api/ontologies/{oid}/search", params={"q": "three", "type": "instance"})
+    hits = r.json()["data"]
+    assert len(hits) == 2  # ThreeBody and ThreeBodyAudiobook both match
+    assert all(h["type"] == "Instance" for h in hits)
+
+
+def _upload_library(client: TestClient) -> str:
+    """Upload the bundled library sample; returns oid."""
+    from pathlib import Path
+
+    data = (Path(__file__).parents[2] / "ontoworkbench" / "samples" / "library.ttl").read_bytes()
+    r = client.post(
+        "/api/ontologies", files={"file": ("library.ttl", io.BytesIO(data), "text/turtle")}
+    )
+    assert r.status_code == 201
+    return r.json()["data"]["id"]

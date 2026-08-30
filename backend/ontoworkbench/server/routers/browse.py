@@ -125,9 +125,15 @@ def entity(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    """One entity's page-shaped IR."""
+    """One entity's page-shaped IR; named individuals dispatch to IndividualIR."""
     _, ix = _owned(request, user, ontology_id, session)
-    return respond(_camel(_entity_or_404(ix, eid).model_dump()))
+    e = ix.entity(eid)
+    if e is not None:
+        return respond(_camel(e.model_dump()))
+    ind = ix.individual(eid)
+    if ind is not None:
+        return respond(_camel(ind.model_dump()))
+    raise ApiError(ErrorCode.NOT_FOUND, "No such entity")
 
 
 @router.get("/{ontology_id}/overview")
@@ -169,12 +175,15 @@ def search(
     request: Request,
     q: str,
     limit: int = Query(default=20, ge=1),
+    type: str | None = Query(default=None),
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Search hits over localname/label/comment."""
+    """Search hits over localname/label/comment; individuals join as Instance."""
     _, ix = _owned(request, user, ontology_id, session)
-    return respond(_camel([h.model_dump() for h in ix.search(q, limit)]))
+    # Normalize type param: 'instance' -> 'Instance' for Indexes.search
+    type_normalized = type.capitalize() if type else None
+    return respond(_camel([h.model_dump() for h in ix.search(q, limit, type_=type_normalized)]))
 
 
 @router.get("/{ontology_id}/raw/{eid:path}")

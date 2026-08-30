@@ -3,6 +3,7 @@
   "code": "OK",
   "message": "success",
   "data": {
+    "kind": "entity",
     "eid": "http://www.co-ode.org/ontologies/pizza/pizza.owl#NamedPizza",
     "curie": "pizza:NamedPizza",
     "type": "Class",
