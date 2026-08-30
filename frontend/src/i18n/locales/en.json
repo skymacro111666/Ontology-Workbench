@@ -128,7 +128,8 @@
     "copied": "Copied",
     "typeSection": "Types",
     "objectProps": "Object properties",
-    "dataProps": "Data properties"
+    "dataProps": "Data properties",
+    "edit": "Edit"
   },
   "sourceview": {
     "dirty": "● Unsaved",

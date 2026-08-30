@@ -128,7 +128,8 @@
     "copied": "已复制",
     "typeSection": "类型",
     "objectProps": "对象属性",
-    "dataProps": "数据属性"
+    "dataProps": "数据属性",
+    "edit": "编辑"
   },
   "sourceview": {
     "dirty": "● 未保存",

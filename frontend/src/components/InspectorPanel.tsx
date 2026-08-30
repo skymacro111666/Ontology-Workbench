@@ -160,12 +160,12 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
     enabled: eid !== null,
     queryKey: ['entity', oid, eid],
     queryFn: () =>
-      api.get<EntityIR>(`/api/ontologies/${oid}/entities/${encodeURIComponent(eid as string)}`),
+      api.get<EntityIR | InstanceIR>(`/api/ontologies/${oid}/entities/${encodeURIComponent(eid as string)}`),
     retry: false,
   })
 
   /** Instances join only for classes (same endpoint as the canvas badge). */
-  const isClass = ent?.type === 'Class'
+  const isClass = ent && 'type' in ent && ent.type === 'Class'
   const { data: insts, isError: instsError } = useQuery({
     enabled: isClass,
     queryKey: ['instances', oid, eid],
@@ -196,8 +196,8 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
   }
 
   // Dispatch to InstanceDetail for instances (entities have kind: 'entity' or undefined)
-  if (ent.kind === 'instance') {
-    return <InstanceDetail oid={oid} eid={eid as string} inst={ent as InstanceIR} />
+  if (ent && ent.kind === 'instance') {
+    return <InstanceDetail oid={oid} eid={eid as string} inst={ent} />
   }
 
   return (
