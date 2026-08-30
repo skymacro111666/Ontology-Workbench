@@ -112,3 +112,108 @@ def test_delete_instance_removes_assertions_both_ends(client: TestClient) -> Non
     assert "ex:ThreeBody a ex:Novel" not in src
     assert "ex:ThreeBody rdfs:label" not in src
     assert client.get(f"/api/ontologies/{oid}/entities/{TB}").status_code == 404
+
+
+def _put(client: TestClient, oid: str, eid: str, body: dict) -> dict:
+    from urllib.parse import quote
+
+    r = client.put(f"/api/ontologies/{oid}/instances/{quote(eid, safe='')}", json=body)
+    return r  # type: ignore[return-value]
+
+
+def test_update_instance_replaces_assertions(client: TestClient) -> None:
+    """Update instance comment, classes, and assertions with full replacement."""
+    oid, meta = _upload(client)
+    new_hash = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
+    r = _put(
+        client,
+        oid,
+        TB,
+        {
+            "comment": "updated",
+            "classes": ["http://example.org/FanFic"],
+            "assertions": [
+                {
+                    "property": "http://example.org/inspiredBy",
+                    "kind": "object",
+                    "value": "http://example.org/ThreeBody",
+                },
+            ],
+            "baseFileHash": new_hash,
+        },
+    )
+    assert r.status_code == 200
+    got = client.get(f"/api/ontologies/{oid}/entities/{TB}").json()["data"]
+    assert got["comment"] == "updated"
+    assert [c["curie"] for c in got["classes"]] == ["ex:FanFic"]
+    assert len(got["objectAssertions"]) == 1
+    assert "ex:inspiredBy" in _source(client, oid)
+
+
+def test_update_instance_validation(client: TestClient) -> None:
+    """Validate assertion updates: undeclared property, non-instance object value, kind mismatch."""
+    oid, _ = _upload(client)
+    h = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
+    # 属性未声明
+    r = _put(
+        client,
+        oid,
+        TB,
+        {
+            "assertions": [
+                {
+                    "property": "http://example.org/nope",
+                    "kind": "object",
+                    "value": "http://example.org/ThreeBody",
+                }
+            ],
+            "baseFileHash": h,
+        },
+    )
+    assert r.status_code == 422
+    # 对象断言值不是实例
+    r = _put(
+        client,
+        oid,
+        TB,
+        {
+            "assertions": [
+                {
+                    "property": "http://example.org/inspiredBy",
+                    "kind": "object",
+                    "value": "http://example.org/Novel",
+                }
+            ],
+            "baseFileHash": h,
+        },
+    )
+    assert r.status_code == 422
+    # kind 与属性类型错配
+    r = _put(
+        client,
+        oid,
+        TB,
+        {
+            "assertions": [
+                {
+                    "property": "http://example.org/inspiredBy",
+                    "kind": "data",
+                    "value": "x",
+                    "datatype": "http://www.w3.org/2001/XMLSchema#string",
+                }
+            ],
+            "baseFileHash": h,
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_update_instance_untouched_keys_stay(client: TestClient) -> None:
+    """Absent keys unchanged;stale hash → 409(照抄 A2 语义)。."""
+    oid, meta = _upload(client)
+    r = _put(client, oid, TB, {"baseFileHash": meta["fileHash"]})
+    assert r.status_code == 200
+    got = client.get(f"/api/ontologies/{oid}/entities/{TB}").json()["data"]
+    assert got["label"] == {"en": "ThreeBody"}  # label 永不动
+    r = _put(client, oid, TB, {"comment": "x", "baseFileHash": "stale"})
+    assert r.status_code == 409

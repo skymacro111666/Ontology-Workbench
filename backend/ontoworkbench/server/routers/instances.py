@@ -13,6 +13,7 @@ from pydantic import Field
 from rdflib import OWL, RDF, RDFS, Graph, Literal, URIRef
 from sqlalchemy.orm import Session
 
+from ontoworkbench.core.parsing import literal_type_ok
 from ontoworkbench.db.models import User
 from ontoworkbench.db.session import get_session
 from ontoworkbench.server.deps import get_current_user
@@ -58,6 +59,67 @@ def _declared_class(graph: Graph, eid: str) -> URIRef:
             ErrorCode.VALIDATION_ERROR, f"'{eid}' is not a declared class in this ontology"
         )
     return iri
+
+
+class AssertionInput(CamelModel):
+    """One assertion row (UI 属性行);整体列表随 PUT 全量替换。."""
+
+    property: str
+    kind: str  # object | data
+    value: str
+    datatype: str | None = None
+
+
+class InstanceUpdate(CamelModel):
+    """PUT /instances body: absent keys stay untouched (A2 semantics)."""
+
+    comment: str | None = None
+    classes: list[str] | None = None
+    assertions: list[AssertionInput] | None = None
+    base_file_hash: str
+
+
+def _prop_of_kind(graph: Graph, eid: str, kind: str) -> URIRef:
+    """Declared property of the requested kind, else 422 (spec §3)."""
+    iri = URIRef(eid)
+    want = OWL.ObjectProperty if kind == "object" else OWL.DatatypeProperty
+    if (iri, RDF.type, want) not in graph:
+        raise ApiError(ErrorCode.VALIDATION_ERROR, f"'{eid}' is not a declared {kind} property")
+    return iri
+
+
+def _replace_assertions(graph: Graph, iri: URIRef, rows: list[AssertionInput]) -> None:
+    """Drop every declared-property assertion on iri, add the given rows."""
+    props = set(graph.subjects(RDF.type, OWL.ObjectProperty)) | set(
+        graph.subjects(RDF.type, OWL.DatatypeProperty)
+    )
+    for p in props:
+        for t in list(graph.triples((iri, p, None))):
+            graph.remove(t)
+    for row in rows:
+        p = _prop_of_kind(graph, row.property, row.kind)
+        if row.kind == "object":
+            value = URIRef(row.value)
+            if (value, RDF.type, OWL.NamedIndividual) not in graph:
+                raise ApiError(
+                    ErrorCode.VALIDATION_ERROR, f"'{row.value}' is not an existing instance"
+                )
+            graph.add((iri, p, value))
+        else:
+            datatype = row.datatype or "http://www.w3.org/2001/XMLSchema#string"
+            # declared xsd range wins when present
+            for rng in graph.objects(p, RDFS.range):
+                if isinstance(rng, URIRef) and str(rng).startswith(
+                    "http://www.w3.org/2001/XMLSchema#"
+                ):
+                    datatype = str(rng)
+                    break
+            if not literal_type_ok(row.value, datatype):
+                raise ApiError(
+                    ErrorCode.VALIDATION_ERROR,
+                    f"'{row.value}' is not a valid {datatype.rsplit('#', 1)[-1]}",
+                )
+            graph.add((iri, p, Literal(row.value, datatype=URIRef(datatype))))
 
 
 @router.post("/ontologies/{ontology_id}/instances")
@@ -113,3 +175,34 @@ def delete_instance(
             removed += 1
     row, _ = _persist(request, session, row, graph)
     return respond({"removed": removed, "meta": meta_of(row)})
+
+
+@router.put("/ontologies/{ontology_id}/instances/{eid:path}")
+def update_instance(
+    ontology_id: str,
+    eid: str,
+    body: InstanceUpdate,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Edit comment/classes/assertions; absent keys stay untouched."""
+    row = _owned_row(user, session, ontology_id)
+    _check_lock(body.base_file_hash, row)
+    graph = _load_graph(row)
+    iri = _individual(graph, eid)
+    touched = body.model_fields_set
+    if "comment" in touched:
+        graph.remove((iri, RDFS.comment, None))
+        if body.comment:
+            graph.add((iri, RDFS.comment, Literal(body.comment)))
+    if "classes" in touched and body.classes is not None:
+        for c in [o for o in graph.objects(iri, RDF.type) if isinstance(o, URIRef)]:
+            if (c, RDF.type, OWL.Class) in graph:
+                graph.remove((iri, RDF.type, c))
+        for c in body.classes:
+            graph.add((iri, RDF.type, _declared_class(graph, c)))
+    if "assertions" in touched and body.assertions is not None:
+        _replace_assertions(graph, iri, body.assertions)
+    row, _ = _persist(request, session, row, graph)
+    return respond({"meta": meta_of(row), "entity": _entity_payload(graph, iri, "Instance")})
