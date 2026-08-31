@@ -64,3 +64,29 @@ def test_no_double_wrap_when_handler_chain_sees_record_twice() -> None:
     once = rec.getMessage()
     FILTER.filter(rec)
     assert rec.getMessage() == once
+
+
+def test_wrapped_lines_carry_common_fields() -> None:
+    """Wrapped third-party lines share the service identity fields.
+
+    Log aggregation then sees one fleet (spec observability §1).
+    """
+    rec = make_record("uvicorn.error", "Uvicorn running on http://127.0.0.1:8734")
+    FILTER.filter(rec)
+    payload = json.loads(rec.getMessage())
+    assert payload["service"] == "ontology-workbench"
+    assert payload["schema_version"] == 1
+    assert isinstance(payload["service_version"], str) and payload["service_version"]
+
+
+def test_common_fields_processor_defaults_and_respect() -> None:
+    """The structlog processor adds the identity trio, keeping explicit keys."""
+    from ontoworkbench.observability.logging import add_service_fields
+
+    out = add_service_fields(None, None, {"event": "http.request"})
+    assert out["service"] == "ontology-workbench"
+    assert out["schema_version"] == 1
+    assert isinstance(out["service_version"], str) and out["service_version"]
+    # An event that already carries a version (say, a future override) wins.
+    kept = add_service_fields(None, None, {"event": "x", "service_version": "9.9.9"})
+    assert kept["service_version"] == "9.9.9"

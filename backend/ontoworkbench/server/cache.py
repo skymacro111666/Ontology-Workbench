@@ -43,7 +43,9 @@ class OntologyCache:
         ow_cached_ontologies.set(len(self._entries))
         return indexes
 
-    def drop(self, ontology_id: str) -> None:
-        """Evict one ontology (called on delete)."""
-        self._entries.pop(ontology_id, None)
-        ow_cached_ontologies.set(len(self._entries))
+    def drop(self, ontology_id: str) -> bool:
+        """Evict one ontology (called on delete); True when a live entry existed."""
+        evicted = self._entries.pop(ontology_id, None) is not None
+        if evicted:
+            ow_cached_ontologies.set(len(self._entries))
+        return evicted

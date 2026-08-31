@@ -21,6 +21,7 @@ from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import LayoutRepository, OntologyRepository
 from ontoworkbench.db.session import get_session
 from ontoworkbench.observability.metrics import ow_parse_seconds, ow_uploads_total
+from ontoworkbench.observability.middleware import request_id_ctx
 from ontoworkbench.server.cache import OntologyCache
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
@@ -30,6 +31,7 @@ router = APIRouter(prefix="/api", tags=["ontologies"])
 MAX_UPLOAD = 150 * 1024 * 1024
 
 _imports_log = structlog.get_logger("ow.imports")
+_audit = structlog.get_logger("ow.audit")
 
 
 class CamelModel(BaseModel):
@@ -130,19 +132,23 @@ def _import_bytes(
     session: Session,
     filename: str,
     data: bytes,
+    read_ms: float | None = None,
 ) -> Ontology:
     """Shared import path for uploads and samples: parse, store, register.
 
     Both outcomes leave an ops trace on ow.imports: success carries file,
-    timing and counts; failure carries the rejecting code. The HTTP error
-    handler still logs the envelope (with request_id) — these events carry
-    the file context that one lacks.
+    staged timings (read/parse/ir/store/db/index, spec observability §3) and
+    counts; failure carries the rejecting code. The HTTP error handler still
+    logs the envelope — these events carry the file context that one lacks,
+    plus request_id so the two lines join without timestamp guessing.
     """
     started = time.perf_counter()
     try:
         repos = OntologyRepository(session)
         store: LocalUserDirStore = request.app.state.store
+        t_dup = time.perf_counter()
         existing = repos.find_by_filename(user.id, filename)
+        dup_ms = time.perf_counter() - t_dup
         if existing:
             raise ApiError(
                 ErrorCode.DUPLICATE_FILENAME,
@@ -150,12 +156,19 @@ def _import_bytes(
                 "Rename the file or delete the existing ontology first.",
             )
         fmt = sniff_format(filename, data[:2048])
+        t_parse = time.perf_counter()
         with ow_parse_seconds.labels(fmt).time():
             graph, parse_ms = timed_parse(data, fmt)
+        parse_ms = round((time.perf_counter() - t_parse) * 1000, 1)
+        t_ir = time.perf_counter()
         ir = build_ir(graph)
+        ir_ms = round((time.perf_counter() - t_ir) * 1000, 1)
 
         oid = uuid4()
+        t_store = time.perf_counter()
         path = store.save(user.id, oid, filename, data)
+        store_ms = round((time.perf_counter() - t_store) * 1000, 1)
+        t_create = time.perf_counter()
         row = repos.create(
             user.id,
             id=oid,
@@ -167,33 +180,52 @@ def _import_bytes(
             property_count=ir.counts.property_count,
             axiom_count=ir.counts.axiom_count,
             instance_count=ir.counts.individual_count,
-            stats_json={"prefixes": ir.prefixes, "parse_ms": round(parse_ms, 1)},
+            stats_json={
+                "prefixes": ir.prefixes,
+                "parse_ms": parse_ms,
+                "ir_ms": ir_ms,
+            },
             file_size_bytes=len(data),
             file_hash=LocalUserDirStore.file_hash(data),
         )
+        # db_ms sums the two DB round-trips (dup-check + insert); parse and
+        # IR run between them and must not bleed into this stage.
+        db_ms = round((dup_ms + (time.perf_counter() - t_create)) * 1000, 1)
+        t_index = time.perf_counter()
         cache: OntologyCache = request.app.state.cache
         cache.indexes_for(row, lambda r: build_indexes(ir))
+        index_ms = round((time.perf_counter() - t_index) * 1000, 1)
     except Exception as exc:
-        _imports_log.warning(
+        _imports_log.error(
             "ontology.import_failed",
+            source="http",
             filename=filename,
             size_bytes=len(data),
-            code=str(getattr(exc, "code", type(exc).__name__)),
+            error_code=str(getattr(exc, "code", type(exc).__name__)),
+            error_type=type(exc).__name__,
             user_id=str(user.id),
+            request_id=request_id_ctx.get(),
         )
         raise
     _imports_log.info(
         "ontology.import",
+        source="http",
         filename=filename,
         format=fmt,
         size_bytes=len(data),
-        parse_ms=round(parse_ms, 1),
+        read_ms=round(read_ms, 1) if read_ms is not None else None,
+        parse_ms=parse_ms,
+        ir_ms=ir_ms,
+        store_ms=store_ms,
+        db_ms=db_ms,
+        index_ms=index_ms,
         class_count=ir.counts.class_count,
         property_count=ir.counts.property_count,
         instance_count=ir.counts.individual_count,
         axiom_count=ir.counts.axiom_count,
         ontology_id=str(oid),
         user_id=str(user.id),
+        request_id=request_id_ctx.get(),
         total_ms=round((time.perf_counter() - started) * 1000, 1),
     )
     ow_uploads_total.labels("ok").inc()
@@ -212,12 +244,14 @@ async def upload_ontology(
     if file.size is not None and file.size > MAX_UPLOAD:
         ow_uploads_total.labels("too_large").inc()
         raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
+    t_read = time.perf_counter()
     data = await file.read()
+    read_ms = (time.perf_counter() - t_read) * 1000
     if len(data) > MAX_UPLOAD:  # belt: chunked encodings may report size=None
         ow_uploads_total.labels("too_large").inc()
         raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
     filename = file.filename or "upload"
-    row = _import_bytes(request, user, session, filename, data)
+    row = _import_bytes(request, user, session, filename, data, read_ms=read_ms)
     return respond(meta_of(row))
 
 
@@ -315,7 +349,12 @@ def delete_ontology(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Delete record + files; unknown or foreign ids are 404."""
+    """Delete record + files; unknown or foreign ids are 404.
+
+    Physical cleanup runs in explicit stages (store → db → layout → cache);
+    each stage failure emits ontology.delete_failed naming the broken step,
+    success emits ontology.delete with the full audit context (spec §4).
+    """
     repos = OntologyRepository(session)
     try:
         oid = _to_uuid(ontology_id)
@@ -325,11 +364,53 @@ def delete_ontology(
     if not row:
         raise ApiError(ErrorCode.NOT_FOUND, "No such ontology")
     store: LocalUserDirStore = request.app.state.store
-    store.delete(user.id, UUID(str(row.id)))
-    repos.delete(row.id)
-    LayoutRepository(session).delete(row.id)
     cache: OntologyCache = request.app.state.cache
-    cache.drop(str(row.id))
+    layouts = LayoutRepository(session)
+    started = time.perf_counter()
+
+    def _audit_failed(stage: str, exc: Exception) -> None:
+        _audit.error(
+            "ontology.delete_failed",
+            request_id=request_id_ctx.get(),
+            user_id=str(user.id),
+            ontology_id=str(row.id),
+            filename=row.filename,
+            failed_stage=stage,
+            error_type=type(exc).__name__,
+        )
+
+    try:
+        store.delete(user.id, UUID(str(row.id)))
+    except Exception as exc:
+        _audit_failed("store", exc)
+        raise
+    try:
+        repos.delete(row.id)
+    except Exception as exc:
+        _audit_failed("db", exc)
+        raise
+    try:
+        layout_existed = layouts.get(UUID(str(row.id))) is not None
+        layouts.delete(UUID(str(row.id)))
+    except Exception as exc:
+        _audit_failed("layout", exc)
+        raise
+    try:
+        cache_evicted = cache.drop(str(row.id))
+    except Exception as exc:
+        _audit_failed("cache", exc)
+        raise
+    _audit.info(
+        "ontology.delete",
+        request_id=request_id_ctx.get(),
+        user_id=str(user.id),
+        ontology_id=str(row.id),
+        filename=row.filename,
+        size_bytes=row.file_size_bytes,
+        layout_deleted=layout_existed,
+        cache_evicted=cache_evicted,
+        duration_ms=round((time.perf_counter() - started) * 1000, 1),
+    )
     return respond(None)
 
 

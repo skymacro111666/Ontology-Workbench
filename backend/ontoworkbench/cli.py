@@ -6,6 +6,7 @@ import errno
 import os
 import socket
 import sys
+import time
 import webbrowser
 from collections.abc import Callable
 from pathlib import Path
@@ -17,6 +18,7 @@ import uvicorn
 
 from ontoworkbench.config import Settings, ensure_env_file
 from ontoworkbench.observability.logging import setup_logging
+from ontoworkbench.observability.middleware import request_id_ctx
 
 app = typer.Typer(help="Ontology Workbench — self-hosted ontology workbench.")
 
@@ -171,7 +173,10 @@ def import_ontology(
     if not src.is_file():
         typer.echo(f"no such file: {src}", err=True)
         raise typer.Exit(code=2)
+    started = time.perf_counter()
+    t_read = time.perf_counter()
     data = src.read_bytes()
+    read_ms = (time.perf_counter() - t_read) * 1000
     filename = src.name
 
     with sessionmaker_or_fail()() as session:
@@ -181,15 +186,22 @@ def import_ontology(
             typer.echo("no user yet — run `ow serve` and complete /setup first", err=True)
             raise typer.Exit(code=2)
         repos = OntologyRepository(session)
+        t_dup = time.perf_counter()
         if repos.find_by_filename(admin.id, filename):
             typer.echo(f"'{filename}' already imported — id kept", err=True)
             raise typer.Exit(code=0)
+        dup_ms = time.perf_counter() - t_dup
         fmt = sniff_format(filename, data[:2048])
         graph, parse_ms = timed_parse(data, fmt)
+        t_ir = time.perf_counter()
         ir = build_ir(graph)
+        ir_ms = (time.perf_counter() - t_ir) * 1000
         store = LocalUserDirStore(settings.data_dir)
         oid = uuid4()
+        t_store = time.perf_counter()
         store.save(admin.id, oid, filename, data)
+        store_ms = (time.perf_counter() - t_store) * 1000
+        t_create = time.perf_counter()
         row = repos.create(
             admin.id,
             id=oid,
@@ -207,22 +219,32 @@ def import_ontology(
             file_size_bytes=len(data),
             file_hash=LocalUserDirStore.file_hash(data),
         )
+        db_ms = (dup_ms + (time.perf_counter() - t_create)) * 1000
+        t_index = time.perf_counter()
         build_indexes(ir)  # warm parse validation only; server rebuilds on demand
-        # Same ops event as the API path (ow.imports) so grepping one name
-        # covers both; timing starts at the parse, after the cheap guards.
+        index_ms = (time.perf_counter() - t_index) * 1000
+        # Same ops event and field set as the API path (ow.imports, spec §3)
+        # so grepping one name covers both; request_id "-" marks the CLI source.
         _imports_log.info(
             "ontology.import",
+            source="cli",
             filename=filename,
             format=fmt,
             size_bytes=len(data),
+            read_ms=round(read_ms, 1),
             parse_ms=round(parse_ms, 1),
+            ir_ms=round(ir_ms, 1),
+            store_ms=round(store_ms, 1),
+            db_ms=round(db_ms, 1),
+            index_ms=round(index_ms, 1),
             class_count=ir.counts.class_count,
             property_count=ir.counts.property_count,
             instance_count=ir.counts.individual_count,
             axiom_count=ir.counts.axiom_count,
             ontology_id=str(row.id),
             user_id=str(admin.id),
-            source="cli",
+            request_id=request_id_ctx.get(),
+            total_ms=round((time.perf_counter() - started) * 1000, 1),
         )
         typer.echo(f"imported {filename} as {row.id} ({ir.counts.class_count} classes)")
 

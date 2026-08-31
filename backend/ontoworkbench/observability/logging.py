@@ -7,9 +7,38 @@ import logging
 import logging.handlers
 import sys
 from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
 
 import structlog
+
+# Service identity on every line (observability spec §1): which service,
+# which build, which log schema — so aggregated lines are attributable.
+SERVICE_NAME = "ontology-workbench"
+try:
+    SERVICE_VERSION = metadata.version(SERVICE_NAME)
+except metadata.PackageNotFoundError:  # running from a source tree
+    SERVICE_VERSION = "dev"
+
+
+def add_service_fields(logger, method_name: str, event_dict: dict) -> dict:
+    """Structlog processor: stamp service identity onto every event.
+
+    setdefault so a caller that deliberately overrides (e.g. a future
+    schema_version bump on one event) keeps its value.
+    """
+    event_dict.setdefault("service", SERVICE_NAME)
+    event_dict.setdefault("service_version", SERVICE_VERSION)
+    event_dict.setdefault("schema_version", 1)
+    return event_dict
+
+
+def drop_nones(logger, method_name: str, event_dict: dict) -> dict:
+    """Omit absent fields entirely rather than emitting null placeholders.
+
+    Spec §2: a missing key reads as "not applicable", null as "unknown".
+    """
+    return {k: v for k, v in event_dict.items() if v is not None}
 
 
 class JsonEnvelopeFilter(logging.Filter):
@@ -43,6 +72,9 @@ class JsonEnvelopeFilter(logging.Filter):
         payload = {
             "message": record.getMessage(),
             "event": event,
+            "service": SERVICE_NAME,
+            "service_version": SERVICE_VERSION,
+            "schema_version": 1,
             "level": record.levelname.lower(),
             "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         }
@@ -72,6 +104,8 @@ def setup_logging(log_dir: Path, level: str = "INFO") -> None:
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
+            add_service_fields,
+            drop_nones,
             structlog.processors.add_log_level,
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.format_exc_info,
