@@ -41,6 +41,10 @@ export function useLint(oid: string, onOpenSettings?: () => void) {
         ? 'warning'
         : 'info'
     : null
+  /** Badge total — rendered only when non-zero (a "0" pill reads as noise). */
+  const total = report
+    ? report.counts.error + report.counts.warning + report.counts.info
+    : 0
 
   const button = (
     <button
@@ -50,7 +54,7 @@ export function useLint(oid: string, onOpenSettings?: () => void) {
       className="border-line bg-panel/90 text-ink-2 hover:text-primary rounded-ctl border px-2 py-1 text-xs shadow-xs backdrop-blur"
     >
       {run.isPending ? t('lint.checking') : t('lint.check')}
-      {report && !run.isPending && (
+      {report && !run.isPending && total > 0 && (
         <span
           className={cn(
             'ml-1 rounded-full px-1.5 text-[10px] text-white',
@@ -63,7 +67,7 @@ export function useLint(oid: string, onOpenSettings?: () => void) {
                   : 'bg-ink-3',
           )}
         >
-          {report.counts.error + report.counts.warning + report.counts.info}
+          {total}
         </span>
       )}
     </button>

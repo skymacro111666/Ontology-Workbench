@@ -79,7 +79,7 @@ interface CallLog {
 let calls: CallLog
 let metaHash: string
 
-function stubFetch() {
+function stubFetch(report: LintReportT = REPORT) {
   calls = { post: [] }
   return vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
@@ -87,7 +87,7 @@ function stubFetch() {
     const body = init?.body ? JSON.parse(String(init.body)) : {}
     if (method === 'POST') {
       calls.post.push({ url: u, body })
-      return env(REPORT)
+      return env(report)
     }
     if (u.endsWith('/meta')) return env({ ...META, fileHash: metaHash })
     return env({})
@@ -146,5 +146,19 @@ describe('LintPanel', () => {
       await qc.invalidateQueries({ queryKey: ['ontology', OID] })
     })
     expect(await screen.findByText(/已过期/)).toBeTruthy()
+  })
+
+  it('hides the count badge when the report finds nothing', async () => {
+    const zero: LintReportT = {
+      ...REPORT,
+      counts: { error: 0, warning: 0, info: 0 },
+      results: [],
+    }
+    draw(stubFetch(zero))
+    const btn = await screen.findByRole('button', { name: /检查/ })
+    await userEvent.click(btn)
+    expect(await screen.findByText('未发现问题')).toBeTruthy()
+    // A clean report leaves the button bare — no "0" pill.
+    expect(btn.textContent).toBe('检查')
   })
 })

@@ -242,7 +242,9 @@
       "unused-property": "声明后从未使用",
       "undeclared-ref": "引用了未声明的 {{ref}}",
       "duplicate-label": "标签「{{label}}」（{{lang}}）被 {{count}} 个实体共用"
-    }
+    },
+    "enabled": "启用",
+    "actions": "操作"
   },
   "canvas": {
     "newClass": "＋ 新建类",

@@ -231,6 +231,16 @@ describe('GraphView', () => {
     // The legend stays regardless.
     expect(screen.getByText('子类（subClassOf）')).toBeTruthy()
   })
+
+  it('rides the filter toggles inside the shared bottom control cluster', () => {
+    draw()
+    const cluster = screen.getByRole('button', { name: '适配' }).closest('div')
+    expect(cluster).toBeTruthy()
+    // One bar, two segments: the filter group joins the view ops cluster
+    // instead of floating alone in the top-right corner.
+    expect(cluster!.contains(screen.getByRole('button', { name: '标签' }))).toBe(true)
+    expect(cluster!.contains(screen.getByRole('button', { name: '全部' }))).toBe(true)
+  })
 })
 
 describe('toG6Edges', () => {

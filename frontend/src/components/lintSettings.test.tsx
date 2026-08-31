@@ -6,8 +6,9 @@ import type { Envelope, LintReportT } from '../api/types'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import LintSettingsDialog from './LintSettingsDialog'
 
-/* Rule settings: builtin toggles PUT the whole config; custom SPARQL rules
-   save then run themselves via onlyRuleId (the「测试」button). */
+/* Rule settings as two tables (启用/名称/级别): builtin checkmark toggles PUT
+   the whole config; a custom rule runs itself via 测试 without a prior manual
+   save — the button saves first, then POSTs onlyRuleId from the echoed row. */
 
 const OID = 'oid-1'
 
@@ -60,7 +61,7 @@ function stubFetch() {
     const body = init?.body ? JSON.parse(String(init.body)) : {}
     if (u.endsWith('/lint/config') && method === 'PUT') {
       puts.push({ url: u, body })
-      // Echo back with a stable id so「测试」can address the rule.
+      // Echo back with a stable id so 测试 can address the rule.
       const echo = {
         disabled: body.disabled,
         custom: body.custom.map((c: ConfigShape['custom'][number], i: number) => ({
@@ -105,20 +106,24 @@ afterEach(() => {
 })
 
 describe('LintSettingsDialog', () => {
-  it('toggles a builtin rule and PUTs the whole config', async () => {
+  it('renders builtins as a table and PUTs the whole config on toggle', async () => {
     draw()
-    // The builtin list renders all nine rules with their localized names.
-    expect(await screen.findByText('缺标签')).toBeTruthy()
-    expect(screen.getByText('不相交父类')).toBeTruthy()
-    // Switch missing-label off, save, and the PUT carries the whole set.
-    await userEvent.click(screen.getByRole('button', { name: /缺标签/ }))
+    // Both sections are tables sharing the 启用/名称/级别 headers.
+    expect(await screen.findAllByRole('columnheader', { name: '启用' })).toHaveLength(2)
+    expect(screen.getAllByRole('columnheader', { name: '名称' })).toHaveLength(2)
+    expect(screen.getAllByRole('columnheader', { name: '级别' })).toHaveLength(2)
+    // Switch missing-label off via its checkmark and save.
+    const toggle = screen.getByRole('button', { name: '缺标签' })
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    await userEvent.click(toggle)
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
     await userEvent.click(screen.getByRole('button', { name: /保存/ }))
     await waitFor(() => expect(puts).toHaveLength(1))
     expect(puts[0].body.disabled).toContain('missing-label')
     expect(puts[0].url).toBe(`/api/ontologies/${OID}/lint/config`)
   })
 
-  it('creates and tests a custom SPARQL rule', async () => {
+  it('creates and tests a custom SPARQL rule without saving first', async () => {
     draw()
     await screen.findByText('缺标签')
     // A fresh config has no custom rules — add a draft row before typing.
@@ -128,13 +133,24 @@ describe('LintSettingsDialog', () => {
     // userEvent.type parses {…} as key descriptors — double the opening
     // braces on input; a lone } is typed literally as-is.
     await userEvent.type(await screen.findByLabelText(/查询/), q.replace(/{/g, '{{'))
-    await userEvent.click(screen.getByRole('button', { name: /保存/ }))
-    await waitFor(() => expect(puts).toHaveLength(1))
-    expect(puts[0].body.custom[0]).toMatchObject({ name: '老书', sparql: q, severity: 'info' })
-    // 测试 saves first, then runs only that rule by its echoed id.
+    // 测试 activates as soon as the query is non-empty — no manual save.
     await userEvent.click(screen.getByRole('button', { name: /^测试$/ }))
     await waitFor(() => expect(runs).toHaveLength(1))
+    expect(puts.length).toBeGreaterThanOrEqual(1) // it saved first
     expect(runs[0]).toEqual({ onlyRuleId: 'rule-0' })
     expect(await screen.findByText(/3 条/)).toBeTruthy()
+  })
+
+  it('toggles a custom rule off and PUTs enabled=false', async () => {
+    draw()
+    await screen.findByText('缺标签')
+    await userEvent.click(screen.getByRole('button', { name: /新建规则/ }))
+    await userEvent.type(await screen.findByLabelText(/名称/), '老书')
+    const toggle = screen.getByRole('button', { name: '老书' })
+    expect(toggle.getAttribute('aria-pressed')).toBe('true')
+    await userEvent.click(toggle)
+    await userEvent.click(screen.getByRole('button', { name: /保存/ }))
+    await waitFor(() => expect(puts).toHaveLength(1))
+    expect(puts[0].body.custom[0]).toMatchObject({ name: '老书', enabled: false })
   })
 })

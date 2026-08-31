@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { CheckIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api/client'
 import type { LintReportT, LintRuleResultT } from '../api/types'
@@ -9,11 +10,19 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { cn } from '@/lib/utils'
 
 /** The nine builtin rules (id → default severity), in display order. */
 const BUILTIN_IDS: [string, string][] = [
@@ -39,9 +48,37 @@ interface CustomDraft {
 
 const SEVERITIES = ['error', 'warning', 'info'] as const
 
-/** B3 rule settings: builtin toggles + custom SPARQL rules. Saving PUTs the
- *  whole config; 「测试」 saves first, then runs just that rule via
- *  onlyRuleId and previews its findings. */
+/** Shared enable toggle for both tables: a square that fills with a check
+ *  mark when on — one visual language for builtin and custom rules alike. */
+function CheckMark({
+  label,
+  on,
+  onToggle,
+}: {
+  label: string
+  on: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={on}
+      onClick={onToggle}
+      className={cn(
+        'border-line hover:border-primary flex h-3.5 w-3.5 items-center justify-center rounded-[3px] border transition-colors',
+        on ? 'border-primary bg-primary text-white' : 'bg-transparent',
+      )}
+    >
+      {on && <CheckIcon className="h-2.5 w-2.5" strokeWidth={3} />}
+    </button>
+  )
+}
+
+/** B3 rule settings: builtin toggles + custom SPARQL rules, both as tables.
+ *  Saving PUTs the whole config; 「测试」 saves first (so a fresh rule gets a
+ *  server id), then runs just that rule via onlyRuleId and previews its
+ *  findings — no separate manual save needed to activate the button. */
 export default function LintSettingsDialog({
   oid,
   open,
@@ -67,7 +104,9 @@ export default function LintSettingsDialog({
   const [prevOpen, setPrevOpen] = useState(false)
   const [disabled, setDisabled] = useState<Set<string>>(new Set())
   const [customs, setCustoms] = useState<CustomDraft[]>([])
-  const [preview, setPreview] = useState<LintRuleResultT | null>(null)
+  const [preview, setPreview] = useState<{ idx: number; result: LintRuleResultT | null } | null>(
+    null,
+  )
   useEffect(() => {
     if (open && !prevOpen && cfg) {
       setDisabled(new Set(cfg.disabled))
@@ -95,6 +134,10 @@ export default function LintSettingsDialog({
     })),
   })
 
+  /** Adopt server-assigned ids from a config echo (save or 测试's own PUT). */
+  const adoptIds = (echo: { custom: { id: string }[] }) =>
+    setCustoms((cs) => cs.map((c, i) => ({ ...c, id: echo.custom[i]?.id ?? c.id })))
+
   const save = useMutation({
     mutationFn: (payload: ReturnType<typeof body>) =>
       api.put<{ disabled: string[]; custom: { id: string }[] }>(
@@ -102,68 +145,81 @@ export default function LintSettingsDialog({
         payload,
       ),
     onSuccess: (echo) => {
-      // Adopt the server-assigned ids so 测试 can address a fresh rule.
-      setCustoms((cs) =>
-        cs.map((c, i) => ({ ...c, id: echo.custom[i]?.id ?? c.id })),
-      )
+      adoptIds(echo)
       void queryClient.invalidateQueries({ queryKey: ['lint-config', oid] })
     },
     onError: (e) => toast.error(errText(e, t)),
   })
 
   const test = useMutation({
-    mutationFn: async (id: string) => {
-      // 测试 saves first: an unsaved rule has no id to run by.
+    mutationFn: async (i: number) => {
+      // 测试 saves first: the server assigns the id this run is keyed by.
       const echo = await api.put<{ custom: { id: string }[] }>(
         `/api/ontologies/${oid}/lint/config`,
         body(),
       )
-      const rid = echo.custom.find((c) => c.id === id)?.id ?? id
-      return api.post<LintReportT>(`/api/ontologies/${oid}/lint/run`, { onlyRuleId: rid })
+      const rid = echo.custom[i]?.id ?? ''
+      const report = await api.post<LintReportT>(`/api/ontologies/${oid}/lint/run`, {
+        onlyRuleId: rid,
+      })
+      return { echo, report }
     },
-    onSuccess: (r) => setPreview(r.results[0] ?? null),
+    onSuccess: ({ echo, report }, i) => {
+      adoptIds(echo)
+      setPreview({ idx: i, result: report.results[0] ?? null })
+    },
     onError: (e) => toast.error(errText(e, t)),
   })
 
   const fieldCls =
     'border-line bg-panel-2 text-ink rounded-ctl border px-2 py-1.5 text-sm w-full'
-  const labelCls = 'text-ink-2 text-xs font-medium'
+  const cellCls = 'px-2 py-1.5 align-middle'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t('lint.settings')}</DialogTitle>
-          <DialogDescription>{t('lint.builtin')} · {t('lint.custom')}</DialogDescription>
         </DialogHeader>
 
         <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto">
           <section className="flex flex-col gap-1.5">
             <span className="microlabel">{t('lint.builtin')}</span>
-            {BUILTIN_IDS.map(([id, sev]) => (
-              <div key={id} className="flex items-center justify-between gap-2 text-xs">
-                <span className="text-ink flex items-baseline gap-1.5">
-                  {t(`lint.ruleName.${id}`)}
-                  <span className="text-ink-3 text-[10px]">{t(`lint.${sev}`)}</span>
-                </span>
-                <button
-                  type="button"
-                  aria-label={t(`lint.ruleName.${id}`)}
-                  aria-pressed={!disabled.has(id)}
-                  onClick={() =>
-                    setDisabled((s) => {
-                      const next = new Set(s)
-                      if (next.has(id)) next.delete(id)
-                      else next.add(id)
-                      return next
-                    })
-                  }
-                  className={disabled.has(id) ? 'text-ink-3' : 'text-primary'}
-                >
-                  {disabled.has(id) ? '○' : '●'}
-                </button>
-              </div>
-            ))}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8">{t('lint.enabled')}</TableHead>
+                  <TableHead>{t('lint.nameLabel')}</TableHead>
+                  <TableHead className="w-16">{t('lint.severity')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {BUILTIN_IDS.map(([id, sev]) => (
+                  <TableRow key={id}>
+                    <TableCell className={cellCls}>
+                      <CheckMark
+                        label={t(`lint.ruleName.${id}`)}
+                        on={!disabled.has(id)}
+                        onToggle={() =>
+                          setDisabled((s) => {
+                            const next = new Set(s)
+                            if (next.has(id)) next.delete(id)
+                            else next.add(id)
+                            return next
+                          })
+                        }
+                      />
+                    </TableCell>
+                    <TableCell className={cn(cellCls, 'text-ink text-xs')}>
+                      {t(`lint.ruleName.${id}`)}
+                    </TableCell>
+                    <TableCell className={cn(cellCls, 'text-ink-2 text-xs')}>
+                      {t(`lint.${sev}`)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </section>
 
           <section className="flex flex-col gap-1.5">
@@ -182,85 +238,112 @@ export default function LintSettingsDialog({
                 {t('lint.newRule')}
               </button>
             </div>
-            {customs.map((c, i) => (
-              <div key={i} className="border-line rounded-ctl flex flex-col gap-2 border p-2">
-                <div className="grid grid-cols-[4rem_1fr] items-center gap-2">
-                  <span className={labelCls}>{t('lint.nameLabel')}</span>
-                  <input
-                    value={c.name}
-                    onChange={(e) =>
-                      setCustoms((cs) =>
-                        cs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)),
-                      )
-                    }
-                    aria-label={t('lint.nameLabel')}
-                    className={fieldCls}
-                  />
-                </div>
-                <div className="grid grid-cols-[4rem_1fr] items-center gap-2">
-                  <span className={labelCls}>{t('lint.severity')}</span>
-                  <select
-                    value={c.severity}
-                    onChange={(e) =>
-                      setCustoms((cs) =>
-                        cs.map((x, j) => (j === i ? { ...x, severity: e.target.value } : x)),
-                      )
-                    }
-                    aria-label={t('lint.severity')}
-                    className={fieldCls}
-                  >
-                    {SEVERITIES.map((s) => (
-                      <option key={s} value={s}>
-                        {t(`lint.${s}`)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="grid grid-cols-[4rem_1fr] items-start gap-2">
-                  <span className={labelCls}>{t('lint.query')}</span>
-                  <textarea
-                    value={c.sparql}
-                    onChange={(e) =>
-                      setCustoms((cs) =>
-                        cs.map((x, j) => (j === i ? { ...x, sparql: e.target.value } : x)),
-                      )
-                    }
-                    aria-label={t('lint.query')}
-                    rows={3}
-                    className={`${fieldCls} resize-none font-mono text-xs`}
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={!c.id || test.isPending}
-                    onClick={() => c.id && test.mutate(c.id)}
-                  >
-                    {t('lint.test')}
-                  </Button>
-                  <button
-                    type="button"
-                    onClick={() => setCustoms((cs) => cs.filter((_, j) => j !== i))}
-                    className="text-ink-3 hover:text-red-500 ml-auto text-xs"
-                  >
-                    {t('common.delete')}
-                  </button>
-                </div>
-                {preview && (
-                  <div className="text-ink-2 flex flex-col gap-1 text-xs">
-                    <span className="text-ink-3">
-                      {preview.total} 条 · {preview.durationMs}ms
-                    </span>
-                    {preview.findings.slice(0, 10).map((f, j) => (
-                      <span key={j} className="font-mono">
-                        {f.subjectCurie}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-8">{t('lint.enabled')}</TableHead>
+                  <TableHead>{t('lint.nameLabel')}</TableHead>
+                  <TableHead className="w-24">{t('lint.severity')}</TableHead>
+                  <TableHead className="w-32 text-right">{t('lint.actions')}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {customs.map((c, i) => (
+                  <Fragment key={i}>
+                    <TableRow>
+                      <TableCell className={cellCls}>
+                        <CheckMark
+                          label={c.name || t('lint.newRule')}
+                          on={c.enabled}
+                          onToggle={() =>
+                            setCustoms((cs) =>
+                              cs.map((x, j) => (j === i ? { ...x, enabled: !x.enabled } : x)),
+                            )
+                          }
+                        />
+                      </TableCell>
+                      <TableCell className={cellCls}>
+                        <input
+                          value={c.name}
+                          onChange={(e) =>
+                            setCustoms((cs) =>
+                              cs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)),
+                            )
+                          }
+                          aria-label={t('lint.nameLabel')}
+                          className={fieldCls}
+                        />
+                      </TableCell>
+                      <TableCell className={cellCls}>
+                        <select
+                          value={c.severity}
+                          onChange={(e) =>
+                            setCustoms((cs) =>
+                              cs.map((x, j) =>
+                                j === i ? { ...x, severity: e.target.value } : x,
+                              ),
+                            )
+                          }
+                          aria-label={t('lint.severity')}
+                          className={fieldCls}
+                        >
+                          {SEVERITIES.map((s) => (
+                            <option key={s} value={s}>
+                              {t(`lint.${s}`)}
+                            </option>
+                          ))}
+                        </select>
+                      </TableCell>
+                      <TableCell className={cn(cellCls, 'text-right')}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!c.sparql.trim() || test.isPending}
+                          onClick={() => test.mutate(i)}
+                        >
+                          {t('lint.test')}
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => setCustoms((cs) => cs.filter((_, j) => j !== i))}
+                          className="text-ink-3 hover:text-red-500 ml-2 text-xs"
+                        >
+                          {t('common.delete')}
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell colSpan={4} className={cn(cellCls, 'pb-3')}>
+                        <textarea
+                          value={c.sparql}
+                          onChange={(e) =>
+                            setCustoms((cs) =>
+                              cs.map((x, j) => (j === i ? { ...x, sparql: e.target.value } : x)),
+                            )
+                          }
+                          aria-label={t('lint.query')}
+                          rows={3}
+                          placeholder="SELECT ?s WHERE { … }"
+                          className={`${fieldCls} resize-none font-mono text-xs`}
+                        />
+                        {preview?.idx === i && preview.result && (
+                          <div className="text-ink-2 mt-1.5 flex flex-col gap-1 text-xs">
+                            <span className="text-ink-3">
+                              {preview.result.total} 条 · {preview.result.durationMs}ms
+                            </span>
+                            {preview.result.findings.slice(0, 10).map((f, j) => (
+                              <span key={j} className="font-mono">
+                                {f.subjectCurie}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  </Fragment>
+                ))}
+              </TableBody>
+            </Table>
           </section>
         </div>
 

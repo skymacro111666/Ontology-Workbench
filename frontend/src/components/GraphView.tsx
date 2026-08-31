@@ -615,7 +615,52 @@ export default function GraphView({
       <div ref={containerRef} className="h-full w-full" />
 
       {showControls && (
-        <div className="border-line bg-panel/90 rounded-ctl absolute right-2 bottom-2 flex items-center gap-1 border p-1 shadow-xs backdrop-blur">
+        <div className="border-line bg-panel/90 rounded-ctl absolute right-2 bottom-2 flex max-w-[calc(100%-1rem)] flex-wrap items-center justify-end gap-1 border p-1 shadow-xs backdrop-blur">
+          {!external && (
+            <>
+              {/* One bar, two segments: display filters | view operations. */}
+              <Toggle
+                variant="outline"
+                size="sm"
+                className="h-6 min-w-0 px-2 text-xs"
+                pressed={showLabels}
+                onPressedChange={setShowLabels}
+              >
+                {tr('canvas.labels')}
+              </Toggle>
+              <Toggle
+                variant="outline"
+                size="sm"
+                className="h-6 min-w-0 px-2 text-xs"
+                pressed={kinds.classes && kinds.objectProps && kinds.dataProps}
+                onPressedChange={() => setKinds(allKinds())}
+              >
+                {tr('canvas.all')}
+              </Toggle>
+              <ToggleGroup
+                type="multiple"
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                value={activeKindKeys(kinds)}
+                onValueChange={(v) => {
+                  // Empty selection would blank the canvas — keep the last dimension.
+                  if (v.length > 0) setKinds(kindsFromKeys(v))
+                }}
+              >
+                <ToggleGroupItem className="h-6 min-w-0 px-2 text-xs" value="classes">
+                  {tr('canvas.filterClasses')}
+                </ToggleGroupItem>
+                <ToggleGroupItem className="h-6 min-w-0 px-2 text-xs" value="objectProps">
+                  {tr('canvas.filterObjects')}
+                </ToggleGroupItem>
+                <ToggleGroupItem className="h-6 min-w-0 px-2 text-xs" value="dataProps">
+                  {tr('canvas.filterData')}
+                </ToggleGroupItem>
+              </ToggleGroup>
+              <span className="border-line mx-0.5 h-4 w-px" aria-hidden="true" />
+            </>
+          )}
           <button type="button" className={ctlBtn} onClick={() => void zoomBy(0.9)}>
             −
           </button>
@@ -654,35 +699,6 @@ export default function GraphView({
         ))}
       </div>
 
-      {!external && (
-        <div className="border-line bg-panel/90 rounded-ctl absolute top-2 right-2 flex items-center gap-1 border p-1 shadow-xs backdrop-blur">
-          <Toggle variant="outline" size="sm" pressed={showLabels} onPressedChange={setShowLabels}>
-            {tr('canvas.labels')}
-          </Toggle>
-          <Toggle
-            variant="outline"
-            size="sm"
-            pressed={kinds.classes && kinds.objectProps && kinds.dataProps}
-            onPressedChange={() => setKinds(allKinds())}
-          >
-            {tr('canvas.all')}
-          </Toggle>
-          <ToggleGroup
-            type="multiple"
-            variant="outline"
-            size="sm"
-            value={activeKindKeys(kinds)}
-            onValueChange={(v) => {
-              // Empty selection would blank the canvas — keep the last dimension.
-              if (v.length > 0) setKinds(kindsFromKeys(v))
-            }}
-          >
-            <ToggleGroupItem value="classes">{tr('canvas.filterClasses')}</ToggleGroupItem>
-            <ToggleGroupItem value="objectProps">{tr('canvas.filterObjects')}</ToggleGroupItem>
-            <ToggleGroupItem value="dataProps">{tr('canvas.filterData')}</ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-      )}
     </div>
   )
 }

@@ -242,7 +242,9 @@
       "unused-property": "declared but never used",
       "undeclared-ref": "references undeclared {{ref}}",
       "duplicate-label": "label \"{{label}}\" ({{lang}}) shared by {{count}}"
-    }
+    },
+    "enabled": "Enabled",
+    "actions": "Actions"
   },
   "canvas": {
     "newClass": "＋ New class",
