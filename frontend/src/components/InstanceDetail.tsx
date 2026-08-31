@@ -244,14 +244,14 @@ export default function InstanceDetail({ oid, eid, inst }: { oid: string; eid: s
   // Create-then-land-in-edit (spec §0): InstanceDialogs flags the freshly
   // created eid; this detail's first render enters edit mode straight away
   // so assertions can join inline, then clears the flag.
-  const justCreated = useUiStore((s) => s.instanceJustCreated)
-  const setInstanceJustCreated = useUiStore((s) => s.setInstanceJustCreated)
+  const justCreated = useUiStore((s) => s.instanceAutoEdit)
+  const setInstanceAutoEdit = useUiStore((s) => s.setInstanceAutoEdit)
   const setInstanceDialog = useUiStore((s) => s.setInstanceDialog)
   useEffect(() => {
     if (!justCreated || justCreated !== eid) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     enterEdit()
-    setInstanceJustCreated(null)
+    setInstanceAutoEdit(null)
     // Fires only on the flag/eid change; after acting, the guard returns.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [justCreated, eid])

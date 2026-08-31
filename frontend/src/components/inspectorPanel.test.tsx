@@ -97,7 +97,7 @@ function renderPanel(
 
 beforeEach(() => {
   useBrowseStore.setState({ selectedEid: null, revealEid: null })
-  useUiStore.setState({ instanceDialog: null, instanceJustCreated: null })
+  useUiStore.setState({ instanceDialog: null, instanceAutoEdit: null })
 })
 
 afterEach(() => {

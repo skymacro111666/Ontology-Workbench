@@ -203,12 +203,14 @@ describe('GraphOverview context menu', () => {
     await userEvent.click(await screen.findByText('添加实例'))
     expect(useUiStore.getState().instanceDialog).toEqual({ mode: 'create', parent: 'a' })
 
-    // Instance node: 编辑实例 reveals (select + focus); 删除实例 opens the
-    // delete dialog with the instance's local name in the label.
+    // Instance node: 编辑实例 reveals AND flags auto-edit — the inspector's
+    // detail enters its edit mode instead of just re-showing the view state;
+    // 删除实例 opens the delete dialog with the instance's local name.
     rightClick('i1')
     await userEvent.click(await screen.findByText('编辑实例'))
     expect(useBrowseStore.getState().selectedEid).toBe('i1')
     expect(useBrowseStore.getState().revealEid).toBe('i1')
+    expect(useUiStore.getState().instanceAutoEdit).toBe('i1')
     rightClick('i1')
     await userEvent.click(await screen.findByText('删除 Inst'))
     expect(useUiStore.getState().instanceDialog).toEqual({ mode: 'delete', eid: 'i1' })

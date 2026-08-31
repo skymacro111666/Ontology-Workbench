@@ -89,7 +89,7 @@ function draw(fetchMock: ReturnType<typeof stubFetch>) {
 }
 
 beforeEach(() => {
-  useUiStore.setState({ instanceDialog: null, instanceJustCreated: null })
+  useUiStore.setState({ instanceDialog: null, instanceAutoEdit: null })
   useBrowseStore.setState({ selectedEid: null, revealEid: null })
 })
 
@@ -121,7 +121,7 @@ describe('InstanceDialogs', () => {
     // Success reveals the fresh instance, flags it for the detail's
     // land-in-edit effect, and closes the dialog.
     expect(useBrowseStore.getState().revealEid).toBe(TB2)
-    expect(useUiStore.getState().instanceJustCreated).toBe(TB2)
+    expect(useUiStore.getState().instanceAutoEdit).toBe(TB2)
     await waitFor(() => expect(useUiStore.getState().instanceDialog).toBeNull())
   })
 

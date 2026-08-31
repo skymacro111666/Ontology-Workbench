@@ -174,6 +174,9 @@ export default function LintSettingsDialog({
   const fieldCls =
     'border-line bg-panel-2 text-ink rounded-ctl border px-2 py-1.5 text-sm w-full'
   const cellCls = 'px-2 py-1.5 align-middle'
+  /** Muted compact headers over roomier content rows (user direction):
+   *  heads shrink to 11px grey, row text stays at the body size. */
+  const headCls = 'h-8 px-2 text-[11px] font-medium text-ink-3'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -185,12 +188,12 @@ export default function LintSettingsDialog({
         <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto">
           <section className="flex flex-col gap-1.5">
             <span className="microlabel">{t('lint.builtin')}</span>
-            <Table>
+            <Table className="[&_tr]:border-line">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-8">{t('lint.enabled')}</TableHead>
-                  <TableHead>{t('lint.nameLabel')}</TableHead>
-                  <TableHead className="w-16">{t('lint.severity')}</TableHead>
+                  <TableHead className={cn(headCls, 'w-8')}>{t('lint.enabled')}</TableHead>
+                  <TableHead className={headCls}>{t('lint.nameLabel')}</TableHead>
+                  <TableHead className={cn(headCls, 'w-16')}>{t('lint.severity')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -210,10 +213,10 @@ export default function LintSettingsDialog({
                         }
                       />
                     </TableCell>
-                    <TableCell className={cn(cellCls, 'text-ink text-xs')}>
+                    <TableCell className={cn(cellCls, 'text-ink text-sm')}>
                       {t(`lint.ruleName.${id}`)}
                     </TableCell>
-                    <TableCell className={cn(cellCls, 'text-ink-2 text-xs')}>
+                    <TableCell className={cn(cellCls, 'text-ink-2 text-sm')}>
                       {t(`lint.${sev}`)}
                     </TableCell>
                   </TableRow>
@@ -238,13 +241,15 @@ export default function LintSettingsDialog({
                 {t('lint.newRule')}
               </button>
             </div>
-            <Table>
+            <Table className="[&_tr]:border-line">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-8">{t('lint.enabled')}</TableHead>
-                  <TableHead>{t('lint.nameLabel')}</TableHead>
-                  <TableHead className="w-24">{t('lint.severity')}</TableHead>
-                  <TableHead className="w-32 text-right">{t('lint.actions')}</TableHead>
+                  <TableHead className={cn(headCls, 'w-8')}>{t('lint.enabled')}</TableHead>
+                  <TableHead className={headCls}>{t('lint.nameLabel')}</TableHead>
+                  <TableHead className={cn(headCls, 'w-24')}>{t('lint.severity')}</TableHead>
+                  <TableHead className={cn(headCls, 'w-32 text-right')}>
+                    {t('lint.actions')}
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

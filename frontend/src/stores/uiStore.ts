@@ -55,10 +55,11 @@ export const useUiStore = create<{
   setEntityDialog: (s: EntityDialogState | null) => void
   instanceDialog: InstanceDialogState | null
   setInstanceDialog: (s: InstanceDialogState | null) => void
-  /** Freshly created instance eid: InstanceDetail observes it to land
-   *  straight in edit mode (spec §0 create flow), then clears the flag. */
-  instanceJustCreated: string | null
-  setInstanceJustCreated: (eid: string | null) => void
+  /** Instance eid that should land straight in edit mode: set right after
+   *  creation (spec §0) and by the canvas 编辑实例 context action; the
+   *  detail consumes it and clears the flag. */
+  instanceAutoEdit: string | null
+  setInstanceAutoEdit: (eid: string | null) => void
 }>((set) => ({
   importOpen: false,
   setImportOpen: (importOpen) => set({ importOpen }),
@@ -78,6 +79,6 @@ export const useUiStore = create<{
   setEntityDialog: (entityDialog) => set({ entityDialog }),
   instanceDialog: null,
   setInstanceDialog: (instanceDialog) => set({ instanceDialog }),
-  instanceJustCreated: null,
-  setInstanceJustCreated: (instanceJustCreated) => set({ instanceJustCreated }),
+  instanceAutoEdit: null,
+  setInstanceAutoEdit: (instanceAutoEdit) => set({ instanceAutoEdit }),
 }))

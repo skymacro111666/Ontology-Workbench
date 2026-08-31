@@ -71,7 +71,7 @@ function draw() {
 
 beforeEach(() => {
   useBrowseStore.setState({ selectedEid: null, revealEid: null })
-  useUiStore.setState({ instanceDialog: null, instanceJustCreated: null })
+  useUiStore.setState({ instanceDialog: null, instanceAutoEdit: null })
 })
 
 afterEach(() => {
@@ -103,9 +103,9 @@ describe('InstanceDetail view', () => {
     await screen.findAllByText('ThreeBody')
     // InstanceDialogs sets the flag after POST; the detail enters edit mode
     // straight away so assertions can join inline, then clears the flag.
-    act(() => useUiStore.getState().setInstanceJustCreated(TB))
+    act(() => useUiStore.getState().setInstanceAutoEdit(TB))
     expect(await screen.findByRole('button', { name: /添加属性/ })).toBeTruthy()
-    expect(useUiStore.getState().instanceJustCreated).toBeNull()
+    expect(useUiStore.getState().instanceAutoEdit).toBeNull()
   })
 
   it('routes the header delete button to the delete dialog', async () => {

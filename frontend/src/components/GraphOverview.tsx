@@ -17,8 +17,8 @@ import { Button } from '@/components/ui/button'
 
 /** Menu rows for a right-click report: blank area offers creation, a class
  *  node additionally offers subclass/instance/edit/delete, property nodes the
- *  property edit set, instance nodes reveal/delete (competitor parity,
- *  spec §4). */
+ *  property edit set, instance nodes reveal/auto-edit/delete (competitor
+ *  parity, spec §4). */
 function menuItems(
   menu: { targetId?: string; kind?: string; curie?: string },
   setEntityDialog: (s: {
@@ -28,6 +28,7 @@ function menuItems(
   }) => void,
   setInstanceDialog: (s: { mode: 'create' | 'delete'; parent?: string; eid?: string } | null) => void,
   reveal: (eid: string) => void,
+  setAutoEdit: (eid: string) => void,
   t: TFunction,
 ): MenuItem[] {
   if (!menu.targetId) {
@@ -55,7 +56,12 @@ function menuItems(
       {
         key: 'edit',
         label: t('canvas.editInstance'),
-        onSelect: () => reveal(menu.targetId as string),
+        // Reveal + flag auto-edit: the detail opens straight in edit mode,
+        // not the view state a plain (left-click) select already shows.
+        onSelect: () => {
+          reveal(menu.targetId as string)
+          setAutoEdit(menu.targetId as string)
+        },
       },
       {
         key: 'delete',
@@ -116,6 +122,7 @@ export default function GraphOverview({
   const reveal = useBrowseStore((s) => s.reveal)
   const setEntityDialog = useUiStore((s) => s.setEntityDialog)
   const setInstanceDialog = useUiStore((s) => s.setInstanceDialog)
+  const setInstanceAutoEdit = useUiStore((s) => s.setInstanceAutoEdit)
   const queryClient = useQueryClient()
   /** B3 lint slices: the button rides the control cluster, the drawer
    *  anchors to the relative canvas container (not the cluster box). The
@@ -295,7 +302,14 @@ export default function GraphOverview({
             x={menu.x}
             y={menu.y}
             onClose={() => setMenu(null)}
-            items={menuItems(menu, setEntityDialog, setInstanceDialog, reveal, t)}
+            items={menuItems(
+              menu,
+              setEntityDialog,
+              setInstanceDialog,
+              reveal,
+              setInstanceAutoEdit,
+              t,
+            )}
           />
         )}
       </div>

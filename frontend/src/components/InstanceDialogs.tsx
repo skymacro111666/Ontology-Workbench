@@ -29,7 +29,7 @@ export default function InstanceDialogs({ oid }: { oid: string }) {
   const { t } = useTranslation()
   const dialog = useUiStore((s) => s.instanceDialog)
   const setInstanceDialog = useUiStore((s) => s.setInstanceDialog)
-  const setInstanceJustCreated = useUiStore((s) => s.setInstanceJustCreated)
+  const setInstanceAutoEdit = useUiStore((s) => s.setInstanceAutoEdit)
   const reveal = useBrowseStore((s) => s.reveal)
   const setSelected = useBrowseStore((s) => s.setSelected)
   const queryClient = useQueryClient()
@@ -95,7 +95,7 @@ export default function InstanceDialogs({ oid }: { oid: string }) {
         const eid = (r as { entity?: { eid?: string } } | null)?.entity?.eid
         if (eid) {
           reveal(eid)
-          setInstanceJustCreated(eid)
+          setInstanceAutoEdit(eid)
         }
       } else {
         setSelected(null)
