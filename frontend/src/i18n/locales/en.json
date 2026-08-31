@@ -271,7 +271,8 @@
     "all": "All",
     "filterClasses": "Classes",
     "filterObjects": "Object",
-    "filterData": "Data"
+    "filterData": "Data",
+    "legend": "Legend"
   },
   "pwd": {
     "lenRule": "The new password needs 8–128 characters",

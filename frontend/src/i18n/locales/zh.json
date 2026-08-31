@@ -271,7 +271,8 @@
     "all": "全部",
     "filterClasses": "类",
     "filterObjects": "对象",
-    "filterData": "数据"
+    "filterData": "数据",
+    "legend": "图例"
   },
   "pwd": {
     "lenRule": "新密码需为 8–128 个字符",

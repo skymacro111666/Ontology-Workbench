@@ -7,6 +7,7 @@ import type { GEdge, GNode } from '../api/types'
 import { FAST_LAYOUT_NODES, MIN_AUTO_ZOOM, linearTreePositions } from './linearTree'
 import type { WrapEdge, WrapNode } from './wrapRanks'
 import { localName } from '../lib/localName'
+import { cn } from '@/lib/utils'
 import { assignFallbackPositions, type Pt } from './layoutPositions'
 import { useTheme } from '../theme/ThemeProvider'
 import { Toggle } from '@/components/ui/toggle'
@@ -333,6 +334,8 @@ export default function GraphView({
   const [labelsFallback, setLabelsFallback] = useState(true)
   const [kinds, setKinds] = useState<KindFilter>(defaultKindsProp ?? allKinds())
   const [zoomPct, setZoomPct] = useState(100)
+  /** Edge legend visibility — the control bar's 图例 button flips it. */
+  const [showLegend, setShowLegend] = useState(true)
   const external = onShowLabelsChange !== undefined
   const showLabels = showLabelsProp ?? labelsFallback
   const setShowLabels = onShowLabelsChange ?? setLabelsFallback
@@ -449,6 +452,9 @@ export default function GraphView({
       layout: (useSaved || autoLinear ? false : LAYOUT) as unknown as typeof LAYOUT,
       node: { type: (d: NodeData) => (d.data?.kind === 'instance' ? 'circle' : 'rect') },
       edge: { type: 'polyline' },
+      // Two assertions between the same instance pair (or any parallel
+      // edges) fan out by curvature instead of stacking into one line.
+      transforms: ['process-parallel-edges'],
       behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element'],
       plugins: [],
     })
@@ -677,11 +683,20 @@ export default function GraphView({
             </button>
           )}
           {extraControls}
+          <button
+            type="button"
+            className={cn(ctlBtn, showLegend && 'text-primary')}
+            aria-pressed={showLegend}
+            onClick={() => setShowLegend((v) => !v)}
+          >
+            {tr('canvas.legend')}
+          </button>
         </div>
       )}
 
-      <div className="border-line bg-panel/90 rounded-ctl absolute bottom-2 left-2 flex flex-col gap-1 border p-2 shadow-xs backdrop-blur">
-        {LEGEND.map(({ label, visual }) => (
+      {showLegend && (
+        <div className="border-line bg-panel/90 rounded-ctl absolute bottom-2 left-2 flex flex-col gap-1 border p-2 shadow-xs backdrop-blur">
+          {LEGEND.map(({ label, visual }) => (
           <div key={label} className="flex items-center gap-2">
             <svg width="26" height="6" aria-hidden="true" className="shrink-0">
               <line
@@ -696,8 +711,9 @@ export default function GraphView({
             </svg>
             <span className="text-ink-2 text-xs">{tr(label)}</span>
           </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
     </div>
   )

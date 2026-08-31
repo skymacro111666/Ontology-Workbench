@@ -241,6 +241,30 @@ describe('GraphView', () => {
     expect(cluster!.contains(screen.getByRole('button', { name: '标签' }))).toBe(true)
     expect(cluster!.contains(screen.getByRole('button', { name: '全部' }))).toBe(true)
   })
+
+  it('fans parallel edges out instead of stacking them', () => {
+    // Two assertion properties between the same instance pair (the Sofia ↔
+    // James case): G6's process-parallel-edges bundle transform separates
+    // them by curvature.
+    draw({
+      edges: [
+        ...EDGES,
+        { source: 'i1', target: 'b', kind: 'assertion', label: 'worksIn' },
+        { source: 'i1', target: 'b', kind: 'assertion', label: 'manages' },
+      ],
+    })
+    const opts = lastG6()!.options as { transforms?: string[] }
+    expect(opts.transforms).toContain('process-parallel-edges')
+  })
+
+  it('toggles the legend from the control bar', async () => {
+    draw()
+    expect(screen.getByText('子类（subClassOf）')).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: '图例' }))
+    expect(screen.queryByText('子类（subClassOf）')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: '图例' }))
+    expect(screen.getByText('子类（subClassOf）')).toBeTruthy()
+  })
 })
 
 describe('toG6Edges', () => {
