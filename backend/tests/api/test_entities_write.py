@@ -95,9 +95,15 @@ def test_create_object_and_datatype_properties(client: TestClient) -> None:
     )
     assert r.status_code == 200
     ov = _overview(client, oid)
-    assert any(n["curie"] == "ex:playsWith" for n in ov["nodes"])
-    prop = next(n for n in ov["nodes"] if n["curie"] == "ex:playsWith")
-    assert prop["kind"] == "property"
+    # Domain+range declared → the new direct-edge contract (2026-08-31):
+    # playsWith renders as one Dog→Toy objectProperty edge, not a node.
+    direct = [
+        e
+        for e in ov["edges"]
+        if e.get("kind") == "objectProperty" and e.get("label") == "playsWith"
+    ]
+    assert [(e["source"], e["target"]) for e in direct] == [(DOG, TOY)]
+    assert not any(n["curie"] == "ex:playsWith" for n in ov["nodes"])
 
     meta2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
     r = client.post(

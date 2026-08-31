@@ -117,27 +117,25 @@ def test_overview_budget_default_is_5000() -> None:
 
 
 def test_overview_includes_property_nodes_and_typed_edges() -> None:
-    """Spec §7.3: properties join the canvas with typed edges.
+    """Spec §7.3, revised 2026-08-31: object properties become edges.
 
-    Object properties render as solid 'property' edges, datatype
-    properties as dotted 'datatype' ones, each linked to the classes
-    it constrains via domain/range.
+    Declared domain+range renders as ONE direct class→class edge
+    (objectProperty) instead of a hub node; datatype properties keep node
+    form with dotted 'datatype' edges (their range is a literal).
     """
     ix = make2()
     ov = ix.overview()
-    kinds = {n["curie"]: n["kind"] for n in ov["nodes"]}
-    assert kinds.get("ex:likes") == "property"
-    assert kinds.get("ex:age") == "property"
+    curies = {n["curie"] for n in ov["nodes"]}
+    assert "ex:likes" not in curies  # direct edge, not a node
+    assert "ex:age" in curies
     ptypes = {n["curie"]: n.get("ptype") for n in ov["nodes"]}
-    assert ptypes["ex:likes"] == "ObjectProperty"
     assert ptypes["ex:age"] == "DatatypeProperty"
     # Class nodes stay ptype-free; the field only distinguishes properties.
     assert ptypes["ex:Dog"] is None
     triples = {(e["source"], e["target"], e["kind"]) for e in ov["edges"]}
     dog = "http://example.org/Dog"
     cat = "http://example.org/Cat"
-    assert (dog, "http://example.org/likes", "property") in triples
-    assert (cat, "http://example.org/likes", "property") in triples
+    assert (dog, cat, "objectProperty") in triples
     assert (dog, "http://example.org/age", "datatype") in triples
     # External range (xsd:integer) is not an entity and must not dangle.
     assert all(e["target"] in {n["id"] for n in ov["nodes"]} for e in ov["edges"])
@@ -399,3 +397,48 @@ def test_assertion_edges_sub_cap_full_payload() -> None:
     assert out["truncated"] is False
     assert out["total"] == len(out["edges"]) == 20
     assert {e["label"] for e in out["edges"]} == {"knows"}
+
+
+HR = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:Employee a owl:Class .
+ex:Department a owl:Class .
+ex:worksIn a owl:ObjectProperty ; rdfs:domain ex:Employee ; rdfs:range ex:Department .
+ex:badgeNo a owl:DatatypeProperty ; rdfs:domain ex:Employee .
+"""
+
+
+def make_hr():
+    """Indexes over a domain/range object property plus a datatype one."""
+    g = rdflib.Graph().parse(data=HR, format="turtle")
+    return build_indexes(build_ir(g))
+
+
+def test_overview_object_property_becomes_direct_edge() -> None:
+    """Domain+range declared → one labeled class→class edge, no prop node."""
+    ix = make_hr()
+    ov = ix.overview()
+    assert not any(n["curie"] == "ex:worksIn" for n in ov["nodes"])
+    direct = [e for e in ov["edges"] if e["kind"] == "objectProperty"]
+    assert len(direct) == 1
+    assert direct[0]["source"] == "http://example.org/Employee"
+    assert direct[0]["target"] == "http://example.org/Department"
+    assert direct[0]["label"] == "worksIn"
+    assert direct[0]["eid"] == "http://example.org/worksIn"
+    # Datatype properties keep the node form (their range is a literal).
+    assert any(n["curie"] == "ex:badgeNo" for n in ov["nodes"])
+    assert any(e["kind"] == "datatype" for e in ov["edges"])
+
+
+def test_overview_object_property_without_range_keeps_node() -> None:
+    """No usable far end → the property falls back to node form.
+
+    It stays visible rather than vanishing from the canvas.
+    """
+    ttl = HR.replace(" ; rdfs:range ex:Department .", " .", 1)
+    ix = build_indexes(build_ir(rdflib.Graph().parse(data=ttl, format="turtle")))
+    ov = ix.overview()
+    assert any(n["curie"] == "ex:worksIn" for n in ov["nodes"])
+    assert any(e["kind"] == "property" for e in ov["edges"])
+    assert not any(e["kind"] == "objectProperty" for e in ov["edges"])

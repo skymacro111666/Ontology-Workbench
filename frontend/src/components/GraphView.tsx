@@ -85,6 +85,7 @@ function edgeVisualFor(
   if (kind === 'datatype') return { stroke: t.ink3, dash: [1, 4] }
   if (kind === 'instance') return { stroke: t.ink3 }
   if (kind === 'assertion') return { stroke: t.success, lineWidth: 1 }
+  if (kind === 'objectProperty') return { stroke: t.primary }
   return { stroke: t.primary }
 }
 
@@ -210,7 +211,7 @@ export function toG6Edges(
           ? 'subClassOf'
           : e.kind === 'instance'
             ? 'instance'
-            : e.kind === 'assertion'
+            : e.kind === 'assertion' || e.kind === 'objectProperty'
               ? (e.label ?? '→')
               : localName(visible.get(e.target) ?? e.kind)
       // Attach edges (subClassOf child→parent, instance→class) are swapped:
@@ -224,7 +225,7 @@ export function toG6Edges(
         id: `e${i}-${source}-${target}`,
         source,
         target,
-        data: { kind: e.kind },
+        data: { kind: e.kind, propEid: e.eid },
         style: {
           stroke: v.stroke,
           lineWidth: v.lineWidth ?? 1.5,
@@ -256,6 +257,12 @@ function visibleOf(nodes: GraphViewNode[], kinds: KindFilter): GraphViewNode[] {
   )
 }
 
+/** Direct class→class object-property edges follow the 对象属性 filter,
+ *  exactly like the property nodes they replaced. */
+function shownEdges(edges: GEdge[], kinds: KindFilter): GEdge[] {
+  return edges.filter((e) => e.kind !== 'objectProperty' || kinds.objectProps)
+}
+
 function buildData(
   nodes: GraphViewNode[],
   edges: GEdge[],
@@ -267,7 +274,7 @@ function buildData(
   const ids = new Map(visible.map((n) => [n.id, n.curie]))
   return {
     nodes: toG6Nodes(visible, t),
-    edges: toG6Edges(edges, ids, showLabels, t),
+    edges: toG6Edges(shownEdges(edges, kinds), ids, showLabels, t),
   }
 }
 
@@ -342,6 +349,9 @@ export default function GraphView({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const graphRef = useRef<Graph | null>(null)
+  /** Built edge id → objectProperty eid; kept current on every data build
+   *  so edge clicks can route to the property's detail page. */
+  const edgePropRef = useRef<Map<string, string>>(new Map())
   /** Authoritative node positions this mount knows about: seeded from
    *  savedPositions, backfilled from the layout engine, updated by drags. */
   const positionsRef = useRef<Record<string, Pt>>({})
@@ -412,6 +422,12 @@ export default function GraphView({
       positionsRef.current = {}
     }
     const data = buildData(snap.nodes, snap.edges, snap.kinds, snap.showLabels, t)
+    edgePropRef.current = new Map(
+      (data.edges ?? []).map((ed) => [
+        ed.id as string,
+        (ed as { data?: { propEid?: string } }).data?.propEid ?? '',
+      ]),
+    )
     // Oversized auto layouts skip dagre (minutes on wide trees, main thread):
     // a linear tree pass + the shared rank-wrap fold places them in <1s.
     const autoLinear = !useSaved && (data.nodes?.length ?? 0) > FAST_LAYOUT_NODES
@@ -472,6 +488,15 @@ export default function GraphView({
       // The badge click (any badge-* shape) reveals instances; the body selects.
       if (hitBadge(evt.originalTarget, evt.target)) onBadgeClickRef.current?.(id)
       else onSelectRef.current?.(id)
+    })
+
+    // A direct objectProperty edge stands in for its property node: clicking
+    // it opens the property's detail page, preserving the node's affordance.
+    graph.on('edge:click', (e) => {
+      const evt = e as IPointerEvent
+      const id = evt.target ? (evt.target as unknown as { id: string }).id : undefined
+      const propEid = id ? edgePropRef.current.get(id) : undefined
+      if (propEid) onSelectRef.current?.(propEid)
     })
 
     // A finished drag persists the whole map (debounced).
@@ -561,7 +586,19 @@ export default function GraphView({
     if (!g) return
     const snap = stateRef.current
     const ids = new Map(visibleOf(snap.nodes, snap.kinds).map((n) => [n.id, n.curie]))
-    g.updateEdgeData(toG6Edges(snap.edges, ids, showLabels, readCanvasTokens()))
+    const nextEdges = toG6Edges(
+      shownEdges(snap.edges, snap.kinds),
+      ids,
+      showLabels,
+      readCanvasTokens(),
+    )
+    edgePropRef.current = new Map(
+      nextEdges.map((ed) => [
+        ed.id as string,
+        (ed as { data?: { propEid?: string } }).data?.propEid ?? '',
+      ]),
+    )
+    g.updateEdgeData(nextEdges)
     void g.draw()
   }, [showLabels])
 
@@ -578,6 +615,12 @@ export default function GraphView({
     const seeded = positionsRef.current
     const useSaved = Object.keys(seeded).length > 0
     const data = buildData(snap.nodes, snap.edges, kinds, snap.showLabels, readCanvasTokens())
+    edgePropRef.current = new Map(
+      (data.edges ?? []).map((ed) => [
+        ed.id as string,
+        (ed as { data?: { propEid?: string } }).data?.propEid ?? '',
+      ]),
+    )
     if (useSaved) {
       const full = assignFallbackPositions(snap.nodes, snap.edges, seeded)
       positionsRef.current = full

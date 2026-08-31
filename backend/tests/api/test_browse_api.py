@@ -160,11 +160,22 @@ def test_instances_endpoint(client: TestClient) -> None:
 
 
 def test_overview_property_nodes_carry_ptype(client: TestClient) -> None:
-    """Overview property nodes carry ptype so the canvas filter can split them."""
+    """Property rendering per the 2026-08-31 revision.
+
+    An object property with declared domain+range is ONE direct class→class
+    edge (objectProperty, domain→range, labeled with the local name);
+    datatype properties keep node form carrying ptype so the canvas filter
+    can split them.
+    """
     oid = _upload_props(client)
     ov = client.get(f"/api/ontologies/{oid}/overview").json()["data"]
+    curies = {n["curie"] for n in ov["nodes"]}
+    assert "ex:livesIn" not in curies  # domain Animal + range Thing → edge
+    direct = [e for e in ov["edges"] if e["kind"] == "objectProperty"]
+    assert [(e["source"], e["target"], e["label"]) for e in direct] == [
+        ("http://example.org/Animal", "http://example.org/Thing", "livesIn")
+    ]
     ptypes = {n["curie"]: n.get("ptype") for n in ov["nodes"]}
-    assert ptypes["ex:livesIn"] == "ObjectProperty"
     assert ptypes["ex:age"] == "DatatypeProperty"
     assert ptypes["ex:Dog"] is None
 

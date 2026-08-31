@@ -165,6 +165,8 @@ export interface GEdge {
   kind: 'subClassOf' | 'property' | 'datatype' | 'instance' | 'assertion' | string
   /** Assertion edges carry the property's local name for their label. */
   label?: string
+  /** objectProperty edges: the property entity, so a click opens its detail. */
+  eid?: string
 }
 
 /** Nodes/edges payload; truncated marks the >5000-node degradation to 3 levels. */

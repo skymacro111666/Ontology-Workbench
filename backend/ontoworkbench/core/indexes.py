@@ -274,11 +274,16 @@ class Indexes:
                 break
             walk(r, 0)
 
-        # Properties join the canvas after the class tree (spec §7.3): each
-        # property entity renders once, linked to every rendered class it
-        # constrains via domain/range; DatatypeProperty reads as 'datatype'
-        # (dotted), every other property as 'property' (solid).
+        # Properties join the canvas after the class tree (spec §7.3). An
+        # object property whose domain AND range are both declared, rendered
+        # classes becomes ONE labeled class→class edge (kind objectProperty,
+        # arrow domain→range) — the property node hub is dropped (user
+        # direction 2026-08-31: fewer nodes, relations read at a glance).
+        # Everything else falls back to node form: datatype properties (their
+        # range is a literal with no node to attach to) and object properties
+        # without a usable far end, so they stay visible instead of vanishing.
         prop_nodes: dict[str, dict[str, Any]] = {}
+        direct: set[tuple[str, str, str]] = set()
         for e in self._ir.entities.values():
             if budget <= 0:
                 break
@@ -289,6 +294,28 @@ class Indexes:
                 if prop.eid in linked:
                     continue
                 linked.add(prop.eid)
+                if prop.ptype != "DatatypeProperty":
+                    # e.referenced_by carries this property's relation to e
+                    # plus the far end (counterpart): the range class when e
+                    # is the domain, the domain class when e is the range.
+                    ref = next((r for r in e.referenced_by if r.eid == prop.eid), None)
+                    far = ref.counterpart if ref else None
+                    if far and far.declared and far.eid in seen:
+                        src, dst = (
+                            (e.eid, far.eid) if ref.relation == "rdfs:domain" else (far.eid, e.eid)
+                        )
+                        if (prop.eid, src, dst) not in direct:
+                            direct.add((prop.eid, src, dst))
+                            edges.append(
+                                {
+                                    "source": src,
+                                    "target": dst,
+                                    "kind": "objectProperty",
+                                    "label": prop.curie.split(":")[-1],
+                                    "eid": prop.eid,
+                                }
+                            )
+                        continue
                 if prop.eid not in prop_nodes:
                     if budget <= 0:
                         break

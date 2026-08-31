@@ -73,7 +73,13 @@ const lastData = (from: 'constructor' | 'setData' = 'constructor') => {
   const raw = from === 'constructor' ? g.options.data : g.setData.mock.lastCall?.[0]
   return raw as {
     nodes: G6Datum[]
-    edges: { id: string; source: string; target: string; style: Record<string, unknown> }[]
+    edges: {
+      id: string
+      source: string
+      target: string
+      style: Record<string, unknown>
+      data?: { kind?: string }
+    }[]
   }
 }
 
@@ -265,6 +271,46 @@ describe('GraphView', () => {
     await userEvent.click(screen.getByRole('button', { name: '图例' }))
     expect(screen.getByText('子类（subClassOf）')).toBeTruthy()
   })
+
+  it('shows objectProperty edges only with the 对象属性 filter on', async () => {
+    draw({
+      edges: [
+        ...EDGES,
+        { source: 'b', target: 'c', kind: 'objectProperty', label: 'worksIn', eid: 'http://ex/worksIn' },
+      ],
+      defaultKinds: CLASS_ONLY,
+    })
+    const kinds = (d: { edges: { data?: { kind?: string } }[] }) =>
+      d.edges.map((e) => e.data?.kind)
+    // Class-only opening state: the direct edge waits off-stage.
+    expect(kinds(lastData('constructor'))).not.toContain('objectProperty')
+    await userEvent.click(screen.getByRole('button', { name: '对象' }))
+    expect(kinds(lastData('setData'))).toContain('objectProperty')
+  })
+
+  it('routes an objectProperty edge click to the property detail', async () => {
+    const onSelect = vi.fn()
+    draw(
+      {
+        edges: [
+          ...EDGES,
+          { source: 'b', target: 'c', kind: 'objectProperty', label: 'worksIn', eid: 'http://ex/worksIn' },
+        ],
+        defaultKinds: CLASS_ONLY,
+      },
+      onSelect,
+    )
+    await userEvent.click(screen.getByRole('button', { name: '对象' }))
+    const g = lastG6()!
+    const edge = lastData('setData').edges.find((e) => e.data?.kind === 'objectProperty')
+    expect(edge).toBeTruthy()
+    g.handlers['edge:click']({
+      target: { id: edge!.id },
+      originalTarget: null,
+      preventDefault: vi.fn(),
+    })
+    expect(onSelect).toHaveBeenCalledWith('http://ex/worksIn')
+  })
 })
 
 describe('toG6Edges', () => {
@@ -282,6 +328,18 @@ describe('toG6Edges', () => {
     { source: 'a', target: 'd', kind: 'datatype' },
     { source: 'a', target: 'ghost', kind: 'subClassOf' },
   ]
+
+  it('labels an objectProperty edge with its property name and eid', () => {
+    const mapped = toG6Edges(
+      [{ source: 'b', target: 'c', kind: 'objectProperty', label: 'worksIn', eid: 'http://ex/worksIn' }],
+      all,
+      true,
+      TOKENS,
+    )
+    expect(mapped).toHaveLength(1)
+    expect(mapped[0].style).toMatchObject({ labelText: 'worksIn', stroke: TOKENS.primary })
+    expect(mapped[0].data).toMatchObject({ kind: 'objectProperty', propEid: 'http://ex/worksIn' })
+  })
 
   it('encodes the three edge semantics via tokens with matching arrows', () => {
     const mapped = toG6Edges(edges, all, false, TOKENS)
