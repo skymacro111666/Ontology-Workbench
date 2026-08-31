@@ -10,7 +10,8 @@
     "save": "Save",
     "saved": "Saved",
     "saveFailed": "Save failed, please try again later",
-    "copy": "Copy"
+    "copy": "Copy",
+    "close": "Close"
   },
   "login": {
     "username": "Username",
