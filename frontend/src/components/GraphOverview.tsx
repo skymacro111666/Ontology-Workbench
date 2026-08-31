@@ -11,6 +11,7 @@ import { useUiStore } from '../stores/uiStore'
 import GraphContextMenu, { type MenuItem } from './GraphContextMenu'
 import GraphView, { type GraphViewNode } from './GraphView'
 import { useLint } from './LintPanel'
+import LintSettingsDialog from './LintSettingsDialog'
 import type { Pt } from './layoutPositions'
 import { Button } from '@/components/ui/button'
 
@@ -117,8 +118,10 @@ export default function GraphOverview({
   const setInstanceDialog = useUiStore((s) => s.setInstanceDialog)
   const queryClient = useQueryClient()
   /** B3 lint slices: the button rides the control cluster, the drawer
-   *  anchors to the relative canvas container (not the cluster box). */
-  const lint = useLint(oid)
+   *  anchors to the relative canvas container (not the cluster box). The
+   *  settings dialog is Task 19's — opened from the drawer's 设置 link. */
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const lint = useLint(oid, () => setSettingsOpen(true))
   /** Open canvas context menu: blank-area or node right-click report. */
   const [menu, setMenu] = useState<{
     x: number
@@ -286,6 +289,7 @@ export default function GraphOverview({
           extraControls={lint.button}
         />
         {lint.drawer}
+        <LintSettingsDialog oid={oid} open={settingsOpen} onOpenChange={setSettingsOpen} />
         {menu && (
           <GraphContextMenu
             x={menu.x}
