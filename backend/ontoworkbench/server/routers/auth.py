@@ -38,12 +38,13 @@ class Creds(BaseModel):
 
 
 @router.post("/setup")
-def setup(creds: Creds, session: Session = Depends(get_session)) -> dict:
+def setup(creds: Creds, request: Request, session: Session = Depends(get_session)) -> dict:
     """Create the single admin account; refuses once any user exists."""
     users = UserRepository(session)
     if users.count() > 0:
         raise ApiError(ErrorCode.SETUP_DONE, "Setup already completed", hint="Log in instead.")
     user = users.create(creds.username, hash_password(creds.password))
+    request.state.user_id = str(user.id)
     return respond({"id": str(user.id), "username": user.username})
 
 
@@ -54,6 +55,7 @@ def login(creds: Creds, request: Request, session: Session = Depends(get_session
     password_ok = verify_password(creds.password, user.password_hash if user else _DUMMY_HASH)
     if not user or not password_ok:
         raise ApiError(ErrorCode.AUTH_INVALID_CREDENTIALS, "Invalid username or password")
+    request.state.user_id = str(user.id)  # the acting user, for the access log
     token, exp = create_token(str(user.id), request.app.state.settings.jwt_secret)
     return respond({"token": token, "expires_at": exp.isoformat()})
 

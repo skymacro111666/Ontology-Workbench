@@ -30,5 +30,8 @@ def get_current_user(request: Request, session: Session = Depends(get_session)) 
     user = UserRepository(session).get(uid) if uid else None
     if user is None:
         raise ApiError(ErrorCode.AUTH_REQUIRED, "Unknown user")
+    # request.state (not just the contextvar) so the access log middleware —
+    # outside BaseHTTPMiddleware's call_next task boundary — can see it.
+    request.state.user_id = str(user.id)
     user_id_ctx.set(str(user.id))
     return user
