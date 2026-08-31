@@ -40,7 +40,7 @@
     "openAria": "Open {{title}}",
     "deleteAria": "Delete {{title}}",
     "deleteTitle": "Delete “{{title}}”?",
-    "deleteDesc": "The file and its indexes are removed together — this cannot be undone.",
+    "deleteDesc": "The file {{filename}} and its indexes are removed together — this cannot be undone.",
     "deleted": "Deleted",
     "sampleFailed": "Failed to load the sample, please try again later",
     "listLoadingSr": "Loading the ontology list",

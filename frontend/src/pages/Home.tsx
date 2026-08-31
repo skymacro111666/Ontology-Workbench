@@ -209,7 +209,11 @@ export default function Home() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('home.deleteTitle', { title: deleteTarget?.title ?? '' })}</AlertDialogTitle>
-            <AlertDialogDescription>{t('home.deleteDesc')}</AlertDialogDescription>
+            {/* The filename disambiguates uploads sharing one embedded
+             *  dc:title — the title alone has deleted the wrong twin once. */}
+            <AlertDialogDescription>
+              {t('home.deleteDesc', { filename: deleteTarget?.filename ?? '' })}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>

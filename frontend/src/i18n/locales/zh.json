@@ -40,7 +40,7 @@
     "openAria": "打开 {{title}}",
     "deleteAria": "删除 {{title}}",
     "deleteTitle": "删除「{{title}}」？",
-    "deleteDesc": "文件与索引将一并移除，不可恢复。",
+    "deleteDesc": "文件 {{filename}} 与索引将一并移除，不可恢复。",
     "deleted": "已删除",
     "sampleFailed": "载入示例失败，请稍后重试",
     "listLoadingSr": "本体列表加载中",
