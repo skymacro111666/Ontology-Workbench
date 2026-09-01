@@ -294,6 +294,51 @@ describe('GraphOverview assertion edges', () => {
     })
   })
 
+  it('multi-type instances stay unique when two classes share one instance', async () => {
+    // Manager ↔ FullTimeEmployee both carry james-anderson (direct rdf:type
+    // both ways): the payload concat fed G6 duplicate node ids and whited
+    // the page. The merged canvas data must keep ids unique.
+    const shared = { id: 'shared', curie: 'ex:S', label: {}, kind: 'instance' as const }
+    const stub = vi.fn(async (url: string | URL) => {
+      const u = String(url)
+      if (u.endsWith('/overview'))
+        return env({
+          nodes: [
+            { id: 'a', curie: 'ex:A', label: {}, kind: 'class', instanceCount: 1 },
+            { id: 'b', curie: 'ex:B', label: {}, kind: 'class', instanceCount: 2 },
+          ],
+          edges: [],
+          truncated: false,
+          totalCount: 2,
+        })
+      if (u.includes('/entities/a/instances'))
+        return env({ nodes: [shared], edges: [] })
+      if (u.includes('/entities/b/instances'))
+        return env({
+          nodes: [shared, { id: 'other', curie: 'ex:O', label: {}, kind: 'instance' }],
+          edges: [],
+        })
+      if (u.includes('/assertion-edges')) return env({ edges: [], truncated: false, total: 0 })
+      return env({ positions: {} })
+    })
+    draw(stub)
+    await waitForGraph()
+    clickBadge('a')
+    await vi.waitFor(() =>
+      expect(
+        (lastG6()!.options.data as { nodes?: { id: string }[] }).nodes?.some((n) => n.id === 'shared'),
+      ).toBe(true),
+    )
+    clickBadge('b')
+    await vi.waitFor(() =>
+      expect(
+        (lastG6()!.options.data as { nodes?: { id: string }[] }).nodes?.some((n) => n.id === 'other'),
+      ).toBe(true),
+    )
+    const ids = (lastG6()!.options.data as { nodes?: { id: string }[] }).nodes!.map((n) => n.id)
+    expect(ids.filter((id) => id === 'shared')).toHaveLength(1)
+  })
+
   it('truncated assertion edges toast once per revealed set', async () => {
     draw(assertionStub({ truncated: true }))
     await waitForGraph()

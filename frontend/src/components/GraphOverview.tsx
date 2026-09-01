@@ -208,13 +208,20 @@ export default function GraphOverview({
     }
   }
 
-  const nodes: GraphViewNode[] = useMemo(
-    () => [
-      ...(data?.nodes ?? []).map((n) => (n.id === focus ? { ...n, highlighted: true } : n)),
-      ...Object.values(revealed).flatMap((p) => (p?.nodes ?? []) as GraphViewNode[]),
-    ],
-    [data, focus, revealed],
-  )
+  const nodes: GraphViewNode[] = useMemo(() => {
+    /** Merge by id: a multi-type instance appears in several class payloads
+     *  (james is both Manager and FullTimeEmployee) — feeding G6 duplicate
+     *  node ids whited the page on the second reveal. First payload wins. */
+    const byId = new Map<string, GraphViewNode>()
+    for (const n of data?.nodes ?? []) byId.set(n.id, n)
+    for (const p of Object.values(revealed))
+      for (const n of (p?.nodes ?? []) as GraphViewNode[]) if (!byId.has(n.id)) byId.set(n.id, n)
+    if (focus) {
+      const hit = byId.get(focus)
+      if (hit) byId.set(focus, { ...hit, highlighted: true })
+    }
+    return [...byId.values()]
+  }, [data, focus, revealed])
   /** Revealed instance eids across all badges — the assertion-edge scope:
    *  the backend joins every pair whose both ends are expanded. */
   const revealedIds = useMemo(
