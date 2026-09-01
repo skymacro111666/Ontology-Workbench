@@ -1,14 +1,16 @@
-"""Unit tests for the serve port-retry decision (spec §6/§10)."""
+"""Unit tests for the serve port-retry decision and flag→settings mapping."""
 
 from __future__ import annotations
 
 import errno
 import socket
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
-from ontoworkbench.cli import MAX_PORT_ATTEMPTS, _probe_port, resolve_serve_port
+from ontoworkbench.cli import MAX_PORT_ATTEMPTS, _probe_port, _serve_cli, resolve_serve_port
+from ontoworkbench.config import Settings
 
 
 def _always_busy(host: str, port: int) -> None:
@@ -74,3 +76,30 @@ def test_probe_port_detects_a_real_listener() -> None:
         with pytest.raises(OSError) as excinfo:
             _probe_port("127.0.0.1", taken)
     assert excinfo.value.errno == errno.EADDRINUSE
+
+
+def test_unset_flags_leave_env_in_charge(monkeypatch, tmp_path) -> None:
+    """No explicit --host/--port → the .env decides (CLI > env > defaults).
+
+    A concrete typer default would ride along as an init kwarg and pin the
+    field, silently overriding OW_HOST/OW_PORT — the original bug.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OW_HOST=10.0.0.5\nOW_PORT=9001\n")
+    s = Settings.load(_serve_cli(None, None, None, None))
+    assert (s.host, s.port) == ("10.0.0.5", 9001)
+
+
+def test_explicit_flags_beat_env(monkeypatch, tmp_path) -> None:
+    """Explicit --host/--port win over .env, and --port 0 stays meaningful."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text("OW_HOST=10.0.0.5\nOW_PORT=9001\n")
+    s = Settings.load(_serve_cli("0.0.0.0", 0, None, None))
+    assert (s.host, s.port) == ("0.0.0.0", 0)
+
+
+def test_optional_dirs_pass_through_only_when_given() -> None:
+    """--data-dir/--log-dir join the cli dict only when actually passed."""
+    assert _serve_cli(None, None, None, None) == {}
+    cli = _serve_cli(None, None, "/tmp/data", "/tmp/logs")
+    assert cli == {"data_dir": Path("/tmp/data"), "log_dir": Path("/tmp/logs")}

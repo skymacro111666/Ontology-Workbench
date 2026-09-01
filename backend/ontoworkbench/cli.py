@@ -70,6 +70,28 @@ def _warn_stderr(message: str) -> None:
     typer.echo(message, err=True)
 
 
+def _serve_cli(
+    host: str | None, port: int | None, data_dir: str | None, log_dir: str | None
+) -> dict:
+    """Collect only the flags actually passed; absent ones stay absent.
+
+    Precedence is CLI > env (.env) > defaults: a flag default riding along
+    here would land as an init kwarg and pin the field, silently overriding
+    OW_HOST/OW_PORT from .env — which is exactly how they once stopped
+    working. `is not None` keeps --port 0 (random port) meaningful.
+    """
+    cli: dict = {}
+    if host is not None:
+        cli["host"] = host
+    if port is not None:
+        cli["port"] = port
+    if data_dir:
+        cli["data_dir"] = Path(data_dir)
+    if log_dir:
+        cli["log_dir"] = Path(log_dir)
+    return cli
+
+
 def resolve_serve_port(
     host: str,
     port: int,
@@ -101,8 +123,8 @@ def resolve_serve_port(
 
 @app.command()
 def serve(
-    host: Annotated[str, typer.Option()] = "127.0.0.1",
-    port: Annotated[int, typer.Option()] = 8734,
+    host: Annotated[str | None, typer.Option()] = None,
+    port: Annotated[int | None, typer.Option()] = None,
     data_dir: Annotated[str | None, typer.Option()] = None,
     log_dir: Annotated[str | None, typer.Option()] = None,
     no_browser: Annotated[bool, typer.Option()] = False,
@@ -111,12 +133,7 @@ def serve(
     from ontoworkbench.db.session import init_engine
     from ontoworkbench.server.app import create_app, default_spa_dist
 
-    cli: dict = {"host": host, "port": port}
-    if data_dir:
-        cli["data_dir"] = Path(data_dir)
-    if log_dir:
-        cli["log_dir"] = Path(log_dir)
-    settings = _settings(cli)
+    settings = _settings(_serve_cli(host, port, data_dir, log_dir))
 
     # JSON sinks must exist before migrations run, or alembic's INFO lines
     # hit a handler-less root logger and vanish (lastResort shows WARNING+).
