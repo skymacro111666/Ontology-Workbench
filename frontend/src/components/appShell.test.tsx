@@ -54,7 +54,8 @@ it('renders nav and opens the import dialog', async () => {
   // the import dialog is open.
   expect(screen.getByRole('button', { name: '概览' })).toBeTruthy()
   expect(screen.getByRole('button', { name: '工作区' })).toBeTruthy()
-  await userEvent.click(screen.getByRole('button', { name: '＋ 导入' }))
+  await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))
+  await userEvent.click(await screen.findByText('导入文件…'))
   expect(await screen.findByRole('dialog')).toBeTruthy()
 })
 
@@ -116,9 +117,10 @@ it('export menu downloads the current ontology in the picked RDF format', async 
     </QueryClientProvider>,
   )
 
-  await userEvent.click(screen.getByRole('button', { name: '导出 ▾' }))
-  // All three format items are offered alongside the docs-site entry.
-  expect(screen.getByText('Turtle (.ttl)')).toBeTruthy()
+  await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))
+  // The exports live one level down: hover opens the 导出 submenu.
+  await userEvent.hover(await screen.findByText('导出'))
+  expect(await screen.findByText('Turtle (.ttl)')).toBeTruthy()
   expect(screen.getByText('RDF/XML (.rdf)')).toBeTruthy()
   await userEvent.click(screen.getByText('JSON-LD (.jsonld)'))
 
@@ -153,9 +155,10 @@ it('hides the 图形/文本 switch outside the workspace', () => {
   expect(screen.queryByRole('radio', { name: /文本/ })).toBeNull()
 })
 
-it('opens the blank-create dialog from the topbar', async () => {
+it('opens the blank-create dialog from the file menu', async () => {
   shell('/')
-  await userEvent.click(screen.getByRole('button', { name: '＋ 新建' }))
+  await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))
+  await userEvent.click(await screen.findByText('新建空白本体…'))
   expect(await screen.findByRole('dialog')).toBeTruthy()
   expect(screen.getByText('新建空白本体')).toBeTruthy()
 })

@@ -1,4 +1,13 @@
-import { FileTextIcon, KeyRoundIcon, LogOutIcon, Share2Icon } from 'lucide-react'
+import {
+  CloudUploadIcon,
+  DownloadIcon,
+  FileIcon,
+  FilePlus2Icon,
+  FileTextIcon,
+  KeyRoundIcon,
+  LogOutIcon,
+  Share2Icon,
+} from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
@@ -33,6 +42,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
@@ -144,32 +156,45 @@ export default function AppShell({ children }: { children?: ReactNode }) {
         <OntologySwitcher />
 
         <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setBlankOpen(true)}>
-            {t('shell.create')}
-          </Button>
-
-          <Button size="sm" onClick={() => setImportOpen(true)}>
-            {t('shell.import')}
-          </Button>
-
+          {/* File menu: the three ontology-file actions (create / import /
+              export) share one dropdown — 3 topbar controls collapse to 1,
+              and future file-level actions have an obvious home. */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm">
-                {t('shell.exportMenu')}
+                <FileIcon aria-hidden="true" />
+                {t('shell.file')}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {/* text-xs per item: the item base class ships text-sm, so a
                   font-size on the content element never reaches the items. */}
-              <DropdownMenuItem className="text-xs" onSelect={() => openLast('/export')}>
-                {t('shell.exportSite')}
+              <DropdownMenuItem className="text-xs" onSelect={() => setBlankOpen(true)}>
+                <FilePlus2Icon />
+                {t('shell.newBlank')}
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs" onSelect={() => setImportOpen(true)}>
+                <CloudUploadIcon />
+                {t('shell.importFile')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              {FILE_EXPORTS.map(([fmt, label]) => (
-                <DropdownMenuItem key={fmt} className="text-xs" onSelect={() => void downloadAs(fmt)}>
-                  {label}
-                </DropdownMenuItem>
-              ))}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="text-xs">
+                  <DownloadIcon />
+                  {t('shell.export')}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  {FILE_EXPORTS.map(([fmt, label]) => (
+                    <DropdownMenuItem key={fmt} className="text-xs" onSelect={() => void downloadAs(fmt)}>
+                      {label}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-xs" onSelect={() => openLast('/export')}>
+                    {t('shell.exportSite')}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             </DropdownMenuContent>
           </DropdownMenu>
 
