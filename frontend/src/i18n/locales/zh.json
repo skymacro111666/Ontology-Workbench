@@ -43,7 +43,7 @@
     "deleteDesc": "文件 {{filename}} 与索引将一并移除，不可恢复。",
     "deleted": "已删除",
     "sampleFailed": "载入示例失败，请稍后重试",
-    "samples": "内置示例",
+    "sampleTag": "示例",
     "samplesLoad": "载入",
     "samplesPizza": "经典教学本体：披萨域的类、属性与实例",
     "samplesWine": "葡萄酒本体：属性约束与分类层次",
@@ -55,10 +55,7 @@
     "countClass": "类",
     "countProperty": "属性",
     "countAxiom": "公理",
-    "emptyTitle": "还没有本体",
-    "emptyHint": "载入内置示例快速体验，或导入你的本体文件",
-    "loadSample": "载入示例 {{name}}",
-    "import": "导入本体"
+    "emptyHint": "载入内置示例快速体验，或导入你的本体文件"
   },
   "shell": {
     "pickOntology": "选择本体",

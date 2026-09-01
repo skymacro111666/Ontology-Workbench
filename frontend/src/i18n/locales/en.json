@@ -43,7 +43,7 @@
     "deleteDesc": "The file {{filename}} and its indexes are removed together — this cannot be undone.",
     "deleted": "Deleted",
     "sampleFailed": "Failed to load the sample, please try again later",
-    "samples": "Built-in samples",
+    "sampleTag": "Sample",
     "samplesLoad": "Load",
     "samplesPizza": "The classic teaching ontology: pizza-domain classes, properties and instances",
     "samplesWine": "Wine ontology: property restrictions and classification",
@@ -55,10 +55,7 @@
     "countClass": "classes",
     "countProperty": "properties",
     "countAxiom": "axioms",
-    "emptyTitle": "No ontologies yet",
-    "emptyHint": "Load a bundled sample to explore, or import your own ontology file",
-    "loadSample": "Load sample {{name}}",
-    "import": "Import ontology"
+    "emptyHint": "Load a bundled sample to explore, or import your own ontology file"
   },
   "shell": {
     "pickOntology": "Choose ontology",

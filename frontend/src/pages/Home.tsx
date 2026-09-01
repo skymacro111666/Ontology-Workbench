@@ -8,9 +8,7 @@ import { ApiErr, api } from '../api/client'
 import type { OntologyMeta, OntologySummary } from '../api/types'
 import { LAST_OID_KEY } from '../auth/AuthContext'
 import { errText } from '../i18n/errText'
-import EmptyState from '../components/EmptyState'
 import StatTiles from '../components/StatTiles'
-import { useUiStore } from '../stores/uiStore'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,9 +31,7 @@ function formatDate(iso: string): string {
   return iso.slice(0, 10)
 }
 
-/** Bundled teaching ontologies; names map to backend samples/{name}.ttl.
- *  Reinstated 2026-09 (removed once for clutter): every sample stays one
- *  click away even with a populated list. */
+/** Bundled teaching ontologies; names map to backend samples/{name}.ttl. */
 const SAMPLES: { name: string; title: string; descKey: string }[] = [
   { name: 'pizza', title: 'Pizza', descKey: 'home.samplesPizza' },
   { name: 'wine', title: 'Wine', descKey: 'home.samplesWine' },
@@ -49,7 +45,6 @@ export default function Home() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const setImportOpen = useUiStore((s) => s.setImportOpen)
   const [deleteTarget, setDeleteTarget] = useState<OntologySummary | null>(null)
 
   const { data, isError, isPending, refetch } = useQuery({
@@ -90,6 +85,39 @@ export default function Home() {
   const totalProperties = items.reduce((sum, o) => sum + o.propertyCount, 0)
   const totalAxioms = items.reduce((sum, o) => sum + o.axiomCount, 0)
 
+  /** Sample cards ride the list's tail (user data first); an imported
+   *  sample drops its card — the backend loads idempotently per filename,
+   *  so the real card simply takes over. */
+  const importedNames = new Set(items.map((o) => o.filename))
+  const sampleCards = SAMPLES.filter((s) => !importedNames.has(`${s.name}.ttl`)).map(
+    (s) => (
+      <div
+        key={s.name}
+        className="border-line bg-panel rounded-card flex flex-col gap-2 border px-4 py-3.5"
+      >
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-bold">{s.title}</span>
+          <span className="border-line text-ink-3 shrink-0 rounded-full border px-2 py-px font-mono text-[11px]">
+            TTL
+          </span>
+          <span className="bg-primary-soft border-primary-border text-primary shrink-0 rounded-full border px-2 py-px text-[11px] font-bold">
+            {t('home.sampleTag')}
+          </span>
+        </div>
+        <p className="text-ink-2 text-sm">{t(s.descKey)}</p>
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-line mt-auto self-start"
+          disabled={sample.isPending}
+          onClick={() => sample.mutate(s.name)}
+        >
+          {t('home.samplesLoad')}
+        </Button>
+      </div>
+    ),
+  )
+
   return (
     <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-6 px-6 py-6">
       <h1 className="text-lg font-semibold">{t('home.title')}</h1>
@@ -101,35 +129,6 @@ export default function Home() {
             properties={totalProperties}
             axioms={totalAxioms}
           />
-      </section>
-
-      <section className="flex flex-col gap-3" aria-label={t('home.samples')}>
-        <h2 className="text-sm font-semibold">{t('home.samples')}</h2>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {SAMPLES.map((s) => (
-            <div
-              key={s.name}
-              className="border-line bg-panel rounded-card flex flex-col gap-2 border px-4 py-3.5"
-            >
-              <div className="flex items-center gap-2">
-                <span className="truncate text-sm font-bold">{s.title}</span>
-                <span className="border-line text-ink-3 ml-auto shrink-0 rounded-full border px-2 py-px font-mono text-[11px]">
-                  TTL
-                </span>
-              </div>
-              <p className="text-ink-2 text-sm">{t(s.descKey)}</p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-line mt-auto self-start"
-                disabled={sample.isPending}
-                onClick={() => sample.mutate(s.name)}
-              >
-                {t('home.samplesLoad')}
-              </Button>
-            </div>
-          ))}
-        </div>
       </section>
 
       <section className="flex flex-col gap-3" aria-label={t('home.list')}>
@@ -165,10 +164,12 @@ export default function Home() {
             <span className="sr-only">{t('home.listLoadingSr')}</span>
           </div>
         ) : items.length === 0 ? (
-          <EmptyState
-            onLoadSample={() => sample.mutate('pizza')}
-            onImport={() => setImportOpen(true)}
-          />
+          // No EmptyState box anymore: the sample cards below keep the list
+          // from ever being truly empty, so a one-line hint suffices.
+          <div className="flex flex-col gap-3">
+            <p className="text-ink-2 text-sm">{t('home.emptyHint')}</p>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{sampleCards}</div>
+          </div>
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {items.map((o) => (
@@ -235,6 +236,7 @@ export default function Home() {
                 </div>
               </div>
             ))}
+            {sampleCards}
           </div>
         )}
       </section>

@@ -94,11 +94,10 @@ describe('Home', () => {
     expect(screen.getByText('200').className).toContain('tabular-nums')
   })
 
-  // The inline sample cards were removed once (clutter, user direction
-  // 2026-08); reinstated 2026-09 so all bundled samples are reachable —
-  // the empty-state "载入示例" entry keeps the same POST /samples flow.
+  // Sample cards ride the list tail (2026-09, user direction): the standalone
+  // section is gone, EmptyState retired — samples keep the list never-empty.
 
-  it('lists every bundled sample card and loads the picked one', async () => {
+  it('appends tagged sample cards after the real list and loads the picked one', async () => {
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
       if (String(url) === '/api/samples/human-resources-v1') {
         expect(init?.method).toBe('POST')
@@ -109,15 +108,20 @@ describe('Home', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderHome()
 
-    // All five bundled samples surface as cards with their blurbs.
-    const section = await screen.findByRole('region', { name: '内置示例' })
+    // All five bundled samples surface behind the user's own card.
+    await screen.findByText('My Work')
     for (const title of ['Pizza', 'Wine', 'FOAF', 'Library', 'Human Resources']) {
-      expect(within(section).getByText(title)).toBeTruthy()
+      expect(screen.getByText(title)).toBeTruthy()
     }
-    expect(within(section).getByText(/人力资源本体/)).toBeTruthy()
+    expect(screen.getAllByText('示例')).toHaveLength(5)
+    expect(screen.getByText(/人力资源本体/)).toBeTruthy()
+    // User data first: the real card precedes every sample card.
+    const real = screen.getByText('My Work')
+    const sample = screen.getByText('Human Resources')
+    expect(real.compareDocumentPosition(sample) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     // Load goes through POST /api/samples/{name} and opens the result.
-    const loadButtons = within(section).getAllByRole('button', { name: '载入' })
+    const loadButtons = screen.getAllByRole('button', { name: '载入' })
     expect(loadButtons).toHaveLength(5)
     await userEvent.click(loadButtons[4]) // Human Resources — last in SAMPLES order
     expect(await screen.findByText('browse:hr-oid')).toBeTruthy()
@@ -125,6 +129,35 @@ describe('Home', () => {
       '/api/samples/human-resources-v1',
       expect.objectContaining({ method: 'POST' }),
     )
+  })
+
+  it('hides a sample card once its ontology is imported', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        ok({
+          items: [summary('hr-oid', { title: 'HR', filename: 'human-resources-v1.ttl' })],
+          total: 1,
+        }),
+      ),
+    )
+    renderHome()
+
+    expect(await screen.findByText('HR')).toBeTruthy()
+    expect(screen.queryByText('Human Resources')).toBeNull()
+    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(4)
+  })
+
+  it('empty list keeps the samples and a one-line hint instead of the old box', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ok({ items: [], total: 0 })),
+    )
+    renderHome()
+
+    expect(await screen.findByText(/载入内置示例快速体验/)).toBeTruthy()
+    expect(screen.queryByText('还没有本体')).toBeNull()
+    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(5)
   })
 
   it('deletes only after the AlertDialog confirmation', async () => {
@@ -195,27 +228,6 @@ describe('Home', () => {
     expect(status.textContent).toContain('加载中')
     // Skeleton cards pulse in the same grid the loaded list uses.
     expect(status.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0)
-  })
-
-  it('shows the empty state with both onboarding buttons wired', async () => {
-    const fetchMock = vi.fn(async (url: string | URL) => {
-      if (String(url) === '/api/samples/pizza') return ok(summary('oid-pizza'))
-      return ok({ items: [], total: 0 })
-    })
-    vi.stubGlobal('fetch', fetchMock)
-    renderHome()
-
-    expect(await screen.findByText('还没有本体')).toBeTruthy()
-    await userEvent.click(screen.getByRole('button', { name: '导入本体' }))
-    expect(useUiStore.getState().importOpen).toBe(true)
-
-    await userEvent.click(screen.getByRole('button', { name: '载入示例 pizza' }))
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/samples/pizza',
-        expect.objectContaining({ method: 'POST' }),
-      ),
-    )
   })
 
   it('opens a list card: writes LAST_OID_KEY and navigates to /browse/:id', async () => {
