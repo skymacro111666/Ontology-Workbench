@@ -1,8 +1,9 @@
 name: release
 
 # 推送 v* tag 时自动创建 GitHub Release(由 github-actions 发布)。
-# 正文是 Changelog 风格的提交清单:自上一 tag 以来的 git log --oneline;
-# 首个 tag(无上一 tag)列出全部历史。不依赖仓库内的 notes 文件。
+# 正文由 tools/release_notes.py 从 conventional commits 分组生成:
+# feat→Added、fix→Fixed、perf/refactor/docs→Changed、其余→Maintenance,
+# 条目为 scope 前缀 + 提交标题 + 短 hash;首个 tag(无上一 tag)列全部历史。
 # 流程:git tag vX.Y.Z → git push origin vX.Y.Z
 on:
   push:
@@ -18,18 +19,14 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # changelog 范围计算需要完整历史与全部 tag
-      - name: Create release with commit changelog
+      - name: Create release with grouped changelog
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF_NAME}"
           # 版本号降序取第一个非当前 tag 作为上一版本;awk 恒返 0,避免 pipefail 误伤
           PREV="$(git tag --list 'v*' --sort=-v:refname | awk -v t="$TAG" '$0 != t' | head -1)"
-          RANGE="${TAG}"
-          if [ -n "$PREV" ]; then RANGE="${PREV}..${TAG}"; fi
-          {
-            echo "Changelog"
-            echo
-            git log --oneline --no-decorate "${RANGE}"
-          } > /tmp/release-notes.md
+          ARGS=(--to "$TAG")
+          if [ -n "$PREV" ]; then ARGS+=(--from "$PREV"); fi
+          python3 tools/release_notes.py "${ARGS[@]}" > /tmp/release-notes.md
           gh release create "$TAG" --title "$TAG" --notes-file /tmp/release-notes.md
