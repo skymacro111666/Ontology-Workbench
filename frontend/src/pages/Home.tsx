@@ -33,6 +33,17 @@ function formatDate(iso: string): string {
   return iso.slice(0, 10)
 }
 
+/** Bundled teaching ontologies; names map to backend samples/{name}.ttl.
+ *  Reinstated 2026-09 (removed once for clutter): every sample stays one
+ *  click away even with a populated list. */
+const SAMPLES: { name: string; title: string; descKey: string }[] = [
+  { name: 'pizza', title: 'Pizza', descKey: 'home.samplesPizza' },
+  { name: 'wine', title: 'Wine', descKey: 'home.samplesWine' },
+  { name: 'foaf', title: 'FOAF', descKey: 'home.samplesFoaf' },
+  { name: 'library', title: 'Library', descKey: 'home.samplesLibrary' },
+  { name: 'human-resources-v1', title: 'Human Resources', descKey: 'home.samplesHr' },
+]
+
 /** Home (工作台): stat tiles, builtin samples, ontology list cards. */
 export default function Home() {
   const { t } = useTranslation()
@@ -90,6 +101,35 @@ export default function Home() {
             properties={totalProperties}
             axioms={totalAxioms}
           />
+      </section>
+
+      <section className="flex flex-col gap-3" aria-label={t('home.samples')}>
+        <h2 className="text-sm font-semibold">{t('home.samples')}</h2>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {SAMPLES.map((s) => (
+            <div
+              key={s.name}
+              className="border-line bg-panel rounded-card flex flex-col gap-2 border px-4 py-3.5"
+            >
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-bold">{s.title}</span>
+                <span className="border-line text-ink-3 ml-auto shrink-0 rounded-full border px-2 py-px font-mono text-[11px]">
+                  TTL
+                </span>
+              </div>
+              <p className="text-ink-2 text-sm">{t(s.descKey)}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-line mt-auto self-start"
+                disabled={sample.isPending}
+                onClick={() => sample.mutate(s.name)}
+              >
+                {t('home.samplesLoad')}
+              </Button>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="flex flex-col gap-3" aria-label={t('home.list')}>

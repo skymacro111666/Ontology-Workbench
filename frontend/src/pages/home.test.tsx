@@ -94,8 +94,38 @@ describe('Home', () => {
     expect(screen.getByText('200').className).toContain('tabular-nums')
   })
 
-  // The inline sample cards were removed from the page (user direction);
+  // The inline sample cards were removed once (clutter, user direction
+  // 2026-08); reinstated 2026-09 so all bundled samples are reachable —
   // the empty-state "载入示例" entry keeps the same POST /samples flow.
+
+  it('lists every bundled sample card and loads the picked one', async () => {
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      if (String(url) === '/api/samples/human-resources-v1') {
+        expect(init?.method).toBe('POST')
+        return ok({ id: 'hr-oid', filename: 'human-resources-v1.ttl', format: 'turtle' })
+      }
+      return ok({ items: [summary('oid-1', { title: 'My Work' })], total: 1 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderHome()
+
+    // All five bundled samples surface as cards with their blurbs.
+    const section = await screen.findByRole('region', { name: '内置示例' })
+    for (const title of ['Pizza', 'Wine', 'FOAF', 'Library', 'Human Resources']) {
+      expect(within(section).getByText(title)).toBeTruthy()
+    }
+    expect(within(section).getByText(/人力资源本体/)).toBeTruthy()
+
+    // Load goes through POST /api/samples/{name} and opens the result.
+    const loadButtons = within(section).getAllByRole('button', { name: '载入' })
+    expect(loadButtons).toHaveLength(5)
+    await userEvent.click(loadButtons[4]) // Human Resources — last in SAMPLES order
+    expect(await screen.findByText('browse:hr-oid')).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/samples/human-resources-v1',
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
 
   it('deletes only after the AlertDialog confirmation', async () => {
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
