@@ -131,6 +131,23 @@ def test_samples_idempotent(client: TestClient) -> None:
     assert r1.json()["code"] == "NOT_FOUND"
 
 
+def test_source_distinguishes_samples_from_uploads(client: TestClient) -> None:
+    """Sample imports carry source=sample, uploads stay upload (示例 badge feed).
+
+    A same-named user upload must never wear the sample tag, so the
+    distinction lives in the row, not in filename guessing.
+    """
+    up = client.post(
+        "/api/ontologies", files={"file": ("mini.ttl", io.BytesIO(TTL), "text/turtle")}
+    )
+    assert up.json()["data"]["source"] == "upload"
+    assert client.post("/api/samples/pizza").status_code == 201
+    items = client.get("/api/ontologies").json()["data"]["items"]
+    by_file = {i["filename"]: i["source"] for i in items}
+    assert by_file["mini.ttl"] == "upload"
+    assert by_file["pizza.ttl"] == "sample"
+
+
 def test_meta_carries_parse_ms(client: TestClient) -> None:
     """Upload meta and GET /meta expose parseMs (positive float, ms)."""
     up = client.post(

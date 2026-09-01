@@ -131,6 +131,32 @@ describe('Home', () => {
     )
   })
 
+  it('badges sample-imported ontology cards, not user uploads', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        ok({
+          items: [
+            summary('mine', { title: 'Mine', filename: 'mini.ttl' }),
+            summary('pz', { title: 'Pizza', filename: 'pizza.ttl', source: 'sample' }),
+          ],
+          total: 2,
+        }),
+      ),
+    )
+    renderHome()
+
+    // The imported sample keeps its badge on the real card (behind the
+    // format pill); a user upload never wears it.
+    await screen.findByText('Mine')
+    const realPizza = screen.getByRole('button', { name: '打开 Pizza' })
+    expect(within(realPizza).getByText('示例')).toBeTruthy()
+    const mine = screen.getByRole('button', { name: '打开 Mine' })
+    expect(within(mine).queryByText('示例')).toBeNull()
+    // The pizza placeholder is deduped away; the other four remain.
+    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(4)
+  })
+
   it('hides a sample card once its ontology is imported', async () => {
     vi.stubGlobal(
       'fetch',

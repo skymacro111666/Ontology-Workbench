@@ -191,6 +191,11 @@ export default function Home() {
                   <span className="bg-primary-soft border-primary-border text-primary shrink-0 rounded-full border px-2 py-px font-mono text-[11px] font-bold">
                     {o.format}
                   </span>
+                  {o.source === 'sample' && (
+                    <span className="bg-primary-soft border-primary-border text-primary shrink-0 rounded-full border px-2 py-px text-[11px] font-bold">
+                      {t('home.sampleTag')}
+                    </span>
+                  )}
                   <span className="border-line ml-auto flex shrink-0 items-center gap-1.5">
                     <Button
                       size="sm"

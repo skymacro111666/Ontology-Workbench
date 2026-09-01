@@ -81,6 +81,8 @@ class Ontology(Base):
     filename: Mapped[str] = mapped_column(String(256))
     storage_path: Mapped[str] = mapped_column(String(512))
     format: Mapped[str] = mapped_column(String(16))
+    # Provenance for the list's 示例 badge: bundled-sample load vs upload.
+    source: Mapped[str] = mapped_column(String(16), default="upload", server_default=text("upload"))
     class_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     property_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     axiom_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))

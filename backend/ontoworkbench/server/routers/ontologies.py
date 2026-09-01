@@ -53,6 +53,7 @@ class OntologyMeta(CamelModel):
     instance_count: int
     file_size_bytes: int
     file_hash: str
+    source: str = "upload"
     prefixes: dict[str, str] = Field(default_factory=dict)
     parse_ms: float | None = None
     created_at: str
@@ -70,6 +71,7 @@ class OntologySummary(CamelModel):
     axiom_count: int
     instance_count: int
     file_size_bytes: int
+    source: str = "upload"
     created_at: str
 
 
@@ -104,6 +106,7 @@ def meta_of(row: Ontology) -> dict[str, Any]:
         instance_count=row.instance_count,
         file_size_bytes=row.file_size_bytes,
         file_hash=row.file_hash,
+        source=row.source,
         prefixes=prefixes,
         parse_ms=parse_ms,
         created_at=row.created_at.isoformat(),
@@ -122,6 +125,7 @@ def _summary(row: Ontology) -> dict[str, Any]:
         axiom_count=row.axiom_count,
         instance_count=row.instance_count,
         file_size_bytes=row.file_size_bytes,
+        source=row.source,
         created_at=row.created_at.isoformat(),
     ).model_dump(by_alias=True)
 
@@ -133,6 +137,7 @@ def _import_bytes(
     filename: str,
     data: bytes,
     read_ms: float | None = None,
+    source: str = "upload",
 ) -> Ontology:
     """Shared import path for uploads and samples: parse, store, register.
 
@@ -176,6 +181,7 @@ def _import_bytes(
             filename=filename,
             storage_path=str(path),
             format=fmt,
+            source=source,
             class_count=ir.counts.class_count,
             property_count=ir.counts.property_count,
             axiom_count=ir.counts.axiom_count,
@@ -428,7 +434,7 @@ def import_sample(
     existing = OntologyRepository(session).find_by_filename(user.id, sample.name)
     if existing:
         return respond(meta_of(existing))
-    row = _import_bytes(request, user, session, sample.name, data)
+    row = _import_bytes(request, user, session, sample.name, data, source="sample")
     return respond(meta_of(row))
 
 

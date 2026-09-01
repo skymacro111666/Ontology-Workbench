@@ -21,11 +21,14 @@ def test_upgrade_head_on_fresh_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
             row[0]
             for row in conn.execute(sa.text("SELECT name FROM sqlite_master WHERE type='table'"))
         }
+        ontology_cols = {row[1] for row in conn.execute(sa.text("PRAGMA table_info(ontologies)"))}
     engine.dispose()
 
-    assert version == "0004"
+    assert version == "0005"
     assert "ontology_layouts" in tables
     assert "lint_rules" in tables
+    # 0005: provenance column lands with its upload default (no backfill).
+    assert "source" in ontology_cols
 
 
 def test_migration_output_is_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -46,5 +49,5 @@ def test_migration_output_is_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert json_lines, lines
     payloads = [json.loads(ln) for ln in json_lines]
     assert {p["event"] for p in payloads} == {"db.migrate"}
-    assert any("0004" in p["message"] for p in payloads)
+    assert any("0004" in p["message"] or "0005" in p["message"] for p in payloads)
     assert all(p["level"] == "info" and "timestamp" in p for p in payloads)

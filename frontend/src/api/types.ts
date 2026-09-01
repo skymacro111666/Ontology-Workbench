@@ -183,6 +183,8 @@ export interface OntologySummary {
   title: string
   filename: string
   format: string
+  /** Provenance: 'sample' = loaded from the bundled catalog, 'upload' = user file. */
+  source?: string
   classCount: number
   propertyCount: number
   axiomCount: number
