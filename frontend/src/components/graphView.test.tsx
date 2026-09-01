@@ -77,7 +77,8 @@ const lastData = (from: 'constructor' | 'setData' = 'constructor') => {
       id: string
       source: string
       target: string
-      style: Record<string, unknown>
+      type?: string
+      style: Record<string, unknown> & { curveOffset?: number }
       data?: { kind?: string }
     }[]
   }
@@ -120,7 +121,12 @@ describe('GraphView', () => {
     expect(layout).toHaveLength(2)
     expect(layout[0]).toMatchObject({ type: 'antv-dagre', rankdir: 'TB', nodesep: 48 })
     expect(layout[1]).toMatchObject({ type: 'rank-wrap', targetRowWidth: 1700 })
-    expect(opts.edge).toMatchObject({ type: 'polyline' })
+    // No options-level edge type: it would override the per-datum types the
+    // parallel-edge fan depends on (G6 resolves options.edge.type first).
+    expect(opts.edge).toBeUndefined()
+    // Singletons stay orthogonal polylines, carried per datum.
+    const single = lastData().edges.every((e) => e.type === 'polyline')
+    expect(single).toBe(true)
   })
 
   it('defaultKinds seeds the uncontrolled filter (overview opens class-only)', () => {
@@ -250,8 +256,8 @@ describe('GraphView', () => {
 
   it('fans parallel edges out instead of stacking them', () => {
     // Two assertion properties between the same instance pair (the Sofia ↔
-    // James case): G6's process-parallel-edges bundle transform separates
-    // them by curvature.
+    // James case): the same-direction pair becomes two quadratic arcs with
+    // opposite curve offsets; every other edge stays an orthogonal polyline.
     draw({
       edges: [
         ...EDGES,
@@ -259,8 +265,32 @@ describe('GraphView', () => {
         { source: 'i1', target: 'b', kind: 'assertion', label: 'manages' },
       ],
     })
-    const opts = lastG6()!.options as { transforms?: string[] }
-    expect(opts.transforms).toContain('process-parallel-edges')
+    const fan = lastData().edges.filter((e) => e.source === 'i1' && e.target === 'b')
+    expect(fan).toHaveLength(2)
+    expect(fan.map((e) => e.type)).toEqual(['quadratic', 'quadratic'])
+    expect(fan.map((e) => e.style.curveOffset)).toEqual([20, -20])
+    // A singleton edge elsewhere on the canvas keeps its polyline.
+    const other = lastData().edges.find((e) => e.source === 'a' && e.target === 'p')
+    expect(other?.type).toBe('polyline')
+    expect(other?.style.curveOffset).toBeUndefined()
+  })
+
+  it('fans reversed-direction pairs with same-sign offsets (manages ↔ reportsTo)', () => {
+    // The class-level objectProperty case: manages (Manager→Employee) and
+    // reportsTo (Employee→Manager) share the unordered pair. Same-sign
+    // offsets, because curveOffset is relative to each edge's own direction.
+    draw({
+      edges: [
+        ...EDGES,
+        { source: 'b', target: 'c', kind: 'objectProperty', label: 'manages' },
+        { source: 'c', target: 'b', kind: 'objectProperty', label: 'reportsTo' },
+      ],
+    })
+    const fan = lastData().edges.filter(
+      (e) => (e.source === 'b' && e.target === 'c') || (e.source === 'c' && e.target === 'b'),
+    )
+    expect(fan).toHaveLength(2)
+    expect(fan.map((e) => e.style.curveOffset)).toEqual([20, 20])
   })
 
   it('toggles the legend from the control bar', async () => {

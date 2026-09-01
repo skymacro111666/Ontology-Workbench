@@ -199,7 +199,7 @@ export function toG6Edges(
   showLabels: boolean,
   t: CanvasTokens,
 ): EdgeData[] {
-  return edges
+  const mapped = edges
     .filter((e) => visible.has(e.source) && visible.has(e.target))
     .map((e, i) => {
       const v = edgeVisualFor(e.kind, t)
@@ -225,6 +225,10 @@ export function toG6Edges(
         id: `e${i}-${source}-${target}`,
         source,
         target,
+        // Per-datum, not options-level: G6 resolves options.edge.type before
+        // datum.type, so an options default would pin every edge to one shape
+        // and the parallel-edge fan below could never take hold.
+        type: 'polyline',
         data: { kind: e.kind, propEid: e.eid },
         style: {
           stroke: v.stroke,
@@ -245,6 +249,41 @@ export function toG6Edges(
         },
       }
     })
+  return fanParallelEdges(mapped)
+}
+
+/** Same-pair edges (either direction — manages ↔ reportsTo) fan out as arcs
+ *  instead of stacking into one line. Mirrors G6's process-parallel-edges
+ *  bundle math (offsets ±FAN_DISTANCE, same sign for reversed pairs because
+ *  curveOffset is relative to each edge's own direction), but applied here so
+ *  only the parallel pairs switch to quadratic — singletons keep polyline. */
+const FAN_DISTANCE = 20
+
+function fanParallelEdges(edges: EdgeData[]): EdgeData[] {
+  const groups = new Map<string, number[]>()
+  edges.forEach((e, i) => {
+    const key = e.source <= e.target ? `${e.source}|${e.target}` : `${e.target}|${e.source}`
+    const group = groups.get(key)
+    if (group) group.push(i)
+    else groups.set(key, [i])
+  })
+  for (const indices of groups.values()) {
+    if (indices.length < 2) continue
+    const [first] = indices
+    indices.forEach((i, k) => {
+      const e = edges[i]
+      // Reversed = points against the group's opening edge.
+      const reversed = e.source === edges[first].target && e.target === edges[first].source
+      const sign = (k % 2 === 0 ? 1 : -1) * (reversed ? -1 : 1)
+      const offset =
+        indices.length % 2 === 1
+          ? sign * Math.ceil(k / 2) * FAN_DISTANCE * 2
+          : sign * (Math.floor(k / 2) * FAN_DISTANCE * 2 + FAN_DISTANCE)
+      e.type = 'quadratic'
+      e.style = { ...e.style, curveOffset: offset }
+    })
+  }
+  return edges
 }
 
 function visibleOf(nodes: GraphViewNode[], kinds: KindFilter): GraphViewNode[] {
@@ -467,10 +506,6 @@ export default function GraphView({
       // from G6's LayoutOptions type — see render()'s !options.layout branch.
       layout: (useSaved || autoLinear ? false : LAYOUT) as unknown as typeof LAYOUT,
       node: { type: (d: NodeData) => (d.data?.kind === 'instance' ? 'circle' : 'rect') },
-      edge: { type: 'polyline' },
-      // Two assertions between the same instance pair (or any parallel
-      // edges) fan out by curvature instead of stacking into one line.
-      transforms: ['process-parallel-edges'],
       behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element'],
       plugins: [],
     })
