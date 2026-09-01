@@ -71,6 +71,7 @@
     "navOverview": "Overview",
     "navWorkspace": "Workspace",
     "import": "＋ Import",
+    "create": "＋ New",
     "exportMenu": "Export ▾",
     "exportSite": "Export docs site",
     "viewGraph": "Graph",
@@ -188,6 +189,15 @@
     "title": "Import ontology",
     "desc": "Supports .ttl / .owl / .rdf / .jsonld / .json, up to 150MB per file",
     "dropHint": "Click or drop a file here to upload"
+  },
+  "blankDialog": {
+    "title": "New blank ontology",
+    "desc": "Starts from a skeleton with just an ontology header and one example class and property",
+    "name": "Name",
+    "namePlaceholder": "e.g. My Domain",
+    "create": "Create",
+    "duplicate": "An ontology with this name already exists — try another name",
+    "created": "Created: {{name}}"
   },
   "palette": {
     "title": "Global search",

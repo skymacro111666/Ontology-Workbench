@@ -34,10 +34,12 @@ export interface InstanceDialogState {
   eid?: string
 }
 
-/** Cross-component UI state (import dialog flag, workspace view mode). */
+/** Cross-component UI state (import/blank-create dialog flags, view mode). */
 export const useUiStore = create<{
   importOpen: boolean
   setImportOpen: (open: boolean) => void
+  blankOpen: boolean
+  setBlankOpen: (open: boolean) => void
   browseView: BrowseView
   setBrowseView: (view: BrowseView) => void
   /** Sidebar collapse (rail mode): collapsed panels stay mounted, hidden. */
@@ -63,6 +65,8 @@ export const useUiStore = create<{
 }>((set) => ({
   importOpen: false,
   setImportOpen: (importOpen) => set({ importOpen }),
+  blankOpen: false,
+  setBlankOpen: (blankOpen) => set({ blankOpen }),
   browseView: 'graph',
   setBrowseView: (browseView) => set({ browseView }),
   leftCollapsed: false,

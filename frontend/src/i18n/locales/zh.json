@@ -71,6 +71,7 @@
     "navOverview": "概览",
     "navWorkspace": "工作区",
     "import": "＋ 导入",
+    "create": "＋ 新建",
     "exportMenu": "导出 ▾",
     "exportSite": "导出文档站",
     "viewGraph": "图形",
@@ -188,6 +189,15 @@
     "title": "导入本体",
     "desc": "支持 .ttl / .owl / .rdf / .jsonld / .json，单个文件最大 150MB",
     "dropHint": "点击或拖拽文件到此处上传"
+  },
+  "blankDialog": {
+    "title": "新建空白本体",
+    "desc": "从一个只含本体头部与示例类、示例属性的骨架开始",
+    "name": "名称",
+    "namePlaceholder": "例如：My Domain",
+    "create": "创建",
+    "duplicate": "同名本体已存在，请换个名称",
+    "created": "已创建：{{name}}"
   },
   "palette": {
     "title": "全局搜索",

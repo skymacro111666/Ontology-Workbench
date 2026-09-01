@@ -11,6 +11,7 @@ import { useTheme } from '../theme/ThemeProvider'
 import logoMark from '../assets/logo-mark.png'
 import { cn } from '@/lib/utils'
 import CommandPalette from './CommandPalette'
+import BlankOntologyDialog from './BlankOntologyDialog'
 import ImportDialog from './ImportDialog'
 import OntologySwitcher from './OntologySwitcher'
 import PasswordDialog from './PasswordDialog'
@@ -53,6 +54,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const { user, logout } = useAuth()
   const { theme, setTheme } = useTheme()
   const setImportOpen = useUiStore((s) => s.setImportOpen)
+  const setBlankOpen = useUiStore((s) => s.setBlankOpen)
   const browseView = useUiStore((s) => s.browseView)
   const setBrowseView = useUiStore((s) => s.setBrowseView)
   const pendingView = useUiStore((s) => s.pendingView)
@@ -142,6 +144,10 @@ export default function AppShell({ children }: { children?: ReactNode }) {
         <OntologySwitcher />
 
         <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setBlankOpen(true)}>
+            {t('shell.create')}
+          </Button>
+
           <Button size="sm" onClick={() => setImportOpen(true)}>
             {t('shell.import')}
           </Button>
@@ -235,6 +241,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
       <main className="min-h-0 flex-1 overflow-y-auto">{children ?? <Outlet />}</main>
 
       <ImportDialog />
+      <BlankOntologyDialog />
       <CommandPalette />
       <PasswordDialog open={pwdOpen} onClose={() => setPwdOpen(false)} />
 

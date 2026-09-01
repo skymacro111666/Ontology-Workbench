@@ -43,6 +43,15 @@ describe('uiStore entity-dialog state (A2)', () => {
   })
 })
 
+describe('uiStore blank-ontology dialog', () => {
+  it('opens and closes the blank-create dialog', () => {
+    useUiStore.getState().setBlankOpen(true)
+    expect(useUiStore.getState().blankOpen).toBe(true)
+    useUiStore.getState().setBlankOpen(false)
+    expect(useUiStore.getState().blankOpen).toBe(false)
+  })
+})
+
 describe('uiStore sidebar collapse', () => {
   it('defaults both sidebars open and collapses them independently', () => {
     expect(useUiStore.getState().leftCollapsed).toBe(false)

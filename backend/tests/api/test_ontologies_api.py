@@ -148,6 +148,46 @@ def test_source_distinguishes_samples_from_uploads(client: TestClient) -> None:
     assert by_file["pizza.ttl"] == "sample"
 
 
+def test_create_blank_ontology(client: TestClient) -> None:
+    """POST /ontologies/blank mints a parseable skeleton.
+
+    Ontology header + label + one prefix + one class + one property,
+    registered as created.
+    """
+    r = client.post("/api/ontologies/blank", json={"name": "My Domain"})
+    assert r.status_code == 201
+    meta = r.json()["data"]
+    assert meta["source"] == "created"
+    assert meta["filename"] == "my-domain.ttl"
+    assert meta["title"] == "My Domain"
+    assert meta["classCount"] == 1
+    assert meta["propertyCount"] == 1
+
+    dup = client.post("/api/ontologies/blank", json={"name": "My Domain"})
+    assert dup.status_code == 409
+    assert dup.json()["code"] == "DUPLICATE_FILENAME"
+
+
+def test_create_blank_namespace_and_fallbacks(client: TestClient) -> None:
+    """Namespace and slug fallbacks for the blank create.
+
+    Custom namespace lands verbatim; non-ASCII names fall back to a safe
+    filename slug; whitespace namespaces are rejected.
+    """
+    r = client.post(
+        "/api/ontologies/blank",
+        json={"name": "知识图谱", "namespace": "https://example.org/kg#"},
+    )
+    assert r.status_code == 201
+    meta = r.json()["data"]
+    assert meta["filename"] == "ontology.ttl"  # non-ASCII name → fallback slug
+    src = client.get(f"/api/ontologies/{meta['id']}/source").json()["data"]["content"]
+    assert "https://example.org/kg#" in src
+
+    bad = client.post("/api/ontologies/blank", json={"name": "X", "namespace": "has space#"})
+    assert bad.status_code == 422
+
+
 def test_meta_carries_parse_ms(client: TestClient) -> None:
     """Upload meta and GET /meta expose parseMs (positive float, ms)."""
     up = client.post(

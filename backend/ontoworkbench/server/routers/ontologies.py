@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 from uuid import UUID, uuid4
@@ -80,6 +81,44 @@ class SourceUpdate(CamelModel):
 
     content: str
     base_file_hash: str
+
+
+class BlankCreate(CamelModel):
+    """POST /ontologies/blank body: a human name + optional namespace."""
+
+    name: str = Field(min_length=1, max_length=128)
+    namespace: str | None = Field(default=None, max_length=512)
+
+
+def _slugify(text: str) -> str:
+    """ASCII filename slug; non-ASCII names fall back to a stable default."""
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "ontology"
+
+
+def blank_skeleton(name: str, namespace: str, prefix: str) -> bytes:
+    """Starter document for a blank create.
+
+    Ontology header + label + one prefix + one class and one property,
+    so a brand-new ontology opens onto a living canvas.
+    """
+    esc = name.replace("\\", "\\\\").replace('"', '\\"')
+    onto_iri = namespace.rstrip("#/")
+    return (
+        "@prefix dcterms: <http://purl.org/dc/terms/> .\n"
+        "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
+        f"@prefix {prefix}: <{namespace}> .\n"
+        "\n"
+        f"<{onto_iri}> a owl:Ontology ;\n"
+        f'    rdfs:label "{esc}" ;\n'
+        f'    dcterms:title "{esc}" .\n'
+        "\n"
+        f"{prefix}:Example a owl:Class ;\n"
+        '    rdfs:label "Example" .\n'
+        "\n"
+        f"{prefix}:relatedTo a owl:ObjectProperty ;\n"
+        '    rdfs:label "related to" .\n'
+    ).encode()
 
 
 def title_of(graph, filename: str) -> str:
@@ -435,6 +474,31 @@ def import_sample(
     if existing:
         return respond(meta_of(existing))
     row = _import_bytes(request, user, session, sample.name, data, source="sample")
+    return respond(meta_of(row))
+
+
+@router.post("/ontologies/blank", status_code=201)
+def create_blank_ontology(
+    body: BlankCreate,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Mint a new ontology from a skeleton.
+
+    Header + label + prefix + one class and one property
+    (source=created, no 示例 badge).
+    """
+    name = body.name.strip()
+    if not name:
+        raise ApiError(ErrorCode.VALIDATION_ERROR, "Name cannot be blank")
+    slug = _slugify(name)
+    namespace = body.namespace.strip() if body.namespace else f"https://local/{slug}#"
+    if any(ch.isspace() for ch in namespace):
+        raise ApiError(ErrorCode.VALIDATION_ERROR, "Namespace must not contain whitespace")
+    prefix = f"o{slug}" if slug[0].isdigit() else slug
+    data = blank_skeleton(name, namespace, prefix)
+    row = _import_bytes(request, user, session, f"{slug}.ttl", data, source="created")
     return respond(meta_of(row))
 
 

@@ -25,6 +25,7 @@ afterEach(() => {
   useUiStore.setState({
     browseView: 'graph',
     importOpen: false,
+    blankOpen: false,
     sourceDirty: false,
     pendingView: null,
     sourceSaveFn: null,
@@ -150,6 +151,13 @@ it('hides the 图形/文本 switch outside the workspace', () => {
   shell('/')
   expect(screen.queryByRole('radio', { name: /图形/ })).toBeNull()
   expect(screen.queryByRole('radio', { name: /文本/ })).toBeNull()
+})
+
+it('opens the blank-create dialog from the topbar', async () => {
+  shell('/')
+  await userEvent.click(screen.getByRole('button', { name: '＋ 新建' }))
+  expect(await screen.findByRole('dialog')).toBeTruthy()
+  expect(screen.getByText('新建空白本体')).toBeTruthy()
 })
 
 it('workspace topbar switches the browse view mode through the store', async () => {
