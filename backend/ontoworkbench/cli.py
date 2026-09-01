@@ -23,6 +23,7 @@ from ontoworkbench.observability.middleware import request_id_ctx
 app = typer.Typer(help="Ontology Workbench — self-hosted ontology workbench.")
 
 _imports_log = structlog.get_logger("ow.imports")
+_serve_log = structlog.get_logger("ow.serve")
 
 PACKAGE_ROOT = Path(__file__).parent
 BACKEND_ROOT = PACKAGE_ROOT.parent
@@ -68,6 +69,19 @@ def _probe_port(host: str, port: int) -> None:
 def _warn_stderr(message: str) -> None:
     """Emit a serve-time warning to stderr (injectable for tests)."""
     typer.echo(message, err=True)
+
+
+def warn_non_loopback(host: str) -> None:
+    """Warn that binding is exposed beyond loopback — as a JSON log event.
+
+    A typer.echo here would drop one plain-text line into the JSON stream
+    and break log ingestion; the event keeps every sink uniformly parseable.
+    """
+    _serve_log.warning(
+        "serve.non_loopback",
+        host=host,
+        hint="place this instance behind a reverse proxy with HTTPS before exposing it",
+    )
 
 
 def _serve_cli(
@@ -147,11 +161,7 @@ def serve(
         typer.echo(f"cannot serve on {settings.host}: {exc}", err=True)
         raise typer.Exit(code=1) from exc
     if settings.host not in LOOPBACK_HOSTS:
-        typer.echo(
-            f"host {settings.host} is non-loopback — place this instance behind a "
-            "reverse proxy with HTTPS before exposing it",
-            err=True,
-        )
+        warn_non_loopback(settings.host)
 
     if not no_browser and host in {"127.0.0.1", "localhost"} and sys.stdout.isatty():
         webbrowser.open(f"http://{host}:{serve_port}/")

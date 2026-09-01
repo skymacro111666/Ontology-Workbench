@@ -103,3 +103,25 @@ def test_optional_dirs_pass_through_only_when_given() -> None:
     assert _serve_cli(None, None, None, None) == {}
     cli = _serve_cli(None, None, "/tmp/data", "/tmp/logs")
     assert cli == {"data_dir": Path("/tmp/data"), "log_dir": Path("/tmp/logs")}
+
+
+def test_non_loopback_warning_is_a_json_log_event() -> None:
+    """The warning rides the structlog pipeline, not bare stdout/stderr.
+
+    A typer.echo line breaks the JSON log stream (one plain-text line amid
+    parseable records); the event keeps every sink a uniform JSON feed.
+    """
+    from structlog.testing import capture_logs
+
+    from ontoworkbench.cli import warn_non_loopback
+
+    with capture_logs() as logs:
+        warn_non_loopback("0.0.0.0")
+    assert logs == [
+        {
+            "event": "serve.non_loopback",
+            "host": "0.0.0.0",
+            "hint": "place this instance behind a reverse proxy with HTTPS before exposing it",
+            "log_level": "warning",
+        }
+    ]
