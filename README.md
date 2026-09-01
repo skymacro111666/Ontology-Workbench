@@ -47,7 +47,7 @@ cd ontology-workbench
 docker compose up -d --build
 ```
 
-访问 `http://127.0.0.1:8734`。数据保存在项目内 `./data` 与 `./logs` 目录中,容器重建不丢失。`OW_PORT=9000 docker compose up -d` 可设置端口,`OW_JWT_SECRET` 不设则首次启动自动生成并保存在 `data/jwt-secret`。
+访问 `http://<你的IP地址>:8734`。数据保存在项目内 `./data` 与 `./logs` 目录中,容器重建不丢失。`OW_PORT=9000 docker compose up -d` 可设置端口,`OW_JWT_SECRET` 不设则首次启动自动生成并保存在 `data/jwt-secret`。
 
 ### 方式二:源码部署
 
@@ -67,7 +67,7 @@ cd ../frontend && npm ci && npm run build
 cd ../backend && uv run ow serve
 ```
 
-首次访问引导创建管理员(一次性),登录后载入内置示例本体即可体验。**配置优先级:CLI 参数 > 环境变量(`.env`)> 默认值**;常用变量 `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL`(默认 SQLite,后续支持 PostgreSQL)/ `OW_LOG_LEVEL`;文档站导出目录默认限定在 `{数据目录}/exports/` 下,自托管可设 `OW_EXPORT_ALLOW_ANY_PATH=1` 放开。
+访问 `http://<你的IP地址>:8734`(需先在 `.env` 设 `OW_HOST=0.0.0.0`,默认仅监听回环地址),首次访问引导创建管理员(一次性),登录后载入内置示例本体即可体验。**配置优先级:CLI 参数 > 环境变量(`.env`)> 默认值**;常用变量 `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL`(默认 SQLite,后续支持 PostgreSQL)/ `OW_LOG_LEVEL`;文档站导出目录默认限定在 `{数据目录}/exports/` 下,自托管可设 `OW_EXPORT_ALLOW_ANY_PATH=1` 放开。
 
 ## 📄 许可证
 
