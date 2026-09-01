@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 from pathlib import Path
 from uuid import UUID
 
 from ontoworkbench.core.errors import CoreError
 
-_SAMPLE_NAMES = {"pizza", "wine", "foaf", "library"}
+# Catalog names are kebab-case; anything else is NOT_FOUND before the
+# filesystem ever sees it (the samples dir itself is the catalog — no
+# registration list to drift out of sync with shipped files).
+_SAMPLE_NAME_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
 
 
 class LocalUserDirStore:
@@ -62,8 +66,12 @@ class LocalUserDirStore:
         return hashlib.sha256(data).hexdigest()
 
     def sample_path(self, name: str) -> Path:
-        """Resolve a bundled sample ontology; unknown names are NOT_FOUND."""
-        if name not in _SAMPLE_NAMES:
+        """Resolve a bundled sample ontology; unknown names are NOT_FOUND.
+
+        Every .ttl shipped in the samples dir is servable — the catalog is
+        the directory, so a new sample needs no code change to load.
+        """
+        if not _SAMPLE_NAME_RE.fullmatch(name):
             raise CoreError("NOT_FOUND", f"Unknown sample '{name}'")
         p = self._samples / f"{name}.ttl"
         if not p.exists():

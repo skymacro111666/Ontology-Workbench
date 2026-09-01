@@ -33,6 +33,29 @@ def test_sample_path_unknown_raises_core_error(tmp_path) -> None:
     assert e.value.code == "NOT_FOUND"
 
 
+def test_sample_path_serves_every_bundled_ttl(tmp_path) -> None:
+    """The catalog is the samples dir itself — no name registration to forget.
+
+    Regression: human-resources-v1 shipped but stayed unloadable (NOT_FOUND)
+    because a hardcoded allowlist never learned it.
+    """
+    store = LocalUserDirStore(tmp_path)
+    samples_dir = store._samples
+    bundled = {p.stem for p in samples_dir.glob("*.ttl")}
+    assert "human-resources-v1" in bundled  # the shipped catalog, ground truth
+    for name in bundled:
+        assert store.sample_path(name).exists()
+
+
+@pytest.mark.parametrize("bad", ["..", "../x", "a/b", ".hidden", "UPPER", "sp ace"])
+def test_sample_path_rejects_non_catalog_names(tmp_path, bad: str) -> None:
+    """Names outside the kebab-case catalog form are NOT_FOUND, not path games."""
+    store = LocalUserDirStore(tmp_path)
+    with pytest.raises(CoreError) as e:
+        store.sample_path(bad)
+    assert e.value.code == "NOT_FOUND"
+
+
 def test_save_rejects_path_traversal(tmp_path) -> None:
     """Filenames with path separators cannot escape the ontology dir."""
     store = LocalUserDirStore(tmp_path)
