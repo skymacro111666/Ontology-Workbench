@@ -1,10 +1,10 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router'
 import { toast } from 'sonner'
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
-import Export from './Export'
-import { TOKEN_KEY } from '../auth/AuthContext'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
+import ExportDialog from './ExportDialog'
+import { LAST_OID_KEY, TOKEN_KEY } from '../auth/AuthContext'
+import { useUiStore } from '../stores/uiStore'
 import type { Envelope } from '../api/types'
 
 const OUT_DIR = '/srv/data/exports/pizza-20260823'
@@ -35,33 +35,32 @@ function stubClipboard() {
   return writeText
 }
 
-function renderExport(fetchMock: Mock) {
-  vi.stubGlobal('fetch', fetchMock)
-  render(
-    <MemoryRouter initialEntries={['/export/oid-1']}>
-      {/* Route params only resolve through a Routes declaration. */}
-      <Routes>
-        <Route path="/export/:oid" element={<Export />} />
-      </Routes>
-    </MemoryRouter>,
-  )
+function renderDialog() {
+  return render(<ExportDialog />)
 }
 
+beforeEach(() => {
+  localStorage.setItem(LAST_OID_KEY, 'oid-1')
+  useUiStore.getState().setExportOpen(true)
+})
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  useUiStore.getState().setExportOpen(false)
+  localStorage.removeItem(LAST_OID_KEY)
   // Drop the clipboard stub so later suites see jsdom's original state.
   Reflect.deleteProperty(navigator, 'clipboard')
   Reflect.deleteProperty(document, 'execCommand')
 })
 
-describe('Export', () => {
-  it('submits outDir and the force flag in the POST body', async () => {
+describe('ExportDialog', () => {
+  it('submits outDir and the force flag in the POST body for the last ontology', async () => {
     const fetchMock = vi.fn(async () => ok({ outputDir: OUT_DIR, pageCount: 5 }))
-    renderExport(fetchMock)
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
 
-    await userEvent.type(screen.getByLabelText('输出目录（可选）'), '/tmp/my-site ')
+    await userEvent.type(await screen.findByLabelText('输出目录（可选）'), '/tmp/my-site ')
     await userEvent.click(screen.getByRole('switch'))
     await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
 
@@ -71,23 +70,46 @@ describe('Export', () => {
     expect(exportBodies(fetchMock)[0]).toEqual({ outDir: '/tmp/my-site', force: true })
   })
 
-  it('renders the result card with outputDir and pageCount on success', async () => {
+  it('renders the result inside the dialog with outputDir and pageCount on success', async () => {
     const fetchMock = vi.fn(async () => ok({ outputDir: OUT_DIR, pageCount: 12 }))
-    renderExport(fetchMock)
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
 
     await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
 
-    expect(await screen.findByText(OUT_DIR)).toBeTruthy()
-    expect(screen.getByText('共 12 页（1 个索引页 + 11 个实体页）')).toBeTruthy()
+    const dialog = await screen.findByRole('dialog')
+    expect(await within(dialog).findByText(OUT_DIR)).toBeTruthy()
+    expect(within(dialog).getByText('共 12 页（1 个索引页 + 11 个实体页）')).toBeTruthy()
     // Blank input sends no outDir so the server picks the default location.
     expect(exportBodies(fetchMock)[0]).toEqual({ force: false })
+    // Success keeps the dialog open: the result (path + download) lives in it.
+    expect(useUiStore.getState().exportOpen).toBe(true)
+  })
+
+  it('shows the busy state on the submit button while exporting', async () => {
+    let release: (value: Response) => void = () => {}
+    const gate = new Promise<Response>((resolve) => {
+      release = resolve
+    })
+    const fetchMock = vi.fn(async () => gate)
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
+
+    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    const busy = (await screen.findByRole('button', { name: '导出中…' })) as HTMLButtonElement
+    expect(busy.disabled).toBe(true)
+
+    release(ok({ outputDir: OUT_DIR, pageCount: 5 }))
+    expect(await screen.findByText(OUT_DIR)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '导出中…' })).toBeNull()
   })
 
   it('copies the output dir through the clipboard and toasts 已复制', async () => {
     const writeText = stubClipboard()
     const toastSuccess = vi.spyOn(toast, 'success')
     const fetchMock = vi.fn(async () => ok({ outputDir: OUT_DIR, pageCount: 5 }))
-    renderExport(fetchMock)
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
 
     await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
     await userEvent.click(await screen.findByRole('button', { name: '复制' }))
@@ -105,7 +127,8 @@ describe('Export', () => {
     Object.defineProperty(document, 'execCommand', { value: execMock, configurable: true })
     const toastSuccess = vi.spyOn(toast, 'success')
     const fetchMock = vi.fn(async () => ok({ outputDir: OUT_DIR, pageCount: 5 }))
-    renderExport(fetchMock)
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
 
     await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
     await userEvent.click(await screen.findByRole('button', { name: '复制' }))
@@ -136,7 +159,8 @@ describe('Export', () => {
     Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true })
     Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURL, configurable: true })
     const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click')
-    renderExport(fetchMock)
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
 
     await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
     await userEvent.click(await screen.findByRole('button', { name: '下载 zip' }))
@@ -158,7 +182,8 @@ describe('Export', () => {
       .fn()
       .mockResolvedValueOnce(ok({ outputDir: OUT_DIR, pageCount: 5 }))
       .mockResolvedValueOnce(err('VALIDATION_ERROR'))
-    renderExport(fetchMock)
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
 
     await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
     expect(await screen.findByText(OUT_DIR)).toBeTruthy()
@@ -172,11 +197,29 @@ describe('Export', () => {
 
   it('maps VALIDATION_ERROR to the directory-not-empty copy', async () => {
     const fetchMock = vi.fn(async () => err('VALIDATION_ERROR'))
-    renderExport(fetchMock)
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
 
     await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
 
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.getByText('目录非空，勾选覆盖或换一个')).toBeTruthy()
+  })
+
+  it('resets the previous result when the dialog reopens', async () => {
+    const fetchMock = vi.fn(async () => ok({ outputDir: OUT_DIR, pageCount: 5 }))
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
+
+    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    expect(await screen.findByText(OUT_DIR)).toBeTruthy()
+
+    // Radix handles Escape as the user-side close path.
+    await userEvent.keyboard('{Escape}')
+    useUiStore.getState().setExportOpen(true)
+    expect(await screen.findByLabelText('输出目录（可选）')).toBeTruthy()
+    // A fresh open must not resurrect the previous export's result.
+    expect(screen.queryByText(OUT_DIR)).toBeNull()
+    expect(screen.queryByRole('button', { name: '下载 zip' })).toBeNull()
   })
 })

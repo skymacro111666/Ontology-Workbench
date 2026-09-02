@@ -21,6 +21,7 @@ import logoMark from '../assets/logo-mark.png'
 import { cn } from '@/lib/utils'
 import CommandPalette from './CommandPalette'
 import BlankOntologyDialog from './BlankOntologyDialog'
+import ExportDialog from './ExportDialog'
 import ImportDialog from './ImportDialog'
 import OntologySwitcher from './OntologySwitcher'
 import PasswordDialog from './PasswordDialog'
@@ -67,6 +68,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const { theme, setTheme } = useTheme()
   const setImportOpen = useUiStore((s) => s.setImportOpen)
   const setBlankOpen = useUiStore((s) => s.setBlankOpen)
+  const setExportOpen = useUiStore((s) => s.setExportOpen)
   const browseView = useUiStore((s) => s.browseView)
   const setBrowseView = useUiStore((s) => s.setBrowseView)
   const pendingView = useUiStore((s) => s.pendingView)
@@ -190,7 +192,18 @@ export default function AppShell({ children }: { children?: ReactNode }) {
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-xs" onSelect={() => openLast('/export')}>
+                  <DropdownMenuItem
+                    className="text-xs"
+                    onSelect={() => {
+                      // Docs-site export rides the floating dialog (like the
+                      // other file actions); it still needs a target ontology.
+                      if (!localStorage.getItem(LAST_OID_KEY)) {
+                        toast(t('shell.pickOntologyFirst'))
+                        return
+                      }
+                      setExportOpen(true)
+                    }}
+                  >
                     {t('shell.exportSite')}
                   </DropdownMenuItem>
                 </DropdownMenuSubContent>
@@ -267,6 +280,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
 
       <ImportDialog />
       <BlankOntologyDialog />
+      <ExportDialog />
       <CommandPalette />
       <PasswordDialog open={pwdOpen} onClose={() => setPwdOpen(false)} />
 

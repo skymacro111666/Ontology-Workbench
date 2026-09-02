@@ -17,6 +17,12 @@ vi.mock('../api/client', () => ({
   ApiErr: class extends Error {},
 }))
 
+// Bare toast() calls (the oid guard) cannot be spied on an ESM namespace;
+// hand tests a callable mock carrying the usual level methods.
+vi.mock('sonner', () => ({
+  toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }),
+}))
+
 // Vitest globals are off, so RTL auto-cleanup never registers — the tree (and
 // the shared uiStore's opened dialog) would leak into any later test.
 afterEach(() => {
@@ -26,6 +32,7 @@ afterEach(() => {
     browseView: 'graph',
     importOpen: false,
     blankOpen: false,
+    exportOpen: false,
     sourceDirty: false,
     pendingView: null,
     sourceSaveFn: null,
@@ -130,6 +137,57 @@ it('export menu downloads the current ontology in the picked RDF format', async 
       'ontology',
     ),
   )
+})
+
+it('docs-site export menu item opens the floating export dialog', async () => {
+  localStorage.setItem(LAST_OID_KEY, 'oid-1')
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider>
+        <MemoryRouter>
+          <AuthProvider>
+            <AppShell>
+              <div>content</div>
+            </AppShell>
+          </AuthProvider>
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+
+  await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))
+  await userEvent.hover(await screen.findByText('导出'))
+  await userEvent.click(await screen.findByText('导出文档站'))
+
+  // The floating dialog carries the export form — no route navigation.
+  expect(await screen.findByLabelText('输出目录（可选）')).toBeTruthy()
+  expect(useUiStore.getState().exportOpen).toBe(true)
+})
+
+it('docs-site export menu guards on a chosen ontology before opening', async () => {
+  const toastSpy = (await import('sonner')).toast as unknown as ReturnType<typeof vi.fn>
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider>
+        <MemoryRouter>
+          <AuthProvider>
+            <AppShell>
+              <div>content</div>
+            </AppShell>
+          </AuthProvider>
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+
+  await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))
+  await userEvent.hover(await screen.findByText('导出'))
+  await userEvent.click(await screen.findByText('导出文档站'))
+
+  expect(toastSpy).toHaveBeenCalledWith('先选择一个本体')
+  expect(useUiStore.getState().exportOpen).toBe(false)
 })
 
 function shell(entry: string) {

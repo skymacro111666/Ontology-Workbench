@@ -162,9 +162,10 @@
     "keepEditing": "Keep editing",
     "reload": "Reload"
   },
-  "exportPage": {
+  "exportDialog": {
     "dirNotEmpty": "Directory not empty — tick overwrite or pick another",
     "exportFailed": "Export failed, please try again later",
+    "exporting": "Exporting…",
     "copied": "Copied",
     "copyFailed": "Copy failed",
     "download": "Download zip",

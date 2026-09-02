@@ -30,9 +30,7 @@ export default function CommandPalette() {
   // The shell outlives the /:oid routes, so match the oid off the location.
   const browse = useMatch('/browse/:oid')
   const graph = useMatch('/graph/:oid')
-  const exportMatch = useMatch('/export/:oid')
-  const oid =
-    browse?.params.oid ?? graph?.params.oid ?? exportMatch?.params.oid ?? localStorage.getItem(LAST_OID_KEY)
+  const oid = browse?.params.oid ?? graph?.params.oid ?? localStorage.getItem(LAST_OID_KEY)
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

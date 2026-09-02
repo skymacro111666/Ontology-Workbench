@@ -20,8 +20,7 @@ export default function OntologySwitcher() {
   // Layout-level component, so route params must be read from the URL matches.
   const browseOid = useMatch('/browse/:oid')?.params.oid
   const graphOid = useMatch('/graph/:oid')?.params.oid
-  const exportOid = useMatch('/export/:oid')?.params.oid
-  const currentOid = browseOid ?? graphOid ?? exportOid
+  const currentOid = browseOid ?? graphOid
 
   const { data, isPending, isError } = useQuery({
     queryKey: ['ontologies'],

@@ -40,6 +40,8 @@ export const useUiStore = create<{
   setImportOpen: (open: boolean) => void
   blankOpen: boolean
   setBlankOpen: (open: boolean) => void
+  exportOpen: boolean
+  setExportOpen: (open: boolean) => void
   browseView: BrowseView
   setBrowseView: (view: BrowseView) => void
   /** Sidebar collapse (rail mode): collapsed panels stay mounted, hidden. */
@@ -67,6 +69,8 @@ export const useUiStore = create<{
   setImportOpen: (importOpen) => set({ importOpen }),
   blankOpen: false,
   setBlankOpen: (blankOpen) => set({ blankOpen }),
+  exportOpen: false,
+  setExportOpen: (exportOpen) => set({ exportOpen }),
   browseView: 'graph',
   setBrowseView: (browseView) => set({ browseView }),
   leftCollapsed: false,
