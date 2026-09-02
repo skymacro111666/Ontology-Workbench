@@ -7,8 +7,8 @@
 <https://github.com/skymacro111666/ontology-workbench/samples/university>
     a owl:Ontology ;
     dc:title "University Teaching Ontology" ;
-    rdfs:comment """A teaching sample: people, organization units and courses at a
-university. Deliberate modeling decisions worth teaching:
+    rdfs:comment """A teaching sample: people, organization units, courses, publications
+and facilities at a university. Deliberate modeling decisions worth teaching:
 
 - Staff and Student are NOT disjoint: a PhD candidate who also serves as a
   teaching assistant is legitimately both (Tom Harris). Roles that would
@@ -16,8 +16,12 @@ university. Deliberate modeling decisions worth teaching:
   instead (TeachingAssistant), mirroring the person-vs-role lesson.
 - Every object property declares both domain and range, so the workbench
   canvas renders them as direct class-to-class edges.
-- Tom Harris carries two types (PhDStudent, TeachingAssistant): the
-  multi-type instance regression scenario in one line of Turtle.""" .
+- Multi-type individuals: Tom Harris (PhDStudent + TeachingAssistant) and
+  Maria Lopez (Professor + Dean) — the multi-type instance regression
+  scenario in single lines of Turtle.
+- partOf chains the organization tree at the instance level (department →
+  college → university); writes shows co-authorship (two authors share one
+  textbook); memberOf ties both people and labs into the org graph.""" .
 
 ## ---------- classes: people ----------
 
@@ -25,14 +29,26 @@ uni:Person a owl:Class ; rdfs:label "Person" ;
     rdfs:comment "Any human affiliated with the university." .
 
 uni:Staff a owl:Class ; rdfs:label "Staff" ; rdfs:subClassOf uni:Person ;
-    rdfs:comment "Employees: faculty and other personnel." .
+    rdfs:comment "Employees: faculty, researchers and administrative personnel." .
 
 uni:Faculty a owl:Class ; rdfs:label "Faculty" ; rdfs:subClassOf uni:Staff ;
     rdfs:comment "Teaching staff." .
 
 uni:Professor a owl:Class ; rdfs:label "Professor" ; rdfs:subClassOf uni:Faculty .
 
+uni:Dean a owl:Class ; rdfs:label "Dean" ; rdfs:subClassOf uni:Professor ;
+    rdfs:comment """A professor who heads a college; a second type, not a
+    replacement for it (see Maria Lopez).""" .
+
 uni:Lecturer a owl:Class ; rdfs:label "Lecturer" ; rdfs:subClassOf uni:Faculty .
+
+uni:Researcher a owl:Class ; rdfs:label "Researcher" ; rdfs:subClassOf uni:Staff .
+
+uni:PostdoctoralResearcher a owl:Class ; rdfs:label "Postdoctoral researcher" ;
+    rdfs:subClassOf uni:Researcher .
+
+uni:AdministrativeStaff a owl:Class ; rdfs:label "Administrative staff" ;
+    rdfs:subClassOf uni:Staff .
 
 uni:Student a owl:Class ; rdfs:label "Student" ; rdfs:subClassOf uni:Person .
 
@@ -41,6 +57,9 @@ uni:UndergraduateStudent a owl:Class ; rdfs:label "Undergraduate student" ;
 
 uni:GraduateStudent a owl:Class ; rdfs:label "Graduate student" ;
     rdfs:subClassOf uni:Student .
+
+uni:MastersStudent a owl:Class ; rdfs:label "Master's student" ;
+    rdfs:subClassOf uni:GraduateStudent .
 
 uni:PhDStudent a owl:Class ; rdfs:label "PhD student" ;
     rdfs:subClassOf uni:GraduateStudent .
@@ -52,7 +71,8 @@ uni:TeachingAssistant a owl:Class ; rdfs:label "Teaching assistant" ;
 ## ---------- classes: organization ----------
 
 uni:Organization a owl:Class ; rdfs:label "Organization" ;
-    rdfs:comment "An organizational unit of the university." .
+    rdfs:comment """An organizational unit of the university: colleges,
+    departments, libraries and research labs.""" .
 
 uni:University a owl:Class ; rdfs:label "University" ; rdfs:subClassOf uni:Organization .
 
@@ -62,6 +82,9 @@ uni:Department a owl:Class ; rdfs:label "Department" ; rdfs:subClassOf uni:Organ
 
 uni:Library a owl:Class ; rdfs:label "Library" ; rdfs:subClassOf uni:Organization .
 
+uni:ResearchLab a owl:Class ; rdfs:label "Research lab" ;
+    rdfs:subClassOf uni:Organization .
+
 ## ---------- classes: courses ----------
 
 uni:Course a owl:Class ; rdfs:label "Course" .
@@ -69,16 +92,53 @@ uni:Course a owl:Class ; rdfs:label "Course" .
 uni:UndergraduateCourse a owl:Class ; rdfs:label "Undergraduate course" ;
     rdfs:subClassOf uni:Course .
 
+uni:ProjectCourse a owl:Class ; rdfs:label "Project course" ;
+    rdfs:subClassOf uni:UndergraduateCourse ;
+    rdfs:comment "Coursework organized around a build project." .
+
 uni:GraduateCourse a owl:Class ; rdfs:label "Graduate course" ;
     rdfs:subClassOf uni:Course .
+
+uni:SeminarCourse a owl:Class ; rdfs:label "Seminar course" ;
+    rdfs:subClassOf uni:GraduateCourse .
+
+## ---------- classes: publications ----------
+
+uni:Publication a owl:Class ; rdfs:label "Publication" ;
+    rdfs:comment "Scholarly output authored by staff and students." .
+
+uni:JournalArticle a owl:Class ; rdfs:label "Journal article" ;
+    rdfs:subClassOf uni:Publication .
+
+uni:ConferencePaper a owl:Class ; rdfs:label "Conference paper" ;
+    rdfs:subClassOf uni:Publication .
+
+uni:Textbook a owl:Class ; rdfs:label "Textbook" ;
+    rdfs:subClassOf uni:Publication .
+
+## ---------- classes: facilities ----------
+
+uni:Facility a owl:Class ; rdfs:label "Facility" ;
+    rdfs:comment "Physical spaces: buildings and the rooms inside them." .
+
+uni:Building a owl:Class ; rdfs:label "Building" ; rdfs:subClassOf uni:Facility .
+
+uni:Room a owl:Class ; rdfs:label "Room" ; rdfs:subClassOf uni:Facility .
 
 ## ---------- disjointness ----------
 
 uni:UndergraduateStudent owl:disjointWith uni:GraduateStudent .
+uni:MastersStudent owl:disjointWith uni:PhDStudent .
 uni:Professor owl:disjointWith uni:Lecturer .
-uni:College owl:disjointWith uni:Department , uni:Library .
-uni:Department owl:disjointWith uni:Library .
+uni:Faculty owl:disjointWith uni:Researcher , uni:AdministrativeStaff .
+uni:Researcher owl:disjointWith uni:AdministrativeStaff .
+uni:College owl:disjointWith uni:Department , uni:Library , uni:ResearchLab .
+uni:Department owl:disjointWith uni:Library , uni:ResearchLab .
+uni:Library owl:disjointWith uni:ResearchLab .
 uni:UndergraduateCourse owl:disjointWith uni:GraduateCourse .
+uni:JournalArticle owl:disjointWith uni:ConferencePaper , uni:Textbook .
+uni:ConferencePaper owl:disjointWith uni:Textbook .
+uni:Building owl:disjointWith uni:Room .
 
 ## ---------- object properties (domain + range => canvas direct edges) ----------
 
@@ -87,6 +147,16 @@ uni:worksFor a owl:ObjectProperty ; rdfs:label "works for" ;
 
 uni:leads a owl:ObjectProperty ; rdfs:label "leads" ;
     rdfs:domain uni:Professor ; rdfs:range uni:Department .
+
+uni:memberOf a owl:ObjectProperty ; rdfs:label "member of" ;
+    rdfs:domain uni:Person ; rdfs:range uni:Organization ;
+    rdfs:comment """Loose affiliation (university, lab); worksFor is the
+    employment tie to a department.""" .
+
+uni:partOf a owl:ObjectProperty ; rdfs:label "part of" ;
+    rdfs:domain uni:Organization ; rdfs:range uni:Organization ;
+    rdfs:comment """Organizational containment between units, asserted at the
+    instance level (department → college → university).""" .
 
 uni:teaches a owl:ObjectProperty ; rdfs:label "teaches" ;
     rdfs:domain uni:Staff ; rdfs:range uni:Course ;
@@ -97,6 +167,17 @@ uni:advises a owl:ObjectProperty ; rdfs:label "advises" ;
 
 uni:takes a owl:ObjectProperty ; rdfs:label "takes" ;
     rdfs:domain uni:Student ; rdfs:range uni:Course .
+
+uni:writes a owl:ObjectProperty ; rdfs:label "writes" ;
+    rdfs:domain uni:Staff ; rdfs:range uni:Publication ;
+    rdfs:comment """Domain is Staff: postdocs publish; co-authorship appears as
+    several people writing one publication.""" .
+
+uni:housedIn a owl:ObjectProperty ; rdfs:label "housed in" ;
+    rdfs:domain uni:Department ; rdfs:range uni:Building .
+
+uni:heldIn a owl:ObjectProperty ; rdfs:label "held in" ;
+    rdfs:domain uni:Course ; rdfs:range uni:Room .
 
 ## ---------- data properties ----------
 
@@ -109,11 +190,23 @@ uni:employeeId a owl:DatatypeProperty ; rdfs:label "employee ID" ;
 uni:salary a owl:DatatypeProperty ; rdfs:label "salary" ;
     rdfs:domain uni:Staff ; rdfs:range xsd:decimal .
 
+uni:studentId a owl:DatatypeProperty ; rdfs:label "student ID" ;
+    rdfs:domain uni:Student ; rdfs:range xsd:string .
+
 uni:courseCode a owl:DatatypeProperty ; rdfs:label "course code" ;
     rdfs:domain uni:Course ; rdfs:range xsd:string .
 
 uni:credits a owl:DatatypeProperty ; rdfs:label "credits" ;
     rdfs:domain uni:Course ; rdfs:range xsd:integer .
+
+uni:publicationYear a owl:DatatypeProperty ; rdfs:label "publication year" ;
+    rdfs:domain uni:Publication ; rdfs:range xsd:integer .
+
+uni:capacity a owl:DatatypeProperty ; rdfs:label "capacity" ;
+    rdfs:domain uni:Room ; rdfs:range xsd:integer .
+
+uni:foundedYear a owl:DatatypeProperty ; rdfs:label "founded year" ;
+    rdfs:domain uni:Organization ; rdfs:range xsd:integer .
 
 uni:enrollmentYear a owl:DatatypeProperty ; rdfs:label "enrollment year" ;
     rdfs:domain uni:Student ; rdfs:range xsd:integer .
@@ -121,36 +214,54 @@ uni:enrollmentYear a owl:DatatypeProperty ; rdfs:label "enrollment year" ;
 uni:gpa a owl:DatatypeProperty ; rdfs:label "GPA" ;
     rdfs:domain uni:Student ; rdfs:range xsd:decimal .
 
-## ---------- individuals: organization ----------
+## ---------- individuals: organization (partOf chains unit → college → university) ----------
 
 uni:avondale-university a owl:NamedIndividual , uni:University ;
-    rdfs:label "Avondale University" .
+    rdfs:label "Avondale University" ;
+    uni:foundedYear "1962"^^xsd:integer .
 
 uni:engineering-college a owl:NamedIndividual , uni:College ;
-    rdfs:label "Engineering College" .
+    rdfs:label "Engineering College" ;
+    uni:partOf uni:avondale-university ;
+    uni:foundedYear "1988"^^xsd:integer .
 
 uni:cs-department a owl:NamedIndividual , uni:Department ;
-    rdfs:label "Computer Science Department" .
+    rdfs:label "Computer Science Department" ;
+    uni:partOf uni:engineering-college ;
+    uni:housedIn uni:science-building .
 
 uni:main-library a owl:NamedIndividual , uni:Library ;
-    rdfs:label "Main Library" .
+    rdfs:label "Main Library" ;
+    uni:partOf uni:avondale-university .
+
+uni:ai-lab a owl:NamedIndividual , uni:ResearchLab ;
+    rdfs:label "Artificial Intelligence Lab" ;
+    uni:partOf uni:cs-department ;
+    rdfs:comment """A lab inside the department: partOf is not tied to the
+    class hierarchy, it links the actual units.""" .
 
 ## ---------- individuals: staff ----------
 
 uni:alice-chen a owl:NamedIndividual , uni:Professor ;
     rdfs:label "Alice Chen" ;
     uni:worksFor uni:cs-department ;
+    uni:memberOf uni:ai-lab ;
     uni:teaches uni:cs520-machine-learning , uni:cs101-intro-programming ;
     uni:advises uni:sara-novak , uni:tom-harris ;
+    uni:writes uni:deep-learning-survey , uni:ml-textbook ;
     uni:email "alice.chen@avondale.edu" ;
     uni:employeeId "F-2041" ;
     uni:salary "128500.00"^^xsd:decimal .
 
-uni:maria-lopez a owl:NamedIndividual , uni:Professor ;
+uni:maria-lopez a owl:NamedIndividual , uni:Professor , uni:Dean ;
     rdfs:label "Maria Lopez" ;
+    rdfs:comment """Professor and Dean of the Engineering College at once:
+    the second multi-type individual in this ontology.""" ;
     uni:worksFor uni:cs-department ;
     uni:leads uni:cs-department ;
     uni:teaches uni:phil220-logic ;
+    uni:advises uni:ben-lee ;
+    uni:writes uni:gnn-reasoning-paper ;
     uni:email "maria.lopez@avondale.edu" ;
     uni:employeeId "F-1102" ;
     uni:salary "141000.00"^^xsd:decimal .
@@ -159,32 +270,65 @@ uni:david-kim a owl:NamedIndividual , uni:Lecturer ;
     rdfs:label "David Kim" ;
     uni:worksFor uni:cs-department ;
     uni:teaches uni:cs101-intro-programming ;
+    uni:writes uni:ml-textbook ;
     uni:email "david.kim@avondale.edu" ;
     uni:employeeId "F-3388" ;
     uni:salary "86000.00"^^xsd:decimal .
+
+uni:omar-farouk a owl:NamedIndividual , uni:PostdoctoralResearcher ;
+    rdfs:label "Omar Farouk" ;
+    uni:worksFor uni:cs-department ;
+    uni:memberOf uni:ai-lab ;
+    uni:writes uni:gnn-reasoning-paper ;
+    uni:email "omar.farouk@avondale.edu" ;
+    uni:employeeId "R-5520" ;
+    uni:salary "74500.00"^^xsd:decimal .
+
+uni:grace-wong a owl:NamedIndividual , uni:AdministrativeStaff ;
+    rdfs:label "Grace Wong" ;
+    uni:worksFor uni:cs-department ;
+    uni:email "grace.wong@avondale.edu" ;
+    uni:employeeId "A-0071" ;
+    uni:salary "62000.00"^^xsd:decimal .
 
 ## ---------- individuals: students (Tom = multi-type) ----------
 
 uni:ben-lee a owl:NamedIndividual , uni:UndergraduateStudent ;
     rdfs:label "Ben Lee" ;
+    uni:memberOf uni:avondale-university ;
     uni:takes uni:cs101-intro-programming , uni:phil220-logic ;
     uni:email "ben.lee@student.avondale.edu" ;
+    uni:studentId "S-302144" ;
     uni:enrollmentYear "2024"^^xsd:integer ;
     uni:gpa "3.60"^^xsd:decimal .
 
-uni:sara-novak a owl:NamedIndividual , uni:GraduateStudent ;
+uni:emma-davis a owl:NamedIndividual , uni:UndergraduateStudent ;
+    rdfs:label "Emma Davis" ;
+    uni:memberOf uni:avondale-university ;
+    uni:takes uni:cs101-intro-programming , uni:cs150-robotics-project ;
+    uni:email "emma.davis@student.avondale.edu" ;
+    uni:studentId "S-302205" ;
+    uni:enrollmentYear "2024"^^xsd:integer ;
+    uni:gpa "3.75"^^xsd:decimal .
+
+uni:sara-novak a owl:NamedIndividual , uni:MastersStudent ;
     rdfs:label "Sara Novak" ;
-    uni:takes uni:cs520-machine-learning ;
+    uni:memberOf uni:avondale-university ;
+    uni:takes uni:cs520-machine-learning , uni:cs620-nlp-seminar ;
     uni:email "sara.novak@student.avondale.edu" ;
+    uni:studentId "S-217890" ;
     uni:enrollmentYear "2023"^^xsd:integer ;
     uni:gpa "3.85"^^xsd:decimal .
 
 uni:tom-harris a owl:NamedIndividual , uni:PhDStudent , uni:TeachingAssistant ;
     rdfs:label "Tom Harris" ;
-    uni:teaches uni:cs101-intro-programming ;
+    uni:memberOf uni:ai-lab ;
+    uni:teaches uni:cs101-intro-programming , uni:cs150-robotics-project ;
     uni:advises uni:ben-lee ;
-    uni:takes uni:cs520-machine-learning ;
+    uni:takes uni:cs520-machine-learning , uni:cs620-nlp-seminar ;
+    uni:writes uni:deep-learning-survey ;
     uni:email "tom.harris@student.avondale.edu" ;
+    uni:studentId "S-105512" ;
     uni:enrollmentYear "2021"^^xsd:integer ;
     uni:gpa "3.90"^^xsd:decimal .
 
@@ -193,14 +337,61 @@ uni:tom-harris a owl:NamedIndividual , uni:PhDStudent , uni:TeachingAssistant ;
 uni:cs101-intro-programming a owl:NamedIndividual , uni:UndergraduateCourse ;
     rdfs:label "CS101 Introductory Programming" ;
     uni:courseCode "CS101" ;
-    uni:credits "4"^^xsd:integer .
+    uni:credits "4"^^xsd:integer ;
+    uni:heldIn uni:lecture-hall-a .
 
-uni:cs520-machine-learning a owl:NamedIndividual , uni:GraduateCourse ;
-    rdfs:label "CS520 Machine Learning" ;
-    uni:courseCode "CS520" ;
-    uni:credits "3"^^xsd:integer .
+uni:cs150-robotics-project a owl:NamedIndividual , uni:ProjectCourse ;
+    rdfs:label "CS150 Robotics Project" ;
+    uni:courseCode "CS150" ;
+    uni:credits "3"^^xsd:integer ;
+    uni:heldIn uni:lab-room-204 .
 
 uni:phil220-logic a owl:NamedIndividual , uni:UndergraduateCourse ;
     rdfs:label "PHIL220 Formal Logic" ;
     uni:courseCode "PHIL220" ;
-    uni:credits "3"^^xsd:integer .
+    uni:credits "3"^^xsd:integer ;
+    uni:heldIn uni:lecture-hall-a .
+
+uni:cs520-machine-learning a owl:NamedIndividual , uni:GraduateCourse ;
+    rdfs:label "CS520 Machine Learning" ;
+    uni:courseCode "CS520" ;
+    uni:credits "3"^^xsd:integer ;
+    uni:heldIn uni:lab-room-204 .
+
+uni:cs620-nlp-seminar a owl:NamedIndividual , uni:SeminarCourse ;
+    rdfs:label "CS620 NLP Seminar" ;
+    uni:courseCode "CS620" ;
+    uni:credits "2"^^xsd:integer ;
+    uni:heldIn uni:seminar-room-310 .
+
+## ---------- individuals: publications ----------
+
+uni:deep-learning-survey a owl:NamedIndividual , uni:JournalArticle ;
+    rdfs:label "A Survey of Deep Learning Methods" ;
+    uni:publicationYear "2024"^^xsd:integer .
+
+uni:gnn-reasoning-paper a owl:NamedIndividual , uni:ConferencePaper ;
+    rdfs:label "Reasoning with Graph Neural Networks" ;
+    uni:publicationYear "2025"^^xsd:integer .
+
+uni:ml-textbook a owl:NamedIndividual , uni:Textbook ;
+    rdfs:label "Machine Learning Foundations" ;
+    uni:publicationYear "2023"^^xsd:integer ;
+    rdfs:comment "Co-authored: Alice Chen and David Kim both write it." .
+
+## ---------- individuals: facilities ----------
+
+uni:science-building a owl:NamedIndividual , uni:Building ;
+    rdfs:label "Science Building" .
+
+uni:lecture-hall-a a owl:NamedIndividual , uni:Room ;
+    rdfs:label "Lecture Hall A" ;
+    uni:capacity "220"^^xsd:integer .
+
+uni:lab-room-204 a owl:NamedIndividual , uni:Room ;
+    rdfs:label "Laboratory Room 204" ;
+    uni:capacity "36"^^xsd:integer .
+
+uni:seminar-room-310 a owl:NamedIndividual , uni:Room ;
+    rdfs:label "Seminar Room 310" ;
+    uni:capacity "18"^^xsd:integer .
