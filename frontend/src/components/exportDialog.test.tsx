@@ -94,11 +94,8 @@ describe('ExportDialog', () => {
     const dialog = await screen.findByRole('dialog')
     // The frame is part of the layout from the start — no post-success jump.
     expect(within(dialog).getByText('尚未导出')).toBeTruthy()
-    // Download sits in the footer aligned with 导出, inert until a result exists.
-    const download = within(dialog).getByRole('button', {
-      name: '下载 zip',
-    }) as HTMLButtonElement
-    expect(download.disabled).toBe(true)
+    // Download only exists alongside a result — nothing to download yet.
+    expect(within(dialog).queryByRole('button', { name: '下载 zip' })).toBeNull()
   })
 
   it('shows the busy state on the submit button while exporting', async () => {
@@ -209,6 +206,32 @@ describe('ExportDialog', () => {
     expect(screen.queryByText(OUT_DIR)).toBeNull()
     expect(screen.queryByText(/共 \d+ 页/)).toBeNull()
     expect(screen.getByText('尚未导出')).toBeTruthy()
+    // The download button left with the result it belonged to.
+    expect(screen.queryByRole('button', { name: '下载 zip' })).toBeNull()
+  })
+
+  it('hides the download button during a resubmit until the new result lands', async () => {
+    let release: (value: Response) => void = () => {}
+    const gate = new Promise<Response>((resolve) => {
+      release = resolve
+    })
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(ok({ outputDir: OUT_DIR, pageCount: 5 }))
+      .mockResolvedValueOnce(gate)
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
+
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
+    expect(await screen.findByRole('button', { name: '下载 zip' })).toBeTruthy()
+
+    // The resubmit invalidates the old result — its download leaves with it.
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
+    expect(await screen.findByRole('button', { name: '导出中…' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '下载 zip' })).toBeNull()
+
+    release(ok({ outputDir: OUT_DIR, pageCount: 6 }))
+    expect(await screen.findByRole('button', { name: '下载 zip' })).toBeTruthy()
   })
 
   it('maps VALIDATION_ERROR to the directory-not-empty copy', async () => {
@@ -220,6 +243,8 @@ describe('ExportDialog', () => {
 
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.getByText('目录非空，勾选覆盖或换一个')).toBeTruthy()
+    // A failed export leaves nothing to download.
+    expect(screen.queryByRole('button', { name: '下载 zip' })).toBeNull()
   })
 
   it('resets the previous result when the dialog reopens', async () => {
@@ -237,7 +262,6 @@ describe('ExportDialog', () => {
     // A fresh open must not resurrect the previous export's result.
     expect(screen.queryByText(OUT_DIR)).toBeNull()
     expect(screen.getByText('尚未导出')).toBeTruthy()
-    const download = screen.getByRole('button', { name: '下载 zip' }) as HTMLButtonElement
-    expect(download.disabled).toBe(true)
+    expect(screen.queryByRole('button', { name: '下载 zip' })).toBeNull()
   })
 })

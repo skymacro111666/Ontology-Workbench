@@ -197,21 +197,25 @@ export default function ExportDialog() {
             )}
           </div>
         </div>
-        <div className="flex items-center justify-between">
+        {/* Actions cluster on the right; the download exists only alongside
+         * a result — absent on open, gone while a resubmit runs or fails. */}
+        <div className="flex items-center justify-end gap-2">
           <Button type="button" size="sm" disabled={busy} onClick={() => void submit()}>
             {busy && <Loader2Icon aria-hidden className="animate-spin" />}
             {busy ? t('exportDialog.exporting') : t('exportDialog.submit')}
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={!result || downloading}
-            onClick={() => void downloadZip()}
-          >
-            <DownloadIcon aria-hidden />
-            {t('exportDialog.download')}
-          </Button>
+          {result && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={downloading}
+              onClick={() => void downloadZip()}
+            >
+              <DownloadIcon aria-hidden />
+              {t('exportDialog.download')}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
