@@ -36,13 +36,13 @@ def test_sample_path_unknown_raises_core_error(tmp_path) -> None:
 def test_sample_path_serves_every_bundled_ttl(tmp_path) -> None:
     """The catalog is the samples dir itself — no name registration to forget.
 
-    Regression: human-resources-v1 shipped but stayed unloadable (NOT_FOUND)
-    because a hardcoded allowlist never learned it.
+    Regression (sample since retired): one once shipped but stayed
+    unloadable (NOT_FOUND) because a hardcoded allowlist never learned it.
     """
     store = LocalUserDirStore(tmp_path)
     samples_dir = store._samples
     bundled = {p.stem for p in samples_dir.glob("*.ttl")}
-    assert "human-resources-v1" in bundled  # the shipped catalog, ground truth
+    assert bundled  # the shipped catalog, ground truth
     for name in bundled:
         assert store.sample_path(name).exists()
 
