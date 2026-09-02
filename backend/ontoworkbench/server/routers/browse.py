@@ -12,11 +12,13 @@ from sqlalchemy.orm import Session
 
 from ontoworkbench.core.indexes import Indexes, build_indexes
 from ontoworkbench.core.ir import build_ir
+from ontoworkbench.core.ir_cache import read_ir_cache, write_ir_cache
 from ontoworkbench.core.parsing import parse_graph
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import OntologyRepository
 from ontoworkbench.db.session import get_session
+from ontoworkbench.observability.metrics import ow_ir_cache_reads_total
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
@@ -24,12 +26,22 @@ router = APIRouter(prefix="/api/ontologies", tags=["browse"])
 
 
 def _loader(request: Request):
-    """Build a cache-miss loader that re-parses the stored file."""
+    """Build a cache-miss loader: disk IR cache first, re-parse as fallback.
+
+    A hit skips parse+build_ir entirely (restart recovery for big
+    ontologies); a miss re-parses and writes the bundle back through.
+    """
     store: LocalUserDirStore = request.app.state.store
 
     def load(row: Ontology) -> Indexes:
+        cached = read_ir_cache(Path(row.storage_path), row.file_hash)
+        ow_ir_cache_reads_total.labels(cached.outcome).inc()
+        if cached.ir is not None:
+            return build_indexes(cached.ir)
         data = store.read(Path(row.storage_path))
-        return build_indexes(build_ir(parse_graph(data, row.format)))
+        ir = build_ir(parse_graph(data, row.format))
+        write_ir_cache(Path(row.storage_path), ir, row.file_hash)
+        return build_indexes(ir)
 
     return load
 

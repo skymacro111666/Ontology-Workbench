@@ -336,3 +336,36 @@ def test_assertion_edges_only_between_given(client: TestClient) -> None:
     # 只给 ThreeBody:断言对象不在集合 → 无边
     r = client.get(f"/api/ontologies/{oid}/assertion-edges?eids={tb}")
     assert r.json()["data"]["edges"] == []
+
+
+def test_browse_serves_from_disk_ir_cache_after_memory_drop(
+    client: TestClient, monkeypatch
+) -> None:
+    """A dropped memory cache (restart stand-in) re-serves via index.pkl.
+
+    Flow: upload → drop → GET (miss: parses once, write-through) → drop →
+    GET under a parse spy (hit: served from disk, zero parses).
+    """
+    import ontoworkbench.server.routers.browse as browse_mod
+
+    oid = _upload(client)
+    client.app.state.cache.drop(oid)
+    first = client.get(f"/api/ontologies/{oid}/tree")
+    assert first.status_code == 200
+
+    client.app.state.cache.drop(oid)
+    calls = []
+    real = browse_mod.parse_graph
+
+    def spy(data, fmt):  # noqa: ANN001 — test-local shape
+        calls.append(1)
+        return real(data, fmt)
+
+    monkeypatch.setattr(browse_mod, "parse_graph", spy)
+    second = client.get(f"/api/ontologies/{oid}/tree")
+    assert second.status_code == 200
+    assert second.json()["data"][0]["curie"] == "ex:Thing"
+    assert calls == []  # disk cache hit — the file was never re-parsed
+
+    metrics = client.get("/metrics").text
+    assert 'ow_ir_cache_reads_total{result="hit"}' in metrics
