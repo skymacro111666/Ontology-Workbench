@@ -196,6 +196,9 @@
     "desc": "Starts from a skeleton with just an ontology header and one example class and property",
     "name": "Name",
     "namePlaceholder": "e.g. My Domain",
+    "namespace": "Namespace (optional)",
+    "nsPlaceholder": "Leave empty for the default, e.g. https://example.org/my#",
+    "nsWhitespace": "Namespace must not contain whitespace",
     "create": "Create",
     "duplicate": "An ontology with this name already exists — try another name",
     "created": "Created: {{name}}"

@@ -196,6 +196,9 @@
     "desc": "从一个只含本体头部与示例类、示例属性的骨架开始",
     "name": "名称",
     "namePlaceholder": "例如：My Domain",
+    "namespace": "命名空间（可选）",
+    "nsPlaceholder": "留空使用默认，如 https://example.org/my#",
+    "nsWhitespace": "命名空间不能包含空格",
     "create": "创建",
     "duplicate": "同名本体已存在，请换个名称",
     "created": "已创建：{{name}}"

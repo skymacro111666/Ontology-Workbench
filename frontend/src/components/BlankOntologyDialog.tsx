@@ -30,11 +30,13 @@ export default function BlankOntologyDialog() {
   const open = useUiStore((s) => s.blankOpen)
   const setBlankOpen = useUiStore((s) => s.setBlankOpen)
   const [name, setName] = useState('')
+  const [namespace, setNamespace] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const close = () => {
     setName('')
+    setNamespace('')
     setError(null)
     setBusy(false)
     setBlankOpen(false)
@@ -43,10 +45,22 @@ export default function BlankOntologyDialog() {
   const submit = async () => {
     const trimmed = name.trim()
     if (!trimmed) return
+    const ns = namespace.trim()
+    if (/\s/.test(ns)) {
+      setError(t('blankDialog.nsWhitespace'))
+      return
+    }
     setError(null)
     setBusy(true)
+    // A custom namespace needs a trailing # or / — without one, entity IRIs
+    // glue onto the path (…/vocabExample). The backend only strips, never
+    // appends, so the dialog normalizes before sending.
+    const body: { name: string; namespace?: string } = { name: trimmed }
+    if (ns) {
+      body.namespace = ns.endsWith('#') || ns.endsWith('/') ? ns : `${ns}#`
+    }
     try {
-      const meta = await api.post<OntologyMeta>('/api/ontologies/blank', { name: trimmed })
+      const meta = await api.post<OntologyMeta>('/api/ontologies/blank', body)
       toast.success(t('blankDialog.created', { name: trimmed }))
       void queryClient.invalidateQueries({ queryKey: ['ontologies'] })
       localStorage.setItem(LAST_OID_KEY, meta.id)
@@ -71,6 +85,7 @@ export default function BlankOntologyDialog() {
     setPrevOpen(open)
     if (open) {
       setName('')
+      setNamespace('')
       setError(null)
       setBusy(false)
     }
@@ -94,6 +109,16 @@ export default function BlankOntologyDialog() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && name.trim() && !busy) void submit()
               }}
+              disabled={busy}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="blank-ns">{t('blankDialog.namespace')}</Label>
+            <Input
+              id="blank-ns"
+              value={namespace}
+              placeholder={t('blankDialog.nsPlaceholder')}
+              onChange={(e) => setNamespace(e.target.value)}
               disabled={busy}
             />
           </div>

@@ -78,3 +78,32 @@ it('disables creating until a name is given', async () => {
   const create = await screen.findByRole('button', { name: '创建' })
   expect(create.getAttribute('disabled')).not.toBeNull()
 })
+
+it('sends the namespace and appends # when it lacks a trailing separator', async () => {
+  const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+    expect(JSON.parse(String(init?.body))).toEqual({
+      name: 'KG',
+      namespace: 'https://example.org/kg#',
+    })
+    return ok({ id: 'blank-2', title: 'KG', filename: 'kg.ttl', source: 'created' })
+  })
+  vi.stubGlobal('fetch', fetchMock)
+  renderDialog()
+
+  await userEvent.type(await screen.findByLabelText('名称'), 'KG')
+  await userEvent.type(screen.getByLabelText('命名空间（可选）'), 'https://example.org/kg')
+  await userEvent.click(screen.getByRole('button', { name: '创建' }))
+  expect(await screen.findByText('at:/browse/blank-2')).toBeTruthy()
+})
+
+it('rejects a whitespace namespace inline without sending', async () => {
+  const fetchMock = vi.fn()
+  vi.stubGlobal('fetch', fetchMock)
+  renderDialog()
+
+  await userEvent.type(await screen.findByLabelText('名称'), 'X')
+  await userEvent.type(screen.getByLabelText('命名空间（可选）'), 'has space')
+  await userEvent.click(screen.getByRole('button', { name: '创建' }))
+  expect(await screen.findByText(/命名空间不能包含空格/)).toBeTruthy()
+  expect(fetchMock).not.toHaveBeenCalled()
+})
