@@ -80,13 +80,16 @@ code, pre {
   color: var(--accent-strong);
 }
 #ow-search {
-  width: min(360px, 50vw);
-  padding: 7px 12px;
+  width: min(320px, 45vw);
+  padding: 5px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg-soft);
   color: var(--fg);
-  font: inherit;
+  /* compact control font: the body's 15px/1.7 made the box tall and the
+     text swim in it */
+  font-size: 0.9rem;
+  line-height: 1.2;
 }
 #ow-search:focus {
   outline: 2px solid var(--accent-soft);
