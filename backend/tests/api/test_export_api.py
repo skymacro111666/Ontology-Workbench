@@ -6,6 +6,7 @@ import zipfile
 from pathlib import Path
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 TTL = b"""@prefix ex: <http://example.org/> .
@@ -210,3 +211,34 @@ def test_archive_unknown_dir_is_404(client: TestClient, tmp_path: Path) -> None:
     r = client.get(f"/api/ontologies/{oid}/export/site/archive", params={"dir_path": str(ghost)})
     assert r.status_code == 404
     assert r.json()["code"] == "NOT_FOUND"
+
+
+def test_export_site_rides_shared_cache(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A memory-dropped export never re-parses — it shares browse's cache."""
+    import ontoworkbench.server.routers.export as export_mod
+
+    oid = _upload(client)
+    out1 = tmp_path / "exports" / "a"
+    assert (
+        client.post(f"/api/ontologies/{oid}/export/site", json={"outDir": str(out1)}).status_code
+        == 200
+    )
+
+    client.app.state.cache.drop(oid)
+    calls: list[int] = []
+    real = getattr(export_mod, "parse_graph", None)
+
+    def spy(data, fmt):  # noqa: ANN001 — test-local shape
+        calls.append(1)
+        assert real is not None  # only reachable while export still parses itself
+        return real(data, fmt)
+
+    # raising=False: valid even if export later drops the parse_graph import.
+    monkeypatch.setattr(export_mod, "parse_graph", spy, raising=False)
+    out2 = tmp_path / "exports" / "b"
+    r = client.post(f"/api/ontologies/{oid}/export/site", json={"outDir": str(out2)})
+    assert r.status_code == 200
+    assert r.json()["data"]["pageCount"] == 3
+    assert calls == []

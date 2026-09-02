@@ -15,8 +15,6 @@ from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
-from ontoworkbench.core.indexes import build_indexes
-from ontoworkbench.core.ir import build_ir
 from ontoworkbench.core.parsing import parse_graph
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
@@ -26,6 +24,7 @@ from ontoworkbench.exporter.site import default_out_dir, export_site
 from ontoworkbench.observability.metrics import ow_parse_seconds
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
+from ontoworkbench.server.routers.browse import _loader
 
 router = APIRouter(prefix="/api/ontologies", tags=["export"])
 
@@ -72,17 +71,13 @@ def export_ontology_site(
 ) -> dict:
     """Render the stored file into out_dir (default {data_dir}/exports/{id}-{ts}).
 
-    Re-parses the stored bytes exactly like `ow import` (build_ir →
-    build_indexes); a non-empty out_dir raises VALIDATION_ERROR unless force.
+    Serves from the shared cache like browse (parse only on a cold miss);
+    a non-empty out_dir raises VALIDATION_ERROR unless force.
     """
     row = _owned(user, ontology_id, session)
 
-    store: LocalUserDirStore = request.app.state.store
-    data = store.read(Path(row.storage_path))
-    with ow_parse_seconds.labels(row.format).time():
-        graph = parse_graph(data, row.format)
-    ir = build_ir(graph)
-    indexes = build_indexes(ir)
+    indexes = request.app.state.cache.indexes_for(row, _loader(request))
+    ir = indexes.ir
 
     raw = (options.out_dir or "").strip()
     settings = request.app.state.settings
