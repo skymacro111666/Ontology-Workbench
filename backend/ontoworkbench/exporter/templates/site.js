@@ -45,7 +45,7 @@
     if (entry.type) {
       a.appendChild(document.createTextNode(' '));
       var badge = document.createElement('span');
-      badge.className = 'tag';
+      badge.className = 'tag tag--' + entry.type.toLowerCase();
       badge.textContent = entry.type;
       a.appendChild(badge);
     }
@@ -117,10 +117,9 @@
   var here = location.pathname.split('/').pop() || 'index.html';
   document.querySelectorAll('.sidebar a').forEach(function (a) {
     if ((a.getAttribute('href') || '').split('/').pop() === here) {
-      a.classList.add('muted'); // keep neutral; bold via parent summary
+      a.classList.add('current'); // typed class → accent bar in site.css
       var summary = a.closest('summary');
       if (summary) {
-        summary.style.fontWeight = '600';
         var d = a.closest('details');
         while (d) {
           d.open = true;

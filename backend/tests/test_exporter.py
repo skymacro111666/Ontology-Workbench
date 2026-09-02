@@ -229,3 +229,40 @@ def test_breadcrumbs_survive_subclassof_cycle(tmp_path: Path) -> None:
     export_site(ir, build_indexes(ir), tmp_path, title="Cyclic")
     a_page = page_of(tmp_path, "http://example.org/A")
     assert 'class="crumbs"' in a_page  # terminates and still renders a trail
+
+
+def test_site_css_carries_brand_palette_and_system_fonts(tmp_path: Path) -> None:
+    """The IT-business restyle palette and type.
+
+    Brand indigo accent, slate neutrals, and a system font stack (no CDN
+    dependency — the site may open over file://).
+    """
+    ir, ix = built()
+    export_site(ir, ix, tmp_path, title="Mini")
+    css = (tmp_path / "site.css").read_text(encoding="utf-8")
+    assert "#4f46e5" in css  # brand indigo accent
+    assert "system-ui" in css  # system font stack, not webfonts
+    assert "prefers-color-scheme: dark" in css  # dark theme still follows system
+
+
+def test_entity_page_uses_section_cards_and_typed_badges(tmp_path: Path) -> None:
+    """Sections render as cards; entity type and labels ride typed badges."""
+    ir, ix = built_instanced()
+    export_site(ir, ix, tmp_path, title="Inst")
+    a_page = page_of(tmp_path, "http://example.org/A")
+    assert 'class="card"' in a_page  # section cards
+    assert "tag--class" in a_page  # typed badge for the Class pill
+    assert "tag--label" in a_page  # labels ride the label badge
+
+
+def test_search_badges_and_sidebar_highlight_use_typed_classes(tmp_path: Path) -> None:
+    """Typed classes for search badges and sidebar highlight.
+
+    site.js badge classes are typed; the sidebar current-page highlight is
+    a CSS class (not an inline style).
+    """
+    ir, ix = built()
+    export_site(ir, ix, tmp_path, title="Mini")
+    js = (tmp_path / "site.js").read_text(encoding="utf-8")
+    assert "tag--" in js  # typed badge for search results
+    assert "style.fontWeight" not in js  # highlight via class, not inline style
