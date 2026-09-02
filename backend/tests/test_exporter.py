@@ -329,6 +329,9 @@ def test_pages_carry_og_metadata_favicon_and_export_footer(tmp_path: Path) -> No
     idx = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert 'property="og:title"' in idx
     assert 'rel="icon"' in idx
+    assert 'href="favicon.png"' in idx  # the app's own logo, not a stand-in
+    assert (tmp_path / "favicon.png").exists()
+    assert not (tmp_path / "favicon.svg").exists()  # the stand-in is gone
     assert 'class="site-footer"' in idx
     assert "Exported" in idx
     assert "http://example.org/onto" in idx  # ontology IRI rides the footer
@@ -345,7 +348,7 @@ def test_entity_pages_prefix_assets_and_links_from_subdirectory(tmp_path: Path) 
     export_site(ir, ix, tmp_path, title="Inst")
     page = page_of(tmp_path, "http://example.org/A")
     assert 'href="../site.css"' in page
-    assert 'href="../favicon.svg"' in page
+    assert 'href="../favicon.png"' in page
     assert 'src="../data/search-index.js"' in page
     assert 'src="../site.js"' in page
     assert 'href="../index.html"' in page  # brand link climbs out of entities/

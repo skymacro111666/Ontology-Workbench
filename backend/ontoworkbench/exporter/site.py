@@ -202,7 +202,7 @@ def export_site(
     (out_dir / "data" / "entities.json").write_text(
         json.dumps(entity_map, ensure_ascii=False, indent=1), encoding="utf-8"
     )
-    for asset in ("site.css", "site.js", "favicon.svg"):
+    for asset in ("site.css", "site.js", "favicon.png"):
         shutil.copyfile(_TEMPLATES / asset, out_dir / asset)
 
     return ExportResult(output_dir=out_dir, page_count=1 + len(entity_map))
