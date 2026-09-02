@@ -119,6 +119,32 @@ async function downloadFile(url: string, fallbackName: string): Promise<string> 
   return file.filename || fallbackName
 }
 
+/** Authed binary download for endpoints outside the JSON envelope (the
+ *  docs-site zip). Errors still arrive as envelopes, so decode those;
+ *  success streams a Blob and clicks a transient anchor. Content-
+ * -Disposition wins for the filename. */
+async function downloadBinary(url: string, fallbackName: string): Promise<string> {
+  const token = localStorage.getItem(TOKEN_KEY)
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) {
+    const env = (await res.json()) as Envelope<null>
+    throw new ApiErr(env.code, env.message, env.hint, env.request_id)
+  }
+  const blob = await res.blob()
+  const cd = res.headers.get('Content-Disposition') ?? ''
+  const match = /filename="?([^";]+)"?/.exec(cd)
+  const name = match?.[1] ?? fallbackName
+  const href = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = href
+  a.download = name
+  a.click()
+  URL.revokeObjectURL(href)
+  return name
+}
+
 export const api = {
   get: <T>(url: string) => request<T>(url),
   post: <T>(url: string, body?: unknown) =>
@@ -137,4 +163,5 @@ export const api = {
   upload: <T>(file: File, onProgress?: (loaded: number, total: number) => void) =>
     uploadXHR<T>('/api/ontologies', file, onProgress),
   download: downloadFile,
+  downloadBinary,
 }

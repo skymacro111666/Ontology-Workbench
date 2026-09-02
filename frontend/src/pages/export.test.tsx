@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { toast } from 'sonner'
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import Export from './Export'
+import { TOKEN_KEY } from '../auth/AuthContext'
 import type { Envelope } from '../api/types'
 
 const OUT_DIR = '/srv/data/exports/pizza-20260823'
@@ -111,6 +112,45 @@ describe('Export', () => {
 
     await waitFor(() => expect(execMock).toHaveBeenCalledWith('copy'))
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('已复制'))
+  })
+
+  it('downloads the exported site as a zip from the result card', async () => {
+    localStorage.setItem(TOKEN_KEY, 'tok')
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      if (String(url).includes('/export/site/archive')) {
+        // String body: undici's Response (vitest's global) cannot consume a
+        // jsdom Blob — res.blob() would hang; the browser never hits this.
+        return new Response('PK-zip-bytes', {
+          headers: {
+            'Content-Type': 'application/zip',
+            'Content-Disposition': 'attachment; filename="mini-docs-site.zip"',
+          },
+        })
+      }
+      return ok({ outputDir: OUT_DIR, pageCount: 5 })
+    })
+    // jsdom lacks both object-URL helpers; the anchors' clicks are spied
+    // so no navigation actually happens.
+    const createObjectURL = vi.fn(() => 'blob:mock')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { value: createObjectURL, configurable: true })
+    Object.defineProperty(URL, 'revokeObjectURL', { value: revokeObjectURL, configurable: true })
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click')
+    renderExport(fetchMock)
+
+    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(await screen.findByRole('button', { name: '下载 zip' }))
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/ontologies/oid-1/export/site/archive?dir_path=${encodeURIComponent(OUT_DIR)}`,
+        // Binary download still carries the bearer header.
+        expect.objectContaining({ headers: { Authorization: 'Bearer tok' } }),
+      ),
+    )
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled())
+    expect(createObjectURL).toHaveBeenCalled()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock')
   })
 
   it('clears the success card when a resubmit fails', async () => {

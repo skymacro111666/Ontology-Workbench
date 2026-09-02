@@ -167,6 +167,8 @@
     "exportFailed": "导出失败，请稍后重试",
     "copied": "已复制",
     "copyFailed": "复制失败",
+    "download": "下载 zip",
+    "downloaded": "已下载：{{name}}",
     "title": "导出文档站",
     "desc": "将本体一次性渲染为静态 HTML 文档站，写入服务器本地目录；导出完成后在服务器上打开输出目录中的 index.html 即可浏览。",
     "outDirLabel": "输出目录（可选）",

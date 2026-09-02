@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+import zipfile
 from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir
@@ -107,6 +112,50 @@ FILE_EXPORTS: dict[str, tuple[str, str, str]] = {
     "json-ld": ("json-ld", ".jsonld", "application/ld+json"),
     "rdf-xml": ("xml", ".rdf", "application/rdf+xml"),
 }
+
+
+@router.get("/{ontology_id}/export/site/archive")
+def export_site_archive(
+    ontology_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    dir_path: str = Query(...),
+) -> FileResponse:
+    """Zip a previously exported docs-site directory and stream it as a download.
+
+    Deliberately outside the JSON envelope: the payload is binary and can
+    reach tens of MB for large ontologies — base64 through the envelope
+    would cost +33% size and a doubled memory peak. Auth still applies
+    (bearer header), and errors still answer with the JSON envelope.
+    """
+    row = _owned(user, ontology_id, session)
+    target = Path(dir_path)
+    settings = request.app.state.settings
+    if not settings.export_allow_any_path:
+        exports_root = (settings.data_dir / "exports").resolve()
+        if not target.resolve().is_relative_to(exports_root):
+            raise ApiError(
+                ErrorCode.VALIDATION_ERROR,
+                "Archive directory must stay under the exports directory",
+                f"Allowed root: {exports_root}. "
+                "Set OW_EXPORT_ALLOW_ANY_PATH=1 to allow arbitrary server paths.",
+            )
+    if not target.is_dir():
+        raise ApiError(ErrorCode.NOT_FOUND, "No exported site at that directory")
+
+    fd, zip_path = tempfile.mkstemp(suffix=".zip", prefix="ow-archive-")
+    os.close(fd)
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in sorted(target.rglob("*")):
+            if p.is_file():
+                zf.write(p, p.relative_to(target).as_posix())
+    return FileResponse(
+        zip_path,
+        media_type="application/zip",
+        filename=f"{Path(row.filename).stem}-docs-site.zip",
+        background=BackgroundTask(os.unlink, zip_path),
+    )
 
 
 @router.get("/{ontology_id}/export/file")

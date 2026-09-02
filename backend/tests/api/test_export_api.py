@@ -2,6 +2,7 @@
 
 import io
 import json
+import zipfile
 from pathlib import Path
 from uuid import uuid4
 
@@ -173,3 +174,39 @@ def test_export_file_rejects_unknown_format(client: TestClient) -> None:
     missing = client.get(f"/api/ontologies/{uuid4()}/export/file", params={"format": "turtle"})
     assert missing.status_code == 404
     assert missing.json()["code"] == "NOT_FOUND"
+
+
+def test_archive_streams_zip_of_exported_site(client: TestClient, tmp_path: Path) -> None:
+    """GET export/site/archive zips a prior export as an attachment."""
+    oid = _upload(client)
+    out = tmp_path / "exports" / "site"
+    client.post(f"/api/ontologies/{oid}/export/site", json={"outDir": str(out)})
+
+    r = client.get(f"/api/ontologies/{oid}/export/site/archive", params={"dir_path": str(out)})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/zip")
+    assert "attachment" in r.headers.get("content-disposition", "")
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    names = zf.namelist()
+    assert "index.html" in names
+    assert "site.js" in names
+
+
+def test_archive_rejects_paths_outside_exports(client: TestClient, tmp_path: Path) -> None:
+    """dir_path outside {data_dir}/exports is VALIDATION_ERROR, same as POST."""
+    oid = _upload(client)
+    r = client.get(
+        f"/api/ontologies/{oid}/export/site/archive",
+        params={"dir_path": str(tmp_path / "elsewhere")},
+    )
+    assert r.status_code == 422
+    assert r.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_archive_unknown_dir_is_404(client: TestClient, tmp_path: Path) -> None:
+    """A dir under exports that was never exported to is a uniform 404."""
+    oid = _upload(client)
+    ghost = tmp_path / "exports" / "ghost"
+    r = client.get(f"/api/ontologies/{oid}/export/site/archive", params={"dir_path": str(ghost)})
+    assert r.status_code == 404
+    assert r.json()["code"] == "NOT_FOUND"

@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CopyIcon } from 'lucide-react'
+import { CopyIcon, DownloadIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router'
@@ -28,6 +28,7 @@ export default function Export() {
   const [force, setForce] = useState(false)
   const [result, setResult] = useState<ExportSiteResult | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
+  const [downloading, setDownloading] = useState(false)
   const form = useForm<ExportForm>({
     resolver: zodResolver(exportSchema),
     defaultValues: { outDir: '' },
@@ -53,6 +54,24 @@ export default function Export() {
       } else {
         setFormError(t('exportPage.exportFailed'))
       }
+    }
+  }
+
+  /** Zip the exported directory server-side and land it in the browser's
+   *  downloads; the server copy stays put for deployment use. */
+  const downloadZip = async () => {
+    if (!result) return
+    setDownloading(true)
+    try {
+      const name = await api.downloadBinary(
+        `/api/ontologies/${oid}/export/site/archive?dir_path=${encodeURIComponent(result.outputDir)}`,
+        'docs-site.zip',
+      )
+      toast.success(t('exportPage.downloaded', { name }))
+    } catch (err) {
+      toast.error(errText(err, t))
+    } finally {
+      setDownloading(false)
     }
   }
 
@@ -138,6 +157,17 @@ export default function Export() {
               <code className="text-ink-2 min-w-0 flex-1 font-mono text-sm break-all">
                 {result.outputDir}
               </code>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                disabled={downloading}
+                onClick={() => void downloadZip()}
+              >
+                <DownloadIcon />
+                {t('exportPage.download')}
+              </Button>
               <Button
                 type="button"
                 variant="outline"

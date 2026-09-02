@@ -167,6 +167,8 @@
     "exportFailed": "Export failed, please try again later",
     "copied": "Copied",
     "copyFailed": "Copy failed",
+    "download": "Download zip",
+    "downloaded": "Downloaded: {{name}}",
     "title": "Export docs site",
     "desc": "Renders the ontology once into a static HTML docs site written to a server-local directory; open index.html from the output directory on the server to browse it.",
     "outDirLabel": "Output directory (optional)",
