@@ -42,6 +42,13 @@
     var code = document.createElement('code');
     code.textContent = entry.curie;
     a.appendChild(code);
+    if (entry.type) {
+      a.appendChild(document.createTextNode(' '));
+      var badge = document.createElement('span');
+      badge.className = 'tag';
+      badge.textContent = entry.type;
+      a.appendChild(badge);
+    }
     var label = labelOf(entry);
     if (label) {
       a.appendChild(document.createTextNode(' '));

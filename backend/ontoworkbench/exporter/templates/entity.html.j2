@@ -1,7 +1,14 @@
 {% extends "base.html.j2" %}
 {% block content %}
+{% set main_label = e.label.values() | list | first %}
 <article>
-  <h1><code>{{ e.curie }}</code> <small class="muted">{{ e.type }}</small></h1>
+  {% if crumbs %}
+  <nav class="crumbs" aria-label="Ancestors">
+    {% for c in crumbs %}<a href="{{ c.file }}"><code>{{ c.curie }}</code></a> ▸{% endfor %}
+  </nav>
+  {% endif %}
+  <h1>{{ main_label if main_label else e.curie }} <small class="muted">{{ e.type }}</small></h1>
+  <p class="curie-line"><code>{{ e.curie }}</code></p>
   {% for lang, text in e.label.items() %}<span class="tag">{{ text }} ({{ lang }})</span>{% endfor %}
   {% if e.deprecated %}<span class="tag warn">deprecated</span>{% endif %}
   {% if e.comment %}<p class="comment">{{ e.comment }}</p>{% endif %}
@@ -17,6 +24,13 @@
     {% for c in e.children %}<li><a href="{{ file_of(c.eid) }}"><code>{{ c.curie }}</code></a></li>
     {% else %}<li class="muted">—</li>{% endfor %}
   </ul>
+
+  {% if instances %}
+  <h2>Instances ({{ instances | length }})</h2>
+  <ul>
+    {% for i in instances %}<li><code>{{ i.curie }}</code></li>{% endfor %}
+  </ul>
+  {% endif %}
 
   {% if e.properties %}
   <h2>Properties</h2>

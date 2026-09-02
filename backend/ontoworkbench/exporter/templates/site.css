@@ -72,6 +72,11 @@ code, pre {
 .content h2 { font-size: 1.05rem; margin-top: 28px; color: var(--muted); }
 .content h2:first-of-type { margin-top: 16px; }
 .muted { color: var(--muted); }
+.crumbs { font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+.crumbs a { text-decoration: none; color: var(--muted); }
+.crumbs a:hover { color: var(--accent); }
+.curie-line { margin: 0 0 8px; }
+.ptype { font-size: 0.75em; }
 .comment { max-width: 70ch; }
 .tag {
   display: inline-block;

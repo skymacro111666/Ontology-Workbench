@@ -79,6 +79,38 @@ def _sidebar_tree(indexes: Indexes) -> list[dict]:
     return roots
 
 
+def _sidebar_props(ir: IRBundle) -> list[dict]:
+    """Flat property list for the sidebar: curie/file plus the type tag."""
+    return [
+        {"curie": e.curie, "file": file_of(e.eid), "ptype": e.type}
+        for e in ir.entities.values()
+        if e.type != "Class"
+    ]
+
+
+def _crumbs(indexes: Indexes, e: EntityIR) -> list[dict]:
+    """First-parent ancestor chain, root first.
+
+    A subClassOf cycle cuts at the first revisit
+    (same posture as _sidebar_tree's guard).
+    """
+    chain: list[dict] = []
+    seen = {e.eid}
+    cur = e
+    while cur.parents:
+        head = cur.parents[0]
+        if head.eid in seen:
+            break
+        ent = indexes.entity(head.eid)
+        if ent is None:
+            break
+        chain.append({"curie": head.curie, "file": file_of(head.eid)})
+        seen.add(head.eid)
+        cur = ent
+    chain.reverse()
+    return chain
+
+
 def export_site(
     ir: IRBundle,
     indexes: Indexes,
@@ -101,6 +133,7 @@ def export_site(
     (out_dir / "data").mkdir(parents=True, exist_ok=True)
     env = _env()
     tree = _sidebar_tree(indexes)
+    props = _sidebar_props(ir)
 
     entity_tpl = env.get_template("entity.html.j2")
     search_index: list[dict] = []
@@ -108,13 +141,18 @@ def export_site(
     for e in ir.entities.values():
         rel = file_of(e.eid)
         entity_map[e.eid] = rel
-        search_index.append({"curie": e.curie, "label": e.label, "eid": e.eid, "file": rel})
+        search_index.append(
+            {"curie": e.curie, "label": e.label, "eid": e.eid, "file": rel, "type": e.type}
+        )
         page = entity_tpl.render(
             title=f"{e.curie} - {title}",
             site_title=title,
             e=e,
             file_of=file_of,
             tree=tree,
+            props=props,
+            instances=ir.instances.get(e.eid, []),
+            crumbs=_crumbs(indexes, e),
         )
         (out_dir / rel).write_text(page, encoding="utf-8")
 
@@ -124,6 +162,7 @@ def export_site(
         counts=ir.counts,
         prefixes=ir.prefixes,
         tree=tree,
+        props=props,
         top_classes=tree,
     )
     (out_dir / "index.html").write_text(index_page, encoding="utf-8")

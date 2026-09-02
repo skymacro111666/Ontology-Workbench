@@ -8,7 +8,7 @@ import rdflib
 from ontoworkbench.core.errors import CoreError
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir
-from ontoworkbench.exporter.site import export_site
+from ontoworkbench.exporter.site import export_site, file_of
 
 MINI = """@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -35,6 +35,29 @@ XSS = f"""@prefix ex: <http://example.org/> .
 ex:A a owl:Class ; rdfs:label "{XSS_LABEL}"@en .
 ex:B a owl:Class ; rdfs:subClassOf ex:A .
 """
+
+# Instances hanging off the classes: drives the entity-page Instances section.
+INSTANCED = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:A a owl:Class ; rdfs:label "A"@en .
+ex:B a owl:Class ; rdfs:subClassOf ex:A .
+ex:likes a owl:ObjectProperty ; rdfs:domain ex:A ; rdfs:range ex:B .
+ex:a1 a ex:A, owl:NamedIndividual ; rdfs:label "first a"@en .
+ex:b1 a ex:B, owl:NamedIndividual .
+"""
+
+
+def built_instanced():
+    """Parse INSTANCED once into (ir, indexes)."""
+    g = rdflib.Graph().parse(data=INSTANCED, format="turtle")
+    ir = build_ir(g)
+    return ir, build_indexes(ir)
+
+
+def page_of(tmp_path: Path, eid: str) -> str:
+    """Rendered HTML of one entity page, looked up by entity IRI."""
+    return (tmp_path / file_of(eid)).read_text(encoding="utf-8")
 
 
 def built():
@@ -138,3 +161,71 @@ def test_site_js_uses_dom_apis_not_innerhtml(tmp_path: Path) -> None:
     export_site(ir, ix, tmp_path, title="Mini")
     js = (tmp_path / "site.js").read_text(encoding="utf-8")
     assert "innerHTML" not in js  # no string-to-markup sink anywhere in the file
+
+
+def test_class_page_lists_instances(tmp_path: Path) -> None:
+    """A class page carries an Instances section with its named individuals."""
+    ir, ix = built_instanced()
+    export_site(ir, ix, tmp_path, title="Inst")
+    a_page = page_of(tmp_path, "http://example.org/A")
+    assert "Instances" in a_page
+    assert "ex:a1" in a_page
+    b_page = page_of(tmp_path, "http://example.org/B")
+    assert "ex:b1" in b_page
+
+
+def test_label_heads_the_entity_page(tmp_path: Path) -> None:
+    """h1 shows the human label first; the CURIE demotes to a subtitle line.
+
+    A reader's first sight must be "A", not the machine code ex:A. B has no
+    label, so its page falls back to the CURIE as the heading.
+    """
+    ir, ix = built_instanced()
+    export_site(ir, ix, tmp_path, title="Inst")
+    a_page = page_of(tmp_path, "http://example.org/A")
+    assert "<h1>A " in a_page  # label + type pill; curie no longer the heading
+    assert '<p class="curie-line">' in a_page and "<code>ex:A</code>" in a_page
+    b_page = page_of(tmp_path, "http://example.org/B")
+    assert "<h1>ex:B " in b_page  # no label → CURIE takes the heading
+
+
+def test_search_index_carries_type_and_js_renders_badge(tmp_path: Path) -> None:
+    """index.json entries expose type; site.js renders it as a result badge."""
+    import json
+
+    ir, ix = built_instanced()
+    export_site(ir, ix, tmp_path, title="Inst")
+    index = json.loads((tmp_path / "data" / "index.json").read_text(encoding="utf-8"))
+    types = {e["type"] for e in index}
+    assert types >= {"Class", "ObjectProperty"}
+    js = (tmp_path / "site.js").read_text(encoding="utf-8")
+    assert "entry.type" in js
+
+
+def test_sidebar_lists_properties(tmp_path: Path) -> None:
+    """Sidebar gains a (collapsed) Properties group alongside the class tree."""
+    ir, ix = built_instanced()
+    export_site(ir, ix, tmp_path, title="Inst")
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "<summary>Properties</summary>" in html
+    assert "ex:likes" in html  # the property is navigable from every page
+
+
+def test_class_page_shows_ancestor_breadcrumbs(tmp_path: Path) -> None:
+    """B's page leads with a crumb trail Root-ward; top-level A has none."""
+    ir, ix = built_instanced()
+    export_site(ir, ix, tmp_path, title="Inst")
+    b_page = page_of(tmp_path, "http://example.org/B")
+    assert 'class="crumbs"' in b_page
+    assert "ex:A" in b_page  # the parent appears inside the trail
+    a_page = page_of(tmp_path, "http://example.org/A")
+    assert 'class="crumbs"' not in a_page  # root class: no trail
+
+
+def test_breadcrumbs_survive_subclassof_cycle(tmp_path: Path) -> None:
+    """Crumb computation must not loop on a subClassOf cycle."""
+    g = rdflib.Graph().parse(data=CYCLIC, format="turtle")
+    ir = build_ir(g)
+    export_site(ir, build_indexes(ir), tmp_path, title="Cyclic")
+    a_page = page_of(tmp_path, "http://example.org/A")
+    assert 'class="crumbs"' in a_page  # terminates and still renders a trail

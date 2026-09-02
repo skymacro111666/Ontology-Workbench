@@ -32,6 +32,18 @@
           {% for n in tree %}{{ node(n) }}{% endfor %}
         </ul>
       </details>
+      {% if props %}
+      <details>
+        <summary>Properties</summary>
+        <ul class="tree">
+          {% for p in props %}
+          <li><details class="leaf">
+            <summary><a href="{{ p.file }}">{{ p.curie }}</a> <span class="muted ptype">{{ p.ptype }}</span></summary>
+          </details></li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
     </nav>
     <main class="content">
       {% block content %}{% endblock %}
