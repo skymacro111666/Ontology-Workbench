@@ -134,6 +134,11 @@ def export_site(
     env = _env()
     tree = _sidebar_tree(indexes)
     props = _sidebar_props(ir)
+    # Footer provenance shared by every page (base.html.j2).
+    footer = {
+        "exported_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
+        "ontology_iri": ir.ontology_iri,
+    }
 
     entity_tpl = env.get_template("entity.html.j2")
     search_index: list[dict] = []
@@ -153,6 +158,8 @@ def export_site(
             props=props,
             instances=ir.instances.get(e.eid, []),
             crumbs=_crumbs(indexes, e),
+            known_eids=set(ir.entities),
+            **footer,
         )
         (out_dir / rel).write_text(page, encoding="utf-8")
 
@@ -164,6 +171,7 @@ def export_site(
         tree=tree,
         props=props,
         top_classes=tree,
+        **footer,
     )
     (out_dir / "index.html").write_text(index_page, encoding="utf-8")
 
@@ -173,7 +181,7 @@ def export_site(
     (out_dir / "data" / "entities.json").write_text(
         json.dumps(entity_map, ensure_ascii=False, indent=1), encoding="utf-8"
     )
-    for asset in ("site.css", "site.js"):
+    for asset in ("site.css", "site.js", "favicon.svg"):
         shutil.copyfile(_TEMPLATES / asset, out_dir / asset)
 
     return ExportResult(output_dir=out_dir, page_count=1 + len(entity_map))

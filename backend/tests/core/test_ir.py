@@ -239,3 +239,24 @@ def test_individuals_collect_assertions() -> None:
         ].kind
         == "entity"
     )
+
+
+def test_prop_refs_carry_domain_and_range() -> None:
+    """A class page's property list carries each property's domain/range."""
+    g = rdflib.Graph().parse(data=MINI, format="turtle")
+    ir = build_ir(g)
+    dog = ir.entities["http://example.org/Dog"]
+    likes = next(p for p in dog.properties if p.curie == "ex:likes")
+    assert [d.curie for d in likes.domain] == ["ex:Dog"]
+    assert [r.curie for r in likes.range] == ["ex:Animal"]
+
+
+def test_ir_bundle_carries_ontology_iri() -> None:
+    """The owl:Ontology subject IRI rides the bundle for provenance."""
+    g = rdflib.Graph().parse(data=MINI, format="turtle")
+    assert build_ir(g).ontology_iri is None  # no declaration → None
+
+    declared = rdflib.Graph().parse(
+        data=MINI + "<http://example.org/> a owl:Ontology .\n", format="turtle"
+    )
+    assert build_ir(declared).ontology_iri == "http://example.org/"

@@ -128,4 +128,39 @@
       }
     }
   });
+
+  // Turtle syntax coloring for axiom blocks. The turtle serializes
+  // ontology-authored strings, so tokens are re-assembled with DOM spans
+  // and text nodes only - nothing is ever parsed as markup (same contract
+  // as resultLink above).
+  var TK_RE = /@prefix|@base|"[^"]*"(?:\^\^<[^>]*>|@[a-zA-Z][a-zA-Z-]*)?|<[^>]*>|[A-Za-z_][\w-]*:[\w.-]*|[.;,]|\s+|./g;
+
+  function tkClass(tok) {
+    var c = tok.charAt(0);
+    if (tok === 'a' || c === '@') return 'tk-kw'; // keyword / directives
+    if (c === '"') return 'tk-lit';               // literal (+ ^^<dt> or @lang)
+    if (c === '<') return 'tk-uri';               // full IRI
+    if (tok.indexOf(':') !== -1) return 'tk-pname'; // ex:likes, rdfs:label
+    if (c === '.' || c === ';' || c === ',') return 'tk-punc';
+    return null;                                  // numbers, bare words, blanks
+  }
+
+  document.querySelectorAll('pre.code').forEach(function (pre) {
+    var text = pre.textContent;
+    if (!text) return;
+    pre.textContent = '';
+    TK_RE.lastIndex = 0;
+    var m;
+    while ((m = TK_RE.exec(text)) !== null) {
+      var cls = tkClass(m[0]);
+      if (cls) {
+        var span = document.createElement('span');
+        span.className = cls;
+        span.textContent = m[0];
+        pre.appendChild(span);
+      } else {
+        pre.appendChild(document.createTextNode(m[0]));
+      }
+    }
+  });
 })();

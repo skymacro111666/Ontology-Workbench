@@ -1,4 +1,10 @@
 {% extends "base.html.j2" %}
+{# Domain/range cell: link only declared entities; foreign vocabulary (xsd:*)
+   has no detail page, so it renders as plain code. -#}
+{% macro dref(r) -%}
+{%- if r.eid in known_eids %}<a href="{{ file_of(r.eid) }}"><code>{{ r.curie }}</code></a>
+{%- else %}<code>{{ r.curie }}</code>{%- endif -%}
+{%- endmacro %}
 {% block content %}
 {% set main_label = e.label.values() | list | first %}
 {% set type_slug = e.type | lower %}
@@ -43,10 +49,13 @@
   <section class="card">
     <h2>Properties</h2>
     <table class="kv">
-      <tr><th>curie</th><th>type</th><th>label</th></tr>
+      <tr><th>curie</th><th>type</th><th>domain</th><th>range</th><th>label</th></tr>
       {% for p in e.properties %}
       <tr><td><a href="{{ file_of(p.eid) }}"><code>{{ p.curie }}</code></a></td>
-          <td>{{ p.ptype }}</td><td class="muted">{{ p.label.values() | list | join(', ') }}</td></tr>
+          <td>{{ p.ptype }}</td>
+          <td>{% for d in p.domain %}{{ dref(d) }}{% if not loop.last %}, {% endif %}{% else %}<span class="muted">—</span>{% endfor %}</td>
+          <td>{% for r in p.range %}{{ dref(r) }}{% if not loop.last %}, {% endif %}{% else %}<span class="muted">—</span>{% endfor %}</td>
+          <td class="muted">{{ p.label.values() | list | join(', ') }}</td></tr>
       {% endfor %}
     </table>
   </section>

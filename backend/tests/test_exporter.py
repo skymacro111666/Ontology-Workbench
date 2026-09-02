@@ -40,6 +40,7 @@ ex:B a owl:Class ; rdfs:subClassOf ex:A .
 INSTANCED = """@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<http://example.org/onto> a owl:Ontology .
 ex:A a owl:Class ; rdfs:label "A"@en .
 ex:B a owl:Class ; rdfs:subClassOf ex:A .
 ex:likes a owl:ObjectProperty ; rdfs:domain ex:A ; rdfs:range ex:B .
@@ -266,3 +267,43 @@ def test_search_badges_and_sidebar_highlight_use_typed_classes(tmp_path: Path) -
     js = (tmp_path / "site.js").read_text(encoding="utf-8")
     assert "tag--" in js  # typed badge for search results
     assert "style.fontWeight" not in js  # highlight via class, not inline style
+
+
+def test_property_table_lists_domain_and_range(tmp_path: Path) -> None:
+    """The Properties table shows what each property links (domain/range)."""
+    ir, ix = built_instanced()
+    export_site(ir, ix, tmp_path, title="Inst")
+    a_page = page_of(tmp_path, "http://example.org/A")
+    assert "<th>domain</th>" in a_page
+    assert "<th>range</th>" in a_page
+    assert "ex:B" in a_page  # likes' range class appears in A's table
+
+
+def test_css_collapses_sidebar_on_narrow_viewports(tmp_path: Path) -> None:
+    """Below 900px the sidebar stacks above the content, not beside it."""
+    ir, ix = built()
+    export_site(ir, ix, tmp_path, title="Mini")
+    css = (tmp_path / "site.css").read_text(encoding="utf-8")
+    assert "max-width: 900px" in css
+    assert "flex-direction: column" in css
+
+
+def test_turtle_highlighting_is_client_side_and_dom_safe(tmp_path: Path) -> None:
+    """Axiom blocks get keyword coloring via DOM spans, never innerHTML."""
+    ir, ix = built()
+    export_site(ir, ix, tmp_path, title="Mini")
+    js = (tmp_path / "site.js").read_text(encoding="utf-8")
+    assert "tk-kw" in js  # token classes exist
+    assert "innerHTML" not in js  # the DOM-only contract still holds
+
+
+def test_pages_carry_og_metadata_favicon_and_export_footer(tmp_path: Path) -> None:
+    """Share cards, a favicon, and an exported-at/ontology-IRI footer."""
+    ir, ix = built_instanced()
+    export_site(ir, ix, tmp_path, title="Inst")
+    idx = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert 'property="og:title"' in idx
+    assert 'rel="icon"' in idx
+    assert 'class="site-footer"' in idx
+    assert "Exported" in idx
+    assert "http://example.org/onto" in idx  # ontology IRI rides the footer

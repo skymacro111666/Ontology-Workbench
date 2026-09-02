@@ -135,6 +135,19 @@ code, pre {
   max-width: 920px;
 }
 
+/* ---------- narrow viewports: sidebar stacks above the content ---------- */
+@media (max-width: 900px) {
+  .layout { flex-direction: column; }
+  .sidebar {
+    width: auto;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .content { padding: 20px 16px 40px; }
+  #ow-search { width: min(240px, 45vw); }
+}
+
 /* ---------- typography ---------- */
 h1 {
   font-size: 1.75rem;
@@ -230,6 +243,26 @@ pre.code {
   padding: 12px 16px;
   overflow-x: auto;
   max-width: 90ch;
+}
+/* turtle tokens (site.js colorizes axiom blocks; classes tk-*) */
+pre.code .tk-kw { color: var(--accent-strong); font-weight: 600; }
+pre.code .tk-uri { color: var(--badge-teal-fg); }
+pre.code .tk-lit { color: var(--badge-red-fg); }
+pre.code .tk-pname { color: var(--badge-blue-fg); }
+pre.code .tk-punc { color: var(--muted); }
+
+/* ---------- footer (export provenance) ---------- */
+.site-footer {
+  padding: 12px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.site-footer code {
+  font-size: 0.9em;
+  color: var(--fg-2);
+  word-break: break-all; /* ontology IRIs can be long */
 }
 
 /* ---------- search results ---------- */

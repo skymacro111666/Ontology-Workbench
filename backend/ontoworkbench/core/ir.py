@@ -24,9 +24,11 @@ class Ref(BaseModel):
 
 
 class PropRef(Ref):
-    """Reference carrying the property type."""
+    """Reference carrying the property type and its domain/range classes."""
 
     ptype: str
+    domain: list[Ref] = []
+    range: list[Ref] = []
 
 
 class CounterpartRef(Ref):
@@ -124,6 +126,9 @@ class IRBundle(BaseModel):
     entities: dict[str, EntityIR]
     counts: Counts
     prefixes: dict[str, str]
+    # The owl:Ontology subject IRI (provenance for exports); None when the
+    # file never declares one.
+    ontology_iri: str | None = None
     # class eid → its direct named individuals (on-demand canvas data,
     # deliberately outside entities so schema walks/counts stay unchanged)
     instances: dict[str, list[Ref]] = {}
@@ -174,8 +179,13 @@ XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
 
 
 def _prop_ref(graph: rdflib.Graph, uri: URIRef) -> PropRef:
-    """PropRef for a declared property URI."""
-    return PropRef(**_ref(graph, uri).model_dump(), ptype=_ptype_of(graph, uri))
+    """PropRef for a declared property URI, with its domain/range classes."""
+    return PropRef(
+        **_ref(graph, uri).model_dump(),
+        ptype=_ptype_of(graph, uri),
+        domain=_uri_refs(graph, graph.objects(uri, RDFS.domain)),
+        range=_uri_refs(graph, graph.objects(uri, RDFS.range)),
+    )
 
 
 def _is_class(graph: rdflib.Graph, uri: Node) -> bool:
@@ -278,15 +288,7 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
         properties: list[PropRef] = []
         if is_class:
             for p in props_by_class.get(uri, []):
-                base = _ref(graph, p)
-                properties.append(
-                    PropRef(
-                        eid=base.eid,
-                        curie=base.curie,
-                        label=base.label,
-                        ptype=_ptype_of(graph, p),
-                    )
-                )
+                properties.append(_prop_ref(graph, p))
 
         comment = next(
             (str(c) for c in graph.objects(uri, RDFS.comment) if isinstance(c, Literal)),
@@ -388,10 +390,16 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
         )
 
     counts.individual_count = len(individuals)
+
+    # owl:Ontology subject IRI, deterministic under multiple declarations.
+    onto_subjects = sorted(
+        (str(s) for s in graph.subjects(RDF.type, OWL.Ontology) if isinstance(s, URIRef)),
+    )
     return IRBundle(
         entities=entities,
         counts=counts,
         prefixes=prefixes,
+        ontology_iri=onto_subjects[0] if onto_subjects else None,
         instances=instances,
         individuals=individuals_out,
     )
