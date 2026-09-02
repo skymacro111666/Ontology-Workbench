@@ -126,7 +126,50 @@ code, pre {
 .tree, .tree ul { list-style: none; margin: 0; padding-left: 14px; }
 .tree details.leaf > summary { list-style: none; }
 .tree details.leaf > summary::-webkit-details-marker { display: none; }
-.ptype { font-size: 0.72rem; color: var(--muted); }
+
+/* ---------- sidebar tabs (Classes / Properties) ---------- */
+.tabs input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  opacity: 0;
+}
+.tabs > label {
+  display: inline-block;
+  padding: 5px 8px 7px;
+  margin: 0 0 10px 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.tabs > label:hover { color: var(--fg-2); }
+.tabs input:checked + label {
+  color: var(--accent-strong);
+  border-bottom-color: var(--accent);
+}
+.tabs input:focus-visible + label {
+  outline: 2px solid var(--accent-soft);
+  border-radius: 6px;
+}
+.tab-panel { display: none; }
+.tabs input#ow-tab-classes:checked ~ #ow-panel-classes,
+.tabs input#ow-tab-props:checked ~ #ow-panel-props { display: block; }
+
+.prop-group h3 {
+  margin: 4px 0 2px;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.count { font-weight: 500; font-size: 0.9em; color: var(--muted); }
 
 .content {
   flex: 1;

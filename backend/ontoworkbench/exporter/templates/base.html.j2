@@ -18,36 +18,53 @@
   </header>
   <div class="layout">
     <nav class="sidebar" aria-label="Class tree">
-      <details open>
-        <summary>Classes</summary>
-        <ul class="tree">
-          {% macro node(n) %}
-          <li>
-            <details {% if not n.children %}class="leaf"{% endif %}>
-              <summary><a href="{{ root }}{{ n.file }}">{{ n.curie }}</a></summary>
-              {% if n.children %}
-              <ul>
-                {% for c in n.children %}{{ node(c) }}{% endfor %}
-              </ul>
-              {% endif %}
-            </details>
-          </li>
-          {% endmacro %}
-          {% for n in tree %}{{ node(n) }}{% endfor %}
-        </ul>
-      </details>
-      {% if props %}
-      <details>
-        <summary>Properties</summary>
-        <ul class="tree">
-          {% for p in props %}
-          <li><details class="leaf">
-            <summary><a href="{{ root }}{{ p.file }}">{{ p.curie }}</a> <span class="muted ptype">{{ p.ptype }}</span></summary>
-          </details></li>
-          {% endfor %}
-        </ul>
-      </details>
-      {% endif %}
+      <div class="tabs">
+        <input type="radio" id="ow-tab-classes" name="ow-sidebar-tab" checked>
+        <label for="ow-tab-classes">Classes <span class="count">{{ tab_counts.classes }}</span></label>
+        <input type="radio" id="ow-tab-props" name="ow-sidebar-tab">
+        <label for="ow-tab-props">Properties <span class="count">{{ tab_counts.properties }}</span></label>
+
+        <div class="tab-panel" id="ow-panel-classes">
+          <ul class="tree">
+            {% macro node(n) %}
+            <li>
+              <details{% if not n.children %} class="leaf"{% endif %}>
+                <summary><a href="{{ root }}{{ n.file }}">{{ n.curie }}</a></summary>
+                {% if n.children %}
+                <ul>
+                  {% for c in n.children %}{{ node(c) }}{% endfor %}
+                </ul>
+                {% endif %}
+              </details>
+            </li>
+            {% endmacro %}
+            {% for n in tree %}{{ node(n) }}{% endfor %}
+          </ul>
+        </div>
+
+        <div class="tab-panel" id="ow-panel-props">
+          {% if props.object %}
+          <section class="prop-group">
+            <h3>Object Properties <span class="count">{{ props.object | length }}</span></h3>
+            <ul class="tree">
+              {% for p in props.object %}
+              <li><a href="{{ root }}{{ p.file }}">{{ p.curie }}</a></li>
+              {% endfor %}
+            </ul>
+          </section>
+          {% endif %}
+          {% if props.data %}
+          <section class="prop-group">
+            <h3>Data Properties <span class="count">{{ props.data | length }}</span></h3>
+            <ul class="tree">
+              {% for p in props.data %}
+              <li><a href="{{ root }}{{ p.file }}">{{ p.curie }}</a></li>
+              {% endfor %}
+            </ul>
+          </section>
+          {% endif %}
+        </div>
+      </div>
     </nav>
     <main class="content">
       {% block content %}{% endblock %}

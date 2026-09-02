@@ -37,13 +37,16 @@ ex:B a owl:Class ; rdfs:subClassOf ex:A .
 """
 
 # Instances hanging off the classes: drives the entity-page Instances section.
+# One object + one datatype property: drives the sidebar's split prop tabs.
 INSTANCED = """@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 <http://example.org/onto> a owl:Ontology .
 ex:A a owl:Class ; rdfs:label "A"@en .
 ex:B a owl:Class ; rdfs:subClassOf ex:A .
 ex:likes a owl:ObjectProperty ; rdfs:domain ex:A ; rdfs:range ex:B .
+ex:name a owl:DatatypeProperty ; rdfs:domain ex:A ; rdfs:range xsd:string .
 ex:a1 a ex:A, owl:NamedIndividual ; rdfs:label "first a"@en .
 ex:b1 a ex:B, owl:NamedIndividual .
 """
@@ -203,13 +206,35 @@ def test_search_index_carries_type_and_js_renders_badge(tmp_path: Path) -> None:
     assert "entry.type" in js
 
 
-def test_sidebar_lists_properties(tmp_path: Path) -> None:
-    """Sidebar gains a (collapsed) Properties group alongside the class tree."""
+def test_sidebar_tabs_split_classes_and_properties(tmp_path: Path) -> None:
+    """Sidebar tabs: Classes | Properties radio tabs; props split by kind.
+
+    Object Properties render above Data Properties, each side carrying its
+    count; the per-line type pill is gone (the group already says it).
+    """
     ir, ix = built_instanced()
     export_site(ir, ix, tmp_path, title="Inst")
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
-    assert "<summary>Properties</summary>" in html
-    assert "ex:likes" in html  # the property is navigable from every page
+    assert 'id="ow-tab-classes"' in html
+    assert 'id="ow-tab-props"' in html
+    assert 'Classes <span class="count">2</span>' in html
+    assert 'Properties <span class="count">2</span>' in html  # 1 object + 1 data
+    assert "Object Properties" in html and "Data Properties" in html
+    assert html.index("Object Properties") < html.index("Data Properties")
+    assert "ex:likes" in html and "ex:name" in html  # both kinds navigable
+    assert 'class="muted ptype"' not in html  # per-line pill retired
+
+
+def test_site_js_activates_property_tab_on_property_pages(tmp_path: Path) -> None:
+    """The current-page highlight also activates the tab holding the page.
+
+    Without the switch a property page's highlight would sit inside the
+    hidden panel - the reader would think the page vanished from the tree.
+    """
+    ir, ix = built_instanced()
+    export_site(ir, ix, tmp_path, title="Inst")
+    js = (tmp_path / "site.js").read_text(encoding="utf-8")
+    assert "ow-tab-props" in js
 
 
 def test_class_page_shows_ancestor_breadcrumbs(tmp_path: Path) -> None:

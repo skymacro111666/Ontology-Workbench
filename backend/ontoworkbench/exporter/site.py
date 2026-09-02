@@ -79,13 +79,19 @@ def _sidebar_tree(indexes: Indexes) -> list[dict]:
     return roots
 
 
-def _sidebar_props(ir: IRBundle) -> list[dict]:
-    """Flat property list for the sidebar: curie/file plus the type tag."""
-    return [
-        {"curie": e.curie, "file": file_of(e.eid), "ptype": e.type}
-        for e in ir.entities.values()
-        if e.type != "Class"
-    ]
+def _sidebar_props(ir: IRBundle) -> dict[str, list[dict]]:
+    """Sidebar property groups (object above data): curie/file per entry.
+
+    Only explicitly typed properties ever become entities, so two groups
+    cover everything - there is no third bucket to fill.
+    """
+    groups: dict[str, list[dict]] = {"object": [], "data": []}
+    for e in ir.entities.values():
+        if e.type == "ObjectProperty":
+            groups["object"].append({"curie": e.curie, "file": file_of(e.eid)})
+        elif e.type == "DatatypeProperty":
+            groups["data"].append({"curie": e.curie, "file": file_of(e.eid)})
+    return groups
 
 
 def _crumbs(indexes: Indexes, e: EntityIR) -> list[dict]:
@@ -134,6 +140,10 @@ def export_site(
     env = _env()
     tree = _sidebar_tree(indexes)
     props = _sidebar_props(ir)
+    tab_counts = {
+        "classes": ir.counts.class_count,
+        "properties": len(props["object"]) + len(props["data"]),
+    }
     # Footer provenance shared by every page (base.html.j2).
     footer = {
         "exported_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
@@ -160,6 +170,7 @@ def export_site(
             crumbs=_crumbs(indexes, e),
             known_eids=set(ir.entities),
             root="../",  # entity pages sit one level below the site root
+            tab_counts=tab_counts,
             **footer,
         )
         (out_dir / rel).write_text(page, encoding="utf-8")
@@ -173,6 +184,7 @@ def export_site(
         props=props,
         top_classes=tree,
         root="",  # index.html sits at the site root
+        tab_counts=tab_counts,
         **footer,
     )
     (out_dir / "index.html").write_text(index_page, encoding="utf-8")

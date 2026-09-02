@@ -124,6 +124,14 @@
     }
   });
 
+  // A property page opens on the Properties tab: its highlight would
+  // otherwise sit inside the hidden panel.
+  var active = document.querySelector('.sidebar a.current');
+  if (active && document.getElementById('ow-tab-props') &&
+      active.closest('#ow-panel-props')) {
+    document.getElementById('ow-tab-props').checked = true;
+  }
+
   // Turtle syntax coloring for axiom blocks. The turtle serializes
   // ontology-authored strings, so tokens are re-assembled with DOM spans
   // and text nodes only - nothing is ever parsed as markup (same contract
