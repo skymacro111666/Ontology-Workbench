@@ -58,12 +58,34 @@ export default function Export() {
 
   const copyDir = async () => {
     if (!result) return
-    try {
-      await navigator.clipboard.writeText(result.outputDir)
-      toast.success(t('exportPage.copied'))
-    } catch {
-      toast.error(t('exportPage.copyFailed'))
+    let ok = false
+    if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(result.outputDir)
+        ok = true
+      } catch {
+        ok = false
+      }
     }
+    if (!ok) {
+      // Plain-http LAN deployments are not a secure context: the async
+      // clipboard API does not exist there, so fall back to the legacy
+      // (deprecated but universally supported) execCommand path.
+      const ta = document.createElement('textarea')
+      ta.value = result.outputDir
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      try {
+        ok = document.execCommand('copy')
+      } catch {
+        ok = false
+      }
+      ta.remove()
+    }
+    if (ok) toast.success(t('exportPage.copied'))
+    else toast.error(t('exportPage.copyFailed'))
   }
 
   return (

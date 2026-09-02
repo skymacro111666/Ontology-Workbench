@@ -52,6 +52,7 @@ afterEach(() => {
   vi.restoreAllMocks()
   // Drop the clipboard stub so later suites see jsdom's original state.
   Reflect.deleteProperty(navigator, 'clipboard')
+  Reflect.deleteProperty(document, 'execCommand')
 })
 
 describe('Export', () => {
@@ -91,6 +92,24 @@ describe('Export', () => {
     await userEvent.click(await screen.findByRole('button', { name: '复制' }))
 
     expect(writeText).toHaveBeenCalledWith(OUT_DIR)
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('已复制'))
+  })
+
+  it('falls back to execCommand when the clipboard API is unavailable', async () => {
+    // No stubClipboard(): jsdom's bare navigator mirrors a non-secure
+    // context (the app served over plain http on a LAN address), where
+    // navigator.clipboard does not exist at all — the legacy execCommand
+    // path must take over or the copy button is dead in that deployment.
+    const execMock = vi.fn(() => true)
+    Object.defineProperty(document, 'execCommand', { value: execMock, configurable: true })
+    const toastSuccess = vi.spyOn(toast, 'success')
+    const fetchMock = vi.fn(async () => ok({ outputDir: OUT_DIR, pageCount: 5 }))
+    renderExport(fetchMock)
+
+    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(await screen.findByRole('button', { name: '复制' }))
+
+    await waitFor(() => expect(execMock).toHaveBeenCalledWith('copy'))
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('已复制'))
   })
 
