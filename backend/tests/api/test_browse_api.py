@@ -369,3 +369,22 @@ def test_browse_serves_from_disk_ir_cache_after_memory_drop(
 
     metrics = client.get("/metrics").text
     assert 'ow_ir_cache_reads_total{result="hit"}' in metrics
+
+
+def test_upload_warms_disk_ir_cache(client: TestClient, monkeypatch) -> None:
+    """The very first post-restart read serves from pkl: upload wrote it."""
+    import ontoworkbench.server.routers.browse as browse_mod
+
+    oid = _upload(client)
+    client.app.state.cache.drop(oid)
+    calls = []
+    real = browse_mod.parse_graph
+
+    def spy(data, fmt):  # noqa: ANN001 — test-local shape
+        calls.append(1)
+        return real(data, fmt)
+
+    monkeypatch.setattr(browse_mod, "parse_graph", spy)
+    tree = client.get(f"/api/ontologies/{oid}/tree")
+    assert tree.status_code == 200
+    assert calls == []

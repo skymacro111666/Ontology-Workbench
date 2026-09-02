@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -16,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir
+from ontoworkbench.core.ir_cache import write_ir_cache
 from ontoworkbench.core.parsing import sniff_format, timed_parse
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
@@ -239,6 +241,9 @@ def _import_bytes(
         t_index = time.perf_counter()
         cache: OntologyCache = request.app.state.cache
         cache.indexes_for(row, lambda r: build_indexes(ir))
+        # The disk cache must move with the file: the next cold start would
+        # otherwise re-pay the full parse for this ontology.
+        write_ir_cache(Path(row.storage_path), ir, row.file_hash)
         index_ms = round((time.perf_counter() - t_index) * 1000, 1)
     except Exception as exc:
         _imports_log.error(
@@ -384,6 +389,7 @@ def replace_source(
     )  # update() of an owned row cannot miss; keep mypy happy
     cache: OntologyCache = request.app.state.cache
     cache.indexes_for(row, lambda r: build_indexes(ir))
+    write_ir_cache(Path(row.storage_path), ir, row.file_hash)
     return respond(meta_of(row))
 
 

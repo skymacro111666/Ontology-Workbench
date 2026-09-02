@@ -110,3 +110,24 @@ def test_put_source_recomputes_title(client: TestClient) -> None:
     )
     r = _put(client, oid, titled, meta["fileHash"])
     assert r.json()["data"]["title"] == "Titled"
+
+
+def test_source_put_refreshes_disk_ir_cache(client: TestClient, monkeypatch) -> None:
+    """PUT /source refreshes pkl: next cold read parses nothing."""
+    import ontoworkbench.server.routers.browse as browse_mod
+
+    oid, meta = _upload(client)
+    r = _put(client, oid, MINI2, meta["fileHash"])
+    assert r.status_code == 200, r.text
+
+    client.app.state.cache.drop(oid)
+    calls = []
+    real = browse_mod.parse_graph
+
+    def spy(data, fmt):  # noqa: ANN001 — test-local shape
+        calls.append(1)
+        return real(data, fmt)
+
+    monkeypatch.setattr(browse_mod, "parse_graph", spy)
+    assert client.get(f"/api/ontologies/{oid}/tree").status_code == 200
+    assert calls == []
