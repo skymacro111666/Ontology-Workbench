@@ -1,0 +1,206 @@
+@prefix uni: <https://github.com/skymacro111666/ontology-workbench/samples/university#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix dc: <http://purl.org/dc/terms/> .
+
+<https://github.com/skymacro111666/ontology-workbench/samples/university>
+    a owl:Ontology ;
+    dc:title "University Teaching Ontology" ;
+    rdfs:comment """A teaching sample: people, organization units and courses at a
+university. Deliberate modeling decisions worth teaching:
+
+- Staff and Student are NOT disjoint: a PhD candidate who also serves as a
+  teaching assistant is legitimately both (Tom Harris). Roles that would
+  force a disjointness violation are modeled as subclasses of Student
+  instead (TeachingAssistant), mirroring the person-vs-role lesson.
+- Every object property declares both domain and range, so the workbench
+  canvas renders them as direct class-to-class edges.
+- Tom Harris carries two types (PhDStudent, TeachingAssistant): the
+  multi-type instance regression scenario in one line of Turtle.""" .
+
+## ---------- classes: people ----------
+
+uni:Person a owl:Class ; rdfs:label "Person" ;
+    rdfs:comment "Any human affiliated with the university." .
+
+uni:Staff a owl:Class ; rdfs:label "Staff" ; rdfs:subClassOf uni:Person ;
+    rdfs:comment "Employees: faculty and other personnel." .
+
+uni:Faculty a owl:Class ; rdfs:label "Faculty" ; rdfs:subClassOf uni:Staff ;
+    rdfs:comment "Teaching staff." .
+
+uni:Professor a owl:Class ; rdfs:label "Professor" ; rdfs:subClassOf uni:Faculty .
+
+uni:Lecturer a owl:Class ; rdfs:label "Lecturer" ; rdfs:subClassOf uni:Faculty .
+
+uni:Student a owl:Class ; rdfs:label "Student" ; rdfs:subClassOf uni:Person .
+
+uni:UndergraduateStudent a owl:Class ; rdfs:label "Undergraduate student" ;
+    rdfs:subClassOf uni:Student .
+
+uni:GraduateStudent a owl:Class ; rdfs:label "Graduate student" ;
+    rdfs:subClassOf uni:Student .
+
+uni:PhDStudent a owl:Class ; rdfs:label "PhD student" ;
+    rdfs:subClassOf uni:GraduateStudent .
+
+uni:TeachingAssistant a owl:Class ; rdfs:label "Teaching assistant" ;
+    rdfs:subClassOf uni:GraduateStudent ;
+    rdfs:comment "A graduate student who also teaches; deliberately not Staff." .
+
+## ---------- classes: organization ----------
+
+uni:Organization a owl:Class ; rdfs:label "Organization" ;
+    rdfs:comment "An organizational unit of the university." .
+
+uni:University a owl:Class ; rdfs:label "University" ; rdfs:subClassOf uni:Organization .
+
+uni:College a owl:Class ; rdfs:label "College" ; rdfs:subClassOf uni:Organization .
+
+uni:Department a owl:Class ; rdfs:label "Department" ; rdfs:subClassOf uni:Organization .
+
+uni:Library a owl:Class ; rdfs:label "Library" ; rdfs:subClassOf uni:Organization .
+
+## ---------- classes: courses ----------
+
+uni:Course a owl:Class ; rdfs:label "Course" .
+
+uni:UndergraduateCourse a owl:Class ; rdfs:label "Undergraduate course" ;
+    rdfs:subClassOf uni:Course .
+
+uni:GraduateCourse a owl:Class ; rdfs:label "Graduate course" ;
+    rdfs:subClassOf uni:Course .
+
+## ---------- disjointness ----------
+
+uni:UndergraduateStudent owl:disjointWith uni:GraduateStudent .
+uni:Professor owl:disjointWith uni:Lecturer .
+uni:College owl:disjointWith uni:Department , uni:Library .
+uni:Department owl:disjointWith uni:Library .
+uni:UndergraduateCourse owl:disjointWith uni:GraduateCourse .
+
+## ---------- object properties (domain + range => canvas direct edges) ----------
+
+uni:worksFor a owl:ObjectProperty ; rdfs:label "works for" ;
+    rdfs:domain uni:Staff ; rdfs:range uni:Department .
+
+uni:leads a owl:ObjectProperty ; rdfs:label "leads" ;
+    rdfs:domain uni:Professor ; rdfs:range uni:Department .
+
+uni:teaches a owl:ObjectProperty ; rdfs:label "teaches" ;
+    rdfs:domain uni:Staff ; rdfs:range uni:Course ;
+    rdfs:comment "Domain is Staff, not Faculty: teaching assistants teach too." .
+
+uni:advises a owl:ObjectProperty ; rdfs:label "advises" ;
+    rdfs:domain uni:Faculty ; rdfs:range uni:Student .
+
+uni:takes a owl:ObjectProperty ; rdfs:label "takes" ;
+    rdfs:domain uni:Student ; rdfs:range uni:Course .
+
+## ---------- data properties ----------
+
+uni:email a owl:DatatypeProperty ; rdfs:label "email" ;
+    rdfs:domain uni:Person ; rdfs:range xsd:string .
+
+uni:employeeId a owl:DatatypeProperty ; rdfs:label "employee ID" ;
+    rdfs:domain uni:Staff ; rdfs:range xsd:string .
+
+uni:salary a owl:DatatypeProperty ; rdfs:label "salary" ;
+    rdfs:domain uni:Staff ; rdfs:range xsd:decimal .
+
+uni:courseCode a owl:DatatypeProperty ; rdfs:label "course code" ;
+    rdfs:domain uni:Course ; rdfs:range xsd:string .
+
+uni:credits a owl:DatatypeProperty ; rdfs:label "credits" ;
+    rdfs:domain uni:Course ; rdfs:range xsd:integer .
+
+uni:enrollmentYear a owl:DatatypeProperty ; rdfs:label "enrollment year" ;
+    rdfs:domain uni:Student ; rdfs:range xsd:integer .
+
+uni:gpa a owl:DatatypeProperty ; rdfs:label "GPA" ;
+    rdfs:domain uni:Student ; rdfs:range xsd:decimal .
+
+## ---------- individuals: organization ----------
+
+uni:avondale-university a owl:NamedIndividual , uni:University ;
+    rdfs:label "Avondale University" .
+
+uni:engineering-college a owl:NamedIndividual , uni:College ;
+    rdfs:label "Engineering College" .
+
+uni:cs-department a owl:NamedIndividual , uni:Department ;
+    rdfs:label "Computer Science Department" .
+
+uni:main-library a owl:NamedIndividual , uni:Library ;
+    rdfs:label "Main Library" .
+
+## ---------- individuals: staff ----------
+
+uni:alice-chen a owl:NamedIndividual , uni:Professor ;
+    rdfs:label "Alice Chen" ;
+    uni:worksFor uni:cs-department ;
+    uni:teaches uni:cs520-machine-learning , uni:cs101-intro-programming ;
+    uni:advises uni:sara-novak , uni:tom-harris ;
+    uni:email "alice.chen@avondale.edu" ;
+    uni:employeeId "F-2041" ;
+    uni:salary "128500.00"^^xsd:decimal .
+
+uni:maria-lopez a owl:NamedIndividual , uni:Professor ;
+    rdfs:label "Maria Lopez" ;
+    uni:worksFor uni:cs-department ;
+    uni:leads uni:cs-department ;
+    uni:teaches uni:phil220-logic ;
+    uni:email "maria.lopez@avondale.edu" ;
+    uni:employeeId "F-1102" ;
+    uni:salary "141000.00"^^xsd:decimal .
+
+uni:david-kim a owl:NamedIndividual , uni:Lecturer ;
+    rdfs:label "David Kim" ;
+    uni:worksFor uni:cs-department ;
+    uni:teaches uni:cs101-intro-programming ;
+    uni:email "david.kim@avondale.edu" ;
+    uni:employeeId "F-3388" ;
+    uni:salary "86000.00"^^xsd:decimal .
+
+## ---------- individuals: students (Tom = multi-type) ----------
+
+uni:ben-lee a owl:NamedIndividual , uni:UndergraduateStudent ;
+    rdfs:label "Ben Lee" ;
+    uni:takes uni:cs101-intro-programming , uni:phil220-logic ;
+    uni:email "ben.lee@student.avondale.edu" ;
+    uni:enrollmentYear "2024"^^xsd:integer ;
+    uni:gpa "3.60"^^xsd:decimal .
+
+uni:sara-novak a owl:NamedIndividual , uni:GraduateStudent ;
+    rdfs:label "Sara Novak" ;
+    uni:takes uni:cs520-machine-learning ;
+    uni:email "sara.novak@student.avondale.edu" ;
+    uni:enrollmentYear "2023"^^xsd:integer ;
+    uni:gpa "3.85"^^xsd:decimal .
+
+uni:tom-harris a owl:NamedIndividual , uni:PhDStudent , uni:TeachingAssistant ;
+    rdfs:label "Tom Harris" ;
+    uni:teaches uni:cs101-intro-programming ;
+    uni:advises uni:ben-lee ;
+    uni:takes uni:cs520-machine-learning ;
+    uni:email "tom.harris@student.avondale.edu" ;
+    uni:enrollmentYear "2021"^^xsd:integer ;
+    uni:gpa "3.90"^^xsd:decimal .
+
+## ---------- individuals: courses ----------
+
+uni:cs101-intro-programming a owl:NamedIndividual , uni:UndergraduateCourse ;
+    rdfs:label "CS101 Introductory Programming" ;
+    uni:courseCode "CS101" ;
+    uni:credits "4"^^xsd:integer .
+
+uni:cs520-machine-learning a owl:NamedIndividual , uni:GraduateCourse ;
+    rdfs:label "CS520 Machine Learning" ;
+    uni:courseCode "CS520" ;
+    uni:credits "3"^^xsd:integer .
+
+uni:phil220-logic a owl:NamedIndividual , uni:UndergraduateCourse ;
+    rdfs:label "PHIL220 Formal Logic" ;
+    uni:courseCode "PHIL220" ;
+    uni:credits "3"^^xsd:integer .
