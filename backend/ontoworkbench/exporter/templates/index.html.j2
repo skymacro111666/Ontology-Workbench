@@ -10,7 +10,7 @@
   <h2>Top-level classes</h2>
   <ul>
     {% for n in top_classes %}
-    <li><a href="{{ n.file }}"><code>{{ n.curie }}</code></a>
+    <li><a href="{{ root }}{{ n.file }}"><code>{{ n.curie }}</code></a>
       {% if n.children %}<span class="muted">({{ n.children | length }} direct subclasses)</span>{% endif %}
     </li>
     {% else %}

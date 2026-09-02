@@ -307,3 +307,56 @@ def test_pages_carry_og_metadata_favicon_and_export_footer(tmp_path: Path) -> No
     assert 'class="site-footer"' in idx
     assert "Exported" in idx
     assert "http://example.org/onto" in idx  # ontology IRI rides the footer
+
+
+def test_entity_pages_prefix_assets_and_links_from_subdirectory(tmp_path: Path) -> None:
+    """Entity pages live in entities/: every root-relative reference gets ../.
+
+    Opened straight from disk (file://) or a plain HTTP dir listing, a bare
+    site.css or entities/... link on an entity page resolves one level too
+    deep and 404s - site.js included, which is why search went dead.
+    """
+    ir, ix = built_instanced()
+    export_site(ir, ix, tmp_path, title="Inst")
+    page = page_of(tmp_path, "http://example.org/A")
+    assert 'href="../site.css"' in page
+    assert 'href="../favicon.svg"' in page
+    assert 'src="../data/search-index.js"' in page
+    assert 'src="../site.js"' in page
+    assert 'href="../index.html"' in page  # brand link climbs out of entities/
+    assert 'href="../entities/' in page  # tree/props/section links
+    assert 'href="entities/' not in page  # no un-prefixed entity link remains
+    idx = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert 'href="site.css"' in idx  # index sits at the root: no prefix
+    assert 'src="data/search-index.js"' in idx
+
+
+def test_search_index_ships_as_script_tag_safe_for_file_protocol(tmp_path: Path) -> None:
+    """Search data rides a <script> global, not fetch - fetch is dead on file://.
+
+    The payload embeds ontology-authored strings inside a JS string, so any
+    </ sequence is escaped: a label can never close the script element early.
+    """
+    ir, ix = built_instanced()
+    export_site(ir, ix, tmp_path, title="Inst")
+    data_js_path = tmp_path / "data" / "search-index.js"
+    assert data_js_path.exists()
+    data_js = data_js_path.read_text(encoding="utf-8")
+    assert "window.__OW_INDEX__" in data_js
+    assert "ex:A" in data_js
+    assert "</script" not in data_js  # escape holds even for hostile labels
+
+    nasty_turtle = (
+        "@prefix ex: <http://example.org/> .\n"
+        "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
+        'ex:A a owl:Class ; rdfs:label "</script>alert(1)</script>"@en .\n'
+    )
+    nasty = build_ir(rdflib.Graph().parse(data=nasty_turtle, format="turtle"))
+    export_site(nasty, build_indexes(nasty), tmp_path / "n", title="N")
+    nasty_js = (tmp_path / "n" / "data" / "search-index.js").read_text(encoding="utf-8")
+    assert "</script" not in nasty_js  # hostile label stays inside the string
+
+    site_js = (tmp_path / "site.js").read_text(encoding="utf-8")
+    assert "__OW_INDEX__" in site_js  # consumed from the global
+    assert "fetch(" not in site_js  # fetch() throws on file:// URLs

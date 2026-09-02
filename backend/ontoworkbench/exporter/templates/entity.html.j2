@@ -2,7 +2,7 @@
 {# Domain/range cell: link only declared entities; foreign vocabulary (xsd:*)
    has no detail page, so it renders as plain code. -#}
 {% macro dref(r) -%}
-{%- if r.eid in known_eids %}<a href="{{ file_of(r.eid) }}"><code>{{ r.curie }}</code></a>
+{%- if r.eid in known_eids %}<a href="{{ root }}{{ file_of(r.eid) }}"><code>{{ r.curie }}</code></a>
 {%- else %}<code>{{ r.curie }}</code>{%- endif -%}
 {%- endmacro %}
 {% block content %}
@@ -23,7 +23,7 @@
   <section class="card">
     <h2>Parents</h2>
     <ul>
-      {% for p in e.parents %}<li><a href="{{ file_of(p.eid) }}"><code>{{ p.curie }}</code></a></li>
+      {% for p in e.parents %}<li><a href="{{ root }}{{ file_of(p.eid) }}"><code>{{ p.curie }}</code></a></li>
       {% else %}<li class="muted">—</li>{% endfor %}
     </ul>
   </section>
@@ -31,7 +31,7 @@
   <section class="card">
     <h2>Children ({{ e.stats.direct_children }} direct · {{ e.stats.total_descendants }} total)</h2>
     <ul>
-      {% for c in e.children %}<li><a href="{{ file_of(c.eid) }}"><code>{{ c.curie }}</code></a></li>
+      {% for c in e.children %}<li><a href="{{ root }}{{ file_of(c.eid) }}"><code>{{ c.curie }}</code></a></li>
       {% else %}<li class="muted">—</li>{% endfor %}
     </ul>
   </section>
@@ -51,7 +51,7 @@
     <table class="kv">
       <tr><th>curie</th><th>type</th><th>domain</th><th>range</th><th>label</th></tr>
       {% for p in e.properties %}
-      <tr><td><a href="{{ file_of(p.eid) }}"><code>{{ p.curie }}</code></a></td>
+      <tr><td><a href="{{ root }}{{ file_of(p.eid) }}"><code>{{ p.curie }}</code></a></td>
           <td>{{ p.ptype }}</td>
           <td>{% for d in p.domain %}{{ dref(d) }}{% if not loop.last %}, {% endif %}{% else %}<span class="muted">—</span>{% endfor %}</td>
           <td>{% for r in p.range %}{{ dref(r) }}{% if not loop.last %}, {% endif %}{% else %}<span class="muted">—</span>{% endfor %}</td>
@@ -66,7 +66,7 @@
     <h2>Referenced by</h2>
     <ul>
       {% for r in e.referenced_by %}
-      <li><a href="{{ file_of(r.eid) }}"><code>{{ r.curie }}</code></a>
+      <li><a href="{{ root }}{{ file_of(r.eid) }}"><code>{{ r.curie }}</code></a>
           {% if r.relation %}<span class="muted">via {{ r.relation }}</span>{% endif %}</li>
       {% endfor %}
     </ul>

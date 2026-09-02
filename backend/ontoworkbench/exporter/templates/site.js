@@ -1,5 +1,8 @@
 /* Exported docs-site behavior: client-side substring search over the static
  * index + current-page highlight in the sidebar tree. No framework (~90 lines).
+ * The search index arrives via the data/search-index.js script tag (a global),
+ * never via the fetch API: fetch cannot read file:// URLs, and the exported
+ * zip must open cold from disk.
  */
 (function () {
   'use strict';
@@ -8,25 +11,14 @@
   var results = document.getElementById('ow-search-results');
   if (!input || !results) return;
 
-  var index = null;
+  var index = window.__OW_INDEX__ || null;
+  var root = window.OW_ROOT || '';
   var activeIndex = -1;
 
   function labelOf(entry) {
     var labels = entry.label || {};
     var keys = Object.keys(labels);
     return keys.length ? labels[keys[0]] : '';
-  }
-
-  function loadIndex(cb) {
-    if (index) return cb();
-    fetch('data/index.json')
-      .then(function (r) { return r.json(); })
-      .then(function (data) { index = data; cb(); })
-      .catch(function () {
-        index = [];
-        results.hidden = false;
-        showMessage('Search unavailable (data/index.json not loadable from file://)');
-      });
   }
 
   function matches(entry, q) {
@@ -38,7 +30,7 @@
   // anchors are assembled with DOM APIs so nothing is parsed as markup.
   function resultLink(entry) {
     var a = document.createElement('a');
-    a.href = entry.file;
+    a.href = root + entry.file; // entry paths are root-relative
     var code = document.createElement('code');
     code.textContent = entry.curie;
     a.appendChild(code);
@@ -85,9 +77,12 @@
   }
 
   input.addEventListener('input', function () {
-    loadIndex(function () {
-      render(input.value.trim().toLowerCase());
-    });
+    if (!index) {
+      results.hidden = false;
+      showMessage('Search unavailable (data/search-index.js not loaded)');
+      return;
+    }
+    render(input.value.trim().toLowerCase());
   });
 
   input.addEventListener('keydown', function (ev) {

@@ -159,6 +159,7 @@ def export_site(
             instances=ir.instances.get(e.eid, []),
             crumbs=_crumbs(indexes, e),
             known_eids=set(ir.entities),
+            root="../",  # entity pages sit one level below the site root
             **footer,
         )
         (out_dir / rel).write_text(page, encoding="utf-8")
@@ -171,12 +172,20 @@ def export_site(
         tree=tree,
         props=props,
         top_classes=tree,
+        root="",  # index.html sits at the site root
         **footer,
     )
     (out_dir / "index.html").write_text(index_page, encoding="utf-8")
 
     (out_dir / "data" / "index.json").write_text(
         json.dumps(search_index, ensure_ascii=False, indent=1), encoding="utf-8"
+    )
+    # The same index as a script-tag global: fetch() cannot read local files
+    # (file://), but <script src> loads anywhere. "</" is escaped so an
+    # embedded ontology string can never close the element early.
+    index_payload = json.dumps(search_index, ensure_ascii=False).replace("</", "<\\/")
+    (out_dir / "data" / "search-index.js").write_text(
+        f"window.__OW_INDEX__ = {index_payload};\n", encoding="utf-8"
     )
     (out_dir / "data" / "entities.json").write_text(
         json.dumps(entity_map, ensure_ascii=False, indent=1), encoding="utf-8"
