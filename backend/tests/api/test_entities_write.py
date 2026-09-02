@@ -220,3 +220,38 @@ def test_delete_keeps_dangling_references_without_prune(client: TestClient) -> N
     src = _source(client, oid)
     # Dog's subClassOf → Animal survives as a dangling reference.
     assert "ex:Animal" in src
+
+
+def test_entity_write_refreshes_disk_ir_cache(client: TestClient, monkeypatch) -> None:
+    """After a class create, a dropped memory cache serves without re-parse.
+
+    The freshness matters as much as existence: _persist updated file_hash,
+    so a stale pkl would miss and the spy below would record a parse.
+    """
+    import ontoworkbench.server.routers.browse as browse_mod
+
+    oid, meta = _upload(client)
+    r = client.post(
+        f"/api/ontologies/{oid}/classes",
+        json={
+            "name": "Cat",
+            "prefix": "ex",
+            "parents": [ANIMAL],
+            "baseFileHash": meta["fileHash"],
+        },
+    )
+    assert r.status_code == 200
+
+    client.app.state.cache.drop(oid)
+    calls = []
+    real = browse_mod.parse_graph
+
+    def spy(data, fmt):  # noqa: ANN001 — test-local shape
+        calls.append(1)
+        return real(data, fmt)
+
+    monkeypatch.setattr(browse_mod, "parse_graph", spy)
+    ov = client.get(f"/api/ontologies/{oid}/overview")
+    assert ov.status_code == 200
+    assert ov.json()["data"]["totalCount"] == 7  # MINI 6 entities + Cat
+    assert calls == []

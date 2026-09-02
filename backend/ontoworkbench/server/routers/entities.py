@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir
+from ontoworkbench.core.ir_cache import write_ir_cache
 from ontoworkbench.core.parsing import serialize_graph, timed_parse
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
@@ -228,6 +229,9 @@ def _persist(
         )
         or row
     )
+    # The disk cache must move with the file: the next cold start would
+    # otherwise re-pay the full parse for this ontology.
+    write_ir_cache(Path(row.storage_path), ir, row.file_hash)
     cache: OntologyCache = request.app.state.cache
     cache.indexes_for(row, lambda r: build_indexes(ir))
     return row, ir
