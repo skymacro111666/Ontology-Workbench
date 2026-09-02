@@ -300,7 +300,7 @@ class Indexes:
                     # is the domain, the domain class when e is the range.
                     ref = next((r for r in e.referenced_by if r.eid == prop.eid), None)
                     far = ref.counterpart if ref else None
-                    if far and far.declared and far.eid in seen:
+                    if ref is not None and far and far.declared and far.eid in seen:
                         src, dst = (
                             (e.eid, far.eid) if ref.relation == "rdfs:domain" else (far.eid, e.eid)
                         )

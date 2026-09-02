@@ -6,6 +6,7 @@ import json
 import logging
 import logging.handlers
 import sys
+from collections.abc import MutableMapping
 from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
@@ -21,7 +22,9 @@ except metadata.PackageNotFoundError:  # running from a source tree
     SERVICE_VERSION = "dev"
 
 
-def add_service_fields(logger, method_name: str, event_dict: dict) -> dict:
+def add_service_fields(
+    logger, method_name: str, event_dict: MutableMapping[str, object]
+) -> MutableMapping[str, object]:
     """Structlog processor: stamp service identity onto every event.
 
     setdefault so a caller that deliberately overrides (e.g. a future
@@ -33,7 +36,9 @@ def add_service_fields(logger, method_name: str, event_dict: dict) -> dict:
     return event_dict
 
 
-def drop_nones(logger, method_name: str, event_dict: dict) -> dict:
+def drop_nones(
+    logger, method_name: str, event_dict: MutableMapping[str, object]
+) -> MutableMapping[str, object]:
     """Omit absent fields entirely rather than emitting null placeholders.
 
     Spec §2: a missing key reads as "not applicable", null as "unknown".

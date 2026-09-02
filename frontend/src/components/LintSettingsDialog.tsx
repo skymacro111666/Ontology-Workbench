@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CheckIcon } from 'lucide-react'
 import { toast } from 'sonner'
@@ -107,8 +107,13 @@ export default function LintSettingsDialog({
   const [preview, setPreview] = useState<{ idx: number; result: LintRuleResultT | null } | null>(
     null,
   )
-  useEffect(() => {
-    if (open && !prevOpen && cfg) {
+  // Reset on every closed→open transition, in render time (the file dialogs'
+  // pattern — setState inside an effect trips react-hooks/set-state-in-effect,
+  // which CI's eslint gate rejects). Seeds only when the config is already in
+  // hand at the transition, matching the previous effect's behavior.
+  if (open !== prevOpen) {
+    setPrevOpen(open)
+    if (open && cfg) {
       setDisabled(new Set(cfg.disabled))
       setCustoms(
         cfg.custom.map((c) => ({
@@ -121,8 +126,7 @@ export default function LintSettingsDialog({
       )
       setPreview(null)
     }
-    setPrevOpen(open)
-  }, [open, prevOpen, cfg])
+  }
 
   const body = () => ({
     disabled: [...disabled],
