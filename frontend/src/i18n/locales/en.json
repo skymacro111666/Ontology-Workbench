@@ -166,6 +166,7 @@
     "dirNotEmpty": "Directory not empty — tick overwrite or pick another",
     "exportFailed": "Export failed, please try again later",
     "exporting": "Exporting…",
+    "empty": "Not exported yet",
     "copied": "Copied",
     "copyFailed": "Copy failed",
     "download": "Download zip",
@@ -176,7 +177,7 @@
     "outDirPlaceholder": "Empty uses the default: {data dir}/exports/{id}-{timestamp}",
     "outDirHint": "Must stay under {data dir}/exports/; set OW_EXPORT_ALLOW_ANY_PATH=1 on the server to lift this.",
     "forceLabel": "Overwrite a non-empty directory",
-    "submit": "Start export",
+    "submit": "Export",
     "resultTitle": "Export result",
     "pages": "{{total}} pages (1 index + {{entities}} entity pages)"
   },

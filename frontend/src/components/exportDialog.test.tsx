@@ -62,7 +62,7 @@ describe('ExportDialog', () => {
 
     await userEvent.type(await screen.findByLabelText('输出目录（可选）'), '/tmp/my-site ')
     await userEvent.click(screen.getByRole('switch'))
-    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
 
     await waitFor(() => expect(exportBodies(fetchMock)).toHaveLength(1))
     expect(fetchMock).toHaveBeenCalledWith('/api/ontologies/oid-1/export/site', expect.anything())
@@ -75,7 +75,7 @@ describe('ExportDialog', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderDialog()
 
-    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
 
     const dialog = await screen.findByRole('dialog')
     expect(await within(dialog).findByText(OUT_DIR)).toBeTruthy()
@@ -84,6 +84,21 @@ describe('ExportDialog', () => {
     expect(exportBodies(fetchMock)[0]).toEqual({ force: false })
     // Success keeps the dialog open: the result (path + download) lives in it.
     expect(useUiStore.getState().exportOpen).toBe(true)
+    // The placeholder yielded to the result.
+    expect(within(dialog).queryByText('尚未导出')).toBeNull()
+  })
+
+  it('shows the empty result frame before the first export', async () => {
+    renderDialog()
+
+    const dialog = await screen.findByRole('dialog')
+    // The frame is part of the layout from the start — no post-success jump.
+    expect(within(dialog).getByText('尚未导出')).toBeTruthy()
+    // Download sits in the footer aligned with 导出, inert until a result exists.
+    const download = within(dialog).getByRole('button', {
+      name: '下载 zip',
+    }) as HTMLButtonElement
+    expect(download.disabled).toBe(true)
   })
 
   it('shows the busy state on the submit button while exporting', async () => {
@@ -95,7 +110,7 @@ describe('ExportDialog', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderDialog()
 
-    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
     const busy = (await screen.findByRole('button', { name: '导出中…' })) as HTMLButtonElement
     expect(busy.disabled).toBe(true)
 
@@ -111,7 +126,7 @@ describe('ExportDialog', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderDialog()
 
-    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
     await userEvent.click(await screen.findByRole('button', { name: '复制' }))
 
     expect(writeText).toHaveBeenCalledWith(OUT_DIR)
@@ -130,7 +145,7 @@ describe('ExportDialog', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderDialog()
 
-    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
     await userEvent.click(await screen.findByRole('button', { name: '复制' }))
 
     await waitFor(() => expect(execMock).toHaveBeenCalledWith('copy'))
@@ -162,7 +177,7 @@ describe('ExportDialog', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderDialog()
 
-    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
     await userEvent.click(await screen.findByRole('button', { name: '下载 zip' }))
 
     await waitFor(() =>
@@ -185,14 +200,15 @@ describe('ExportDialog', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderDialog()
 
-    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
     expect(await screen.findByText(OUT_DIR)).toBeTruthy()
 
-    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
     expect(await screen.findByRole('alert')).toBeTruthy()
-    // The resubmit failed: the stale success card must not sit beside the alert.
+    // The resubmit failed: the frame falls back to the placeholder, no stale path.
     expect(screen.queryByText(OUT_DIR)).toBeNull()
     expect(screen.queryByText(/共 \d+ 页/)).toBeNull()
+    expect(screen.getByText('尚未导出')).toBeTruthy()
   })
 
   it('maps VALIDATION_ERROR to the directory-not-empty copy', async () => {
@@ -200,7 +216,7 @@ describe('ExportDialog', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderDialog()
 
-    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
 
     expect(await screen.findByRole('alert')).toBeTruthy()
     expect(screen.getByText('目录非空，勾选覆盖或换一个')).toBeTruthy()
@@ -211,7 +227,7 @@ describe('ExportDialog', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderDialog()
 
-    await userEvent.click(screen.getByRole('button', { name: '开始导出' }))
+    await userEvent.click(screen.getByRole('button', { name: '导出' }))
     expect(await screen.findByText(OUT_DIR)).toBeTruthy()
 
     // Radix handles Escape as the user-side close path.
@@ -220,6 +236,8 @@ describe('ExportDialog', () => {
     expect(await screen.findByLabelText('输出目录（可选）')).toBeTruthy()
     // A fresh open must not resurrect the previous export's result.
     expect(screen.queryByText(OUT_DIR)).toBeNull()
-    expect(screen.queryByRole('button', { name: '下载 zip' })).toBeNull()
+    expect(screen.getByText('尚未导出')).toBeTruthy()
+    const download = screen.getByRole('button', { name: '下载 zip' }) as HTMLButtonElement
+    expect(download.disabled).toBe(true)
   })
 })

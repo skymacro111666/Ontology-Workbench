@@ -166,6 +166,7 @@
     "dirNotEmpty": "目录非空，勾选覆盖或换一个",
     "exportFailed": "导出失败，请稍后重试",
     "exporting": "导出中…",
+    "empty": "尚未导出",
     "copied": "已复制",
     "copyFailed": "复制失败",
     "download": "下载 zip",
@@ -176,7 +177,7 @@
     "outDirPlaceholder": "留空使用默认：{数据目录}/exports/{id}-{时间戳}",
     "outDirHint": "目录需位于 {数据目录}/exports/ 之下；服务端设置 OW_EXPORT_ALLOW_ANY_PATH=1 可解除此限制。",
     "forceLabel": "覆盖非空目录",
-    "submit": "开始导出",
+    "submit": "导出",
     "resultTitle": "导出结果",
     "pages": "共 {{total}} 页（1 个索引页 + {{entities}} 个实体页）"
   },

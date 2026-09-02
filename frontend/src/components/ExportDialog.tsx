@@ -164,54 +164,55 @@ export default function ExportDialog() {
               {error}
             </p>
           )}
-          {result && (
-            <div className="border-line flex flex-col gap-2 rounded-card border p-3">
-              <p className="text-ink-2 text-sm font-medium">{t('exportDialog.resultTitle')}</p>
-              <div className="flex items-center gap-2">
-                <code className="text-ink-2 min-w-0 flex-1 font-mono text-sm break-all">
-                  {result.outputDir}
-                </code>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0"
-                  disabled={downloading}
-                  onClick={() => void downloadZip()}
-                >
-                  <DownloadIcon />
-                  {t('exportDialog.download')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="shrink-0"
-                  onClick={() => void copyDir()}
-                >
-                  <CopyIcon />
-                  {t('common.copy')}
-                </Button>
-              </div>
-              <p className="text-ink-2 text-sm">
-                {t('exportDialog.pages', {
-                  total: result.pageCount,
-                  entities: result.pageCount - 1,
-                })}
-              </p>
-            </div>
-          )}
+          {/* The frame is part of the layout from the start: a placeholder
+              yields to the result in place, so success causes no layout jump. */}
+          <div className="border-line flex flex-col gap-2 rounded-card border p-3">
+            <p className="text-ink-2 text-sm font-medium">{t('exportDialog.resultTitle')}</p>
+            {result ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <code className="text-ink-2 min-w-0 flex-1 font-mono text-sm break-all">
+                    {result.outputDir}
+                  </code>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="text-ink-3 hover:text-ink-1 h-7 w-7 shrink-0 p-0"
+                    aria-label={t('common.copy')}
+                    onClick={() => void copyDir()}
+                  >
+                    <CopyIcon aria-hidden />
+                  </Button>
+                </div>
+                <p className="text-ink-2 text-sm">
+                  {t('exportDialog.pages', {
+                    total: result.pageCount,
+                    entities: result.pageCount - 1,
+                  })}
+                </p>
+              </>
+            ) : (
+              <p className="text-ink-3 text-sm">{t('exportDialog.empty')}</p>
+            )}
+          </div>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          className="w-fit"
-          disabled={busy}
-          onClick={() => void submit()}
-        >
-          {busy && <Loader2Icon aria-hidden className="animate-spin" />}
-          {busy ? t('exportDialog.exporting') : t('exportDialog.submit')}
-        </Button>
+        <div className="flex items-center justify-between">
+          <Button type="button" size="sm" disabled={busy} onClick={() => void submit()}>
+            {busy && <Loader2Icon aria-hidden className="animate-spin" />}
+            {busy ? t('exportDialog.exporting') : t('exportDialog.submit')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!result || downloading}
+            onClick={() => void downloadZip()}
+          >
+            <DownloadIcon aria-hidden />
+            {t('exportDialog.download')}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   )
