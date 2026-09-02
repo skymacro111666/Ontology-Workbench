@@ -183,6 +183,7 @@ def import_ontology(
 
     from ontoworkbench.core.indexes import build_indexes
     from ontoworkbench.core.ir import build_ir
+    from ontoworkbench.core.ir_cache import write_ir_cache
     from ontoworkbench.core.parsing import sniff_format, timed_parse
     from ontoworkbench.core.store import LocalUserDirStore
     from ontoworkbench.db.repositories import OntologyRepository, UserRepository
@@ -247,6 +248,8 @@ def import_ontology(
             file_hash=LocalUserDirStore.file_hash(data),
         )
         db_ms = (dup_ms + (time.perf_counter() - t_create)) * 1000
+        # The server's cold start reads this instead of re-paying the parse.
+        write_ir_cache(Path(row.storage_path), ir, row.file_hash)
         t_index = time.perf_counter()
         build_indexes(ir)  # warm parse validation only; server rebuilds on demand
         index_ms = (time.perf_counter() - t_index) * 1000
