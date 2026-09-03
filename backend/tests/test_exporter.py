@@ -3,12 +3,18 @@
 from pathlib import Path
 
 import pytest
-import rdflib
 
 from ontoworkbench.core.errors import CoreError
 from ontoworkbench.core.indexes import build_indexes
-from ontoworkbench.core.ir import build_ir
+from ontoworkbench.core.ir import build_ir_store
+from ontoworkbench.core.parsing import parse_store
 from ontoworkbench.exporter.site import export_site, file_of
+
+
+def _ir(ttl: str):
+    """Build the IR bundle over ttl text."""
+    return build_ir_store(*parse_store(ttl.encode(), "turtle"))
+
 
 MINI = """@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -54,8 +60,7 @@ ex:b1 a ex:B, owl:NamedIndividual .
 
 def built_instanced():
     """Parse INSTANCED once into (ir, indexes)."""
-    g = rdflib.Graph().parse(data=INSTANCED, format="turtle")
-    ir = build_ir(g)
+    ir = _ir(INSTANCED)
     return ir, build_indexes(ir)
 
 
@@ -66,8 +71,7 @@ def page_of(tmp_path: Path, eid: str) -> str:
 
 def built():
     """Parse MINI once into (ir, indexes) for the export tests."""
-    g = rdflib.Graph().parse(data=MINI, format="turtle")
-    ir = build_ir(g)
+    ir = _ir(MINI)
     return ir, build_indexes(ir)
 
 
@@ -137,8 +141,7 @@ def test_dark_mode_follows_system(tmp_path: Path) -> None:
 
 def test_export_survives_subclassof_cycle(tmp_path: Path) -> None:
     """A subClassOf cycle off a root exports fine; both members stay in the tree."""
-    g = rdflib.Graph().parse(data=CYCLIC, format="turtle")
-    ir = build_ir(g)
+    ir = _ir(CYCLIC)
     result = export_site(ir, build_indexes(ir), tmp_path, title="Cyclic")
     html = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert "ex:Root" in html
@@ -148,8 +151,7 @@ def test_export_survives_subclassof_cycle(tmp_path: Path) -> None:
 
 def test_label_markup_escaped_in_pages_raw_in_data(tmp_path: Path) -> None:
     """Label markup never reaches a rendered page raw; data/index.json stays raw."""
-    g = rdflib.Graph().parse(data=XSS, format="turtle")
-    ir = build_ir(g)
+    ir = _ir(XSS)
     export_site(ir, build_indexes(ir), tmp_path, title="XSS")
     pages = list(tmp_path.rglob("*.html"))
     assert pages  # sanity: there are rendered pages to check
@@ -250,8 +252,7 @@ def test_class_page_shows_ancestor_breadcrumbs(tmp_path: Path) -> None:
 
 def test_breadcrumbs_survive_subclassof_cycle(tmp_path: Path) -> None:
     """Crumb computation must not loop on a subClassOf cycle."""
-    g = rdflib.Graph().parse(data=CYCLIC, format="turtle")
-    ir = build_ir(g)
+    ir = _ir(CYCLIC)
     export_site(ir, build_indexes(ir), tmp_path, title="Cyclic")
     a_page = page_of(tmp_path, "http://example.org/A")
     assert 'class="crumbs"' in a_page  # terminates and still renders a trail
@@ -380,7 +381,7 @@ def test_search_index_ships_as_script_tag_safe_for_file_protocol(tmp_path: Path)
         "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
         'ex:A a owl:Class ; rdfs:label "</script>alert(1)</script>"@en .\n'
     )
-    nasty = build_ir(rdflib.Graph().parse(data=nasty_turtle, format="turtle"))
+    nasty = _ir(nasty_turtle)
     export_site(nasty, build_indexes(nasty), tmp_path / "n", title="N")
     nasty_js = (tmp_path / "n" / "data" / "search-index.js").read_text(encoding="utf-8")
     assert "</script" not in nasty_js  # hostile label stays inside the string

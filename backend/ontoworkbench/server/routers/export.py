@@ -15,7 +15,7 @@ from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 from starlette.background import BackgroundTask
 
-from ontoworkbench.core.parsing import parse_graph
+from ontoworkbench.core.parsing import parse_store, serialize_store
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import OntologyRepository
@@ -101,11 +101,11 @@ def export_ontology_site(
     return respond(payload)
 
 
-# Query value -> (rdflib serializer, extension, media type).
+# Query value -> (internal format, extension, media type).
 FILE_EXPORTS: dict[str, tuple[str, str, str]] = {
     "turtle": ("turtle", ".ttl", "text/turtle"),
-    "json-ld": ("json-ld", ".jsonld", "application/ld+json"),
-    "rdf-xml": ("xml", ".rdf", "application/rdf+xml"),
+    "json-ld": ("jsonld", ".jsonld", "application/ld+json"),
+    "rdf-xml": ("rdfxml", ".rdf", "application/rdf+xml"),
 }
 
 
@@ -174,13 +174,13 @@ def export_ontology_file(
             "Unsupported export format",
             f"Choose one of: {', '.join(FILE_EXPORTS)}.",
         )
-    serializer, ext, media_type = spec
+    fmt, ext, media_type = spec
     row = _owned(user, ontology_id, session)
 
-    store: LocalUserDirStore = request.app.state.store
-    data = store.read(Path(row.storage_path))
+    dir_store: LocalUserDirStore = request.app.state.store
+    data = dir_store.read(Path(row.storage_path))
     with ow_parse_seconds.labels(row.format).time():
-        graph = parse_graph(data, row.format)
-    content = graph.serialize(format=serializer)
+        ox_store, prefixes = parse_store(data, row.format)
+    content = serialize_store(ox_store, prefixes, fmt).decode("utf-8")
     filename = f"{Path(row.filename).stem}{ext}"
     return respond({"filename": filename, "mediaType": media_type, "content": content})

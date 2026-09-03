@@ -1,11 +1,12 @@
-"""IR assembly from a small Turtle graph."""
+"""IR assembly from a small Turtle store (build_ir_store contract)."""
+
+from pathlib import Path
 
 import rdflib
-from rdflib import OWL, RDFS
 from rdflib.compare import isomorphic
-from rdflib.term import URIRef
 
-from ontoworkbench.core.ir import build_ir
+from ontoworkbench.core.ir import _ox_curie, _ox_curie_for, _ox_turtle_block, build_ir_store
+from ontoworkbench.core.parsing import parse_store
 
 MINI = """@prefix ex: <http://example.org/> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -16,13 +17,18 @@ ex:likes a owl:ObjectProperty ; rdfs:domain ex:Dog ; rdfs:range ex:Animal .
 """
 
 
+def _build(ttl: str = MINI):
+    """Parse ttl into (store, prefixes) and build the IR bundle."""
+    return build_ir_store(*parse_store(ttl.encode(), "turtle"))
+
+
 def test_build_ir_counts_and_refs() -> None:
     """Counts, CURIEs, hierarchy, and reverse references assemble correctly."""
-    g = rdflib.Graph().parse(data=MINI, format="turtle")
-    ir = build_ir(g)
+    store, pm = parse_store(MINI.encode(), "turtle")
+    ir = build_ir_store(store, pm)
     assert ir.counts.class_count == 2
     assert ir.counts.property_count == 1
-    assert ir.counts.axiom_count == len(g)
+    assert ir.counts.axiom_count == len(store)
 
     dog = ir.entities["http://example.org/Dog"]
     assert dog.curie == "ex:Dog"
@@ -49,17 +55,15 @@ ex:Dog a owl:Class ; rdfs:subClassOf ex:Animal .
 ex:rex a owl:NamedIndividual , ex:Dog , ex:Animal .
 ex:buddy a owl:NamedIndividual , ex:Dog .
 """
-    ir = build_ir(rdflib.Graph().parse(data=ttl, format="turtle"))
+    ir = _build(ttl)
     assert ir.counts.individual_count == 2
     # Graphs without individuals count zero.
-    mini = build_ir(rdflib.Graph().parse(data=MINI, format="turtle"))
-    assert mini.counts.individual_count == 0
+    assert _build().counts.individual_count == 0
 
 
 def test_ir_prefixes_and_axioms() -> None:
     """Namespace bindings surface as prefixes; axioms serialize as Turtle."""
-    g = rdflib.Graph().parse(data=MINI, format="turtle")
-    ir = build_ir(g)
+    ir = _build()
     assert ir.prefixes.get("ex") == "http://example.org/"
     dog = ir.entities["http://example.org/Dog"]
     turtle_text = "\n".join(a.turtle for a in dog.axioms)
@@ -72,8 +76,7 @@ def test_ir_prefixes_and_axioms() -> None:
 
 def test_ir_domain_property_typed() -> None:
     """A property bound to Dog via rdfs:domain carries its ptype."""
-    g = rdflib.Graph().parse(data=MINI, format="turtle")
-    ir = build_ir(g)
+    ir = _build()
     dog = ir.entities["http://example.org/Dog"]
     likes = dog.properties[0]
     assert likes.ptype == "ObjectProperty"
@@ -84,14 +87,10 @@ def test_ir_domain_property_typed() -> None:
 
 def test_pizza_ir_deterministic_and_stable() -> None:
     """Pizza IR: stable counts and byte-identical rebuilds (snapshot substitute)."""
-    from pathlib import Path
-
-    from ontoworkbench.core.parsing import parse_graph
-
     samples = Path(__file__).parents[2] / "ontoworkbench" / "samples"
     data = (samples / "pizza.ttl").read_bytes()
-    ir1 = build_ir(parse_graph(data, "turtle"))
-    ir2 = build_ir(parse_graph(data, "turtle"))
+    ir1 = build_ir_store(*parse_store(data, "turtle"))
+    ir2 = build_ir_store(*parse_store(data, "turtle"))
     assert ir1.counts.class_count == 99
     assert ir1.counts.property_count == 8
     assert ir1.model_dump_json() == ir2.model_dump_json()
@@ -103,8 +102,7 @@ def test_ir_comment_deprecated_and_descendants() -> None:
         "ex:Puppy a owl:Class ; rdfs:subClassOf ex:Dog ; "
         'rdfs:comment "young"@en ; owl:deprecated true .\n'
     )
-    g = rdflib.Graph().parse(data=ttl, format="turtle")
-    ir = build_ir(g)
+    ir = _build(ttl)
     dog = ir.entities["http://example.org/Dog"]
     assert dog.stats.total_descendants == 1  # Puppy
     thing = ir.entities["http://example.org/Animal"]
@@ -116,9 +114,8 @@ def test_ir_comment_deprecated_and_descendants() -> None:
 
 
 def test_ir_prefixes_only_used_namespaces() -> None:
-    """Built-in rdflib namespace bindings do not leak into prefixes."""
-    g = rdflib.Graph().parse(data=MINI, format="turtle")
-    ir = build_ir(g)
+    """The well-known prefix table does not leak unused entries into prefixes."""
+    ir = _build()
     assert set(ir.prefixes) <= {"ex", "rdfs", "owl", "rdf"}  # rdf:type via Turtle 'a'
     assert "brick" not in ir.prefixes and "csvw" not in ir.prefixes
 
@@ -134,8 +131,7 @@ ex:Animal a owl:Class .
 ex:likes a owl:ObjectProperty ; rdfs:domain ex:Dog ; rdfs:range ex:Animal .
 ex:barks a owl:DatatypeProperty ; rdfs:domain ex:Dog ; rdfs:range xsd:boolean .
 """
-    g = rdflib.Graph().parse(data=ttl, format="turtle")
-    ir = build_ir(g)
+    ir = _build(ttl)
     dog = ir.entities["http://example.org/Dog"]
     refs = {r.curie: r for r in dog.referenced_by}
     assert refs["ex:likes"].counterpart is not None
@@ -146,8 +142,7 @@ ex:barks a owl:DatatypeProperty ; rdfs:domain ex:Dog ; rdfs:range xsd:boolean .
 
 def test_ir_referenced_by_relations() -> None:
     """Domain/range axioms link classes and properties in both directions."""
-    g = rdflib.Graph().parse(data=MINI, format="turtle")
-    ir = build_ir(g)
+    ir = _build()
     dog = ir.entities["http://example.org/Dog"]
     # likes points at Dog via rdfs:domain -> Dog is referenced by likes
     refs = {(r.curie, r.relation) for r in dog.referenced_by}
@@ -186,8 +181,7 @@ def test_ir_individuals_grouped_by_direct_class() -> None:
         "ex:buddy a owl:NamedIndividual , ex:Dog .\n"
         "ex:loose a owl:NamedIndividual .\n"
     )
-    g = rdflib.Graph().parse(data=ttl, format="turtle")
-    ir = build_ir(g)
+    ir = _build(ttl)
     dog_insts = ir.instances["http://example.org/Dog"]
     assert [i.curie for i in dog_insts] == ["ex:buddy", "ex:rex"]
     rex = next(i for i in dog_insts if i.curie == "ex:rex")
@@ -203,12 +197,8 @@ def test_ir_individuals_grouped_by_direct_class() -> None:
 
 def test_individuals_collect_assertions() -> None:
     """library.ttl 的 ThreeBody:类型、对象断言、数据断言齐备."""
-    from pathlib import Path
-
-    from ontoworkbench.core.parsing import parse_graph
-
     data = (Path(__file__).parents[2] / "ontoworkbench" / "samples" / "library.ttl").read_bytes()
-    ir = build_ir(parse_graph(data, "turtle"))
+    ir = build_ir_store(*parse_store(data, "turtle"))
 
     tb = ir.individuals[
         "https://github.com/skymacro111666/ontology-workbench/samples/library#ThreeBody"
@@ -246,8 +236,7 @@ def test_individuals_collect_assertions() -> None:
 
 def test_prop_refs_carry_domain_and_range() -> None:
     """A class page's property list carries each property's domain/range."""
-    g = rdflib.Graph().parse(data=MINI, format="turtle")
-    ir = build_ir(g)
+    ir = _build()
     dog = ir.entities["http://example.org/Dog"]
     likes = next(p for p in dog.properties if p.curie == "ex:likes")
     assert [d.curie for d in likes.domain] == ["ex:Dog"]
@@ -256,29 +245,26 @@ def test_prop_refs_carry_domain_and_range() -> None:
 
 def test_ir_bundle_carries_ontology_iri() -> None:
     """The owl:Ontology subject IRI rides the bundle for provenance."""
-    g = rdflib.Graph().parse(data=MINI, format="turtle")
-    assert build_ir(g).ontology_iri is None  # no declaration → None
+    assert _build().ontology_iri is None  # no declaration → None
 
-    declared = rdflib.Graph().parse(
-        data=MINI + "<http://example.org/> a owl:Ontology .\n", format="turtle"
-    )
-    assert build_ir(declared).ontology_iri == "http://example.org/"
+    declared = MINI + "<http://example.org/> a owl:Ontology .\n"
+    assert _build(declared).ontology_iri == "http://example.org/"
 
 
-def _old_serialize_triples_about(graph: rdflib.Graph, uri: URIRef) -> str:
-    """The pre-optimization implementation, kept as the equivalence oracle."""
+def _old_serialize_triples_about(ttl: str, uri: str) -> str:
+    """The pre-optimization rdflib sub-graph serializer, kept as the oracle."""
+    graph = rdflib.Graph().parse(data=ttl.encode(), format="turtle")
+    from rdflib import RDFS
+    from rdflib.term import URIRef
+
     sub = rdflib.Graph()
     sub.bind("rdfs", RDFS)
-    sub.bind("owl", OWL)
-    for prefix, ns in graph.namespaces():
-        if prefix:
-            sub.bind(prefix, ns)
-    for triple in graph.triples((uri, None, None)):
+    for triple in graph.triples((URIRef(uri), None, None)):
         sub.add(triple)
     return sub.serialize(format="turtle").strip()
 
 
-EQUIV_TTL = b"""@prefix ex: <http://example.org/> .
+EQUIV_TTL = """@prefix ex: <http://example.org/> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -290,49 +276,59 @@ ex:Dog a owl:Class ;
 """
 
 
-def test_turtle_block_equivalent_to_old_serializer() -> None:
-    """Every URIRef subject renders a block isomorphic to the old output."""
-    from ontoworkbench.core.ir import _turtle_block
+def _subjects(ttl: str) -> list[str]:
+    """Distinct IRI subjects of the parsed store, deterministic order."""
+    import pyoxigraph as ox
 
-    g = rdflib.Graph().parse(data=EQUIV_TTL, format="turtle")
-    subjects = [s for s in set(g.subjects()) if isinstance(s, URIRef)]
+    store, _ = parse_store(ttl.encode(), "turtle")
+    return sorted(
+        {
+            q.subject.value
+            for q in store.quads_for_pattern(None, None, None, ox.DefaultGraph())
+            if isinstance(q.subject, ox.NamedNode)
+        }
+    )
+
+
+def test_turtle_block_equivalent_to_old_serializer() -> None:
+    """Every IRI subject renders a block isomorphic to the old output."""
+    store, pm = parse_store(EQUIV_TTL.encode(), "turtle")
+    subjects = [s for s in _subjects(EQUIV_TTL) if s.startswith("http://")]
     assert len(subjects) >= 2  # fixture sanity: at least Dog and Animal
-    for s in subjects:
-        old = rdflib.Graph().parse(data=_old_serialize_triples_about(g, s), format="turtle")
-        new = rdflib.Graph().parse(data=_turtle_block(g, s), format="turtle")
-        assert isomorphic(old, new), f"divergence on {s}"
+    for uri in subjects:
+        old = rdflib.Graph().parse(
+            data=_old_serialize_triples_about(EQUIV_TTL, uri), format="turtle"
+        )
+        new = rdflib.Graph().parse(data=_ox_turtle_block(store, pm, uri), format="turtle")
+        assert isomorphic(old, new), f"divergence on {uri}"
 
 
 def test_turtle_block_grouped_and_deterministic() -> None:
     """Predicates group with ';' , objects with ','; output is deterministic."""
-    from ontoworkbench.core.ir import _turtle_block
-
-    g = rdflib.Graph().parse(data=EQUIV_TTL, format="turtle")
-    dog = URIRef("http://example.org/Dog")
-    text = _turtle_block(g, dog)
-    assert text == _turtle_block(g, dog)  # stable across calls
+    store, pm = parse_store(EQUIV_TTL.encode(), "turtle")
+    dog = "http://example.org/Dog"
+    text = _ox_turtle_block(store, pm, dog)
+    assert text == _ox_turtle_block(store, pm, dog)  # stable across calls
     assert "rdfs:label" in text and "@" in text  # lang tag survives
     assert " ;\n" in text  # predicate grouping
     assert text.endswith(" .")
 
 
 def test_curie_cache_roundtrip_and_reuse() -> None:
-    """Cached qnames equal uncached curies; a hit must come from the cache."""
-    from ontoworkbench.core.ir import _curie
-
-    g = rdflib.Graph().parse(data=MINI, format="turtle")
-    dog = URIRef("http://example.org/Dog")
-    cc: dict[URIRef, object] = {}
-    first = _curie(g, dog, cc)
-    assert first == _curie(g, dog) == "ex:Dog"
+    """Cached splits equal uncached curies; a hit must come from the cache."""
+    _, pm = parse_store(MINI.encode(), "turtle")
+    dog = "http://example.org/Dog"
+    cc: dict[str, tuple[str, str] | None] = {}
+    assert _ox_curie(pm, dog, cc) == _ox_curie(pm, dog) == "ex:Dog"
     assert dog in cc
-    cc[dog] = ("ex", "http://example.org/", "POISONED")  # bogus memo entry
-    assert _curie(g, dog, cc) == "ex:POISONED"  # served from the cache
+    cc[dog] = ("ex", "POISONED")  # bogus memo entry
+    assert _ox_curie(pm, dog, cc) == "ex:POISONED"  # served from the cache
+    assert _ox_curie_for(pm, dog, cc) == ("ex", "POISONED")
 
 
 def test_build_ir_with_memo_changes_nothing() -> None:
     """The threaded memo changes no observable IR content."""
-    ir = build_ir(rdflib.Graph().parse(data=EQUIV_TTL, format="turtle"))
+    ir = _build(EQUIV_TTL)
     dog = ir.entities["http://example.org/Dog"]
     assert dog.curie == "ex:Dog"
     assert any("rdfs:label" in a.turtle for a in dog.axioms)

@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from ontoworkbench.core.ir import build_ir
+from ontoworkbench.core.ir import build_ir_store
 from ontoworkbench.core.ir_cache import (
     ir_cache_path,
     read_ir_cache,
     write_ir_cache,
 )
-from ontoworkbench.core.parsing import parse_graph
+from ontoworkbench.core.parsing import parse_store
 
 TTL = b"""@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -25,7 +25,7 @@ HASH = "a" * 64
 
 
 def _ir() -> object:
-    return build_ir(parse_graph(TTL, "turtle"))
+    return build_ir_store(*parse_store(TTL, "turtle"))
 
 
 def test_roundtrip_hit(tmp_path: Path) -> None:

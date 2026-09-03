@@ -1,9 +1,14 @@
 """Tree/search/neighbors/overview from IR."""
 
-import rdflib
-
 from ontoworkbench.core.indexes import Indexes, build_indexes
-from ontoworkbench.core.ir import build_ir
+from ontoworkbench.core.ir import build_ir_store
+from ontoworkbench.core.parsing import parse_store
+
+
+def _ir(ttl: str):
+    """Build the IR bundle over ttl text."""
+    return build_ir_store(*parse_store(ttl.encode(), "turtle"))
+
 
 MINI = """@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -16,8 +21,7 @@ ex:Dog a owl:Class ; rdfs:subClassOf ex:Animal ; rdfs:comment "loyal"@en .
 
 def make():
     """Build indexes over the MINI ontology."""
-    g = rdflib.Graph().parse(data=MINI, format="turtle")
-    return build_indexes(build_ir(g))
+    return build_indexes(_ir(MINI))
 
 
 def test_tree_roots_and_children() -> None:
@@ -59,8 +63,8 @@ def test_overview_small_graph_not_truncated() -> None:
     assert len(ov["nodes"]) == 3 and len(ov["edges"]) == 2
 
 
-def _chain(n: int) -> rdflib.Graph:
-    """A linear class hierarchy L0 <- L1 <- ... <- L(n-1)."""
+def _chain(n: int) -> str:
+    """A linear class hierarchy L0 <- L1 <- ... <- L(n-1), as Turtle text."""
     ttl = (
         "@prefix ex: <http://example.org/> .\n"
         "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
@@ -68,12 +72,12 @@ def _chain(n: int) -> rdflib.Graph:
         "ex:L0 a owl:Class .\n"
     )
     ttl += "".join(f"ex:L{i} a owl:Class ; rdfs:subClassOf ex:L{i - 1} .\n" for i in range(1, n))
-    return rdflib.Graph().parse(data=ttl, format="turtle")
+    return ttl
 
 
 def test_overview_renders_full_depth_within_budget() -> None:
     """Within the node budget the hierarchy renders at full depth (spec §7.5)."""
-    ix = build_indexes(build_ir(_chain(6)))
+    ix = build_indexes(_ir(_chain(6)))
     ov = ix.overview()
     assert ov["truncated"] is False
     assert len(ov["nodes"]) == 6
@@ -82,7 +86,7 @@ def test_overview_renders_full_depth_within_budget() -> None:
 
 def test_overview_degrades_to_three_levels_past_budget() -> None:
     """Past the node budget only the top 3 levels render, flagged truncated."""
-    ix = build_indexes(build_ir(_chain(20)))
+    ix = build_indexes(_ir(_chain(20)))
     ov = ix.overview(max_nodes=5)
     assert ov["truncated"] is True
     assert len(ov["nodes"]) == 4  # levels 0-3 of the chain
@@ -91,18 +95,13 @@ def test_overview_degrades_to_three_levels_past_budget() -> None:
 
 def test_overview_truncates_large_graphs() -> None:
     """Above max_nodes the overview degrades to top levels and flags it."""
-    import io
-
-    buf = io.StringIO()
-    buf.write(
+    ttl = (
         "@prefix ex: <http://example.org/> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
+        "ex:Root a owl:Class .\n"
     )
-    buf.write("@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n")
-    buf.write("ex:Root a owl:Class .\n")
-    for i in range(600):
-        buf.write(f"ex:C{i} a owl:Class ; rdfs:subClassOf ex:Root .\n")
-    g = rdflib.Graph().parse(data=buf.getvalue(), format="turtle")
-    ix = build_indexes(build_ir(g))
+    ttl += "".join(f"ex:C{i} a owl:Class ; rdfs:subClassOf ex:Root .\n" for i in range(600))
+    ix = build_indexes(_ir(ttl))
     ov = ix.overview(max_nodes=100)
     assert ov["truncated"] is True
     assert ov["total_count"] == 601
@@ -164,8 +163,7 @@ ex:whiskers a owl:NamedIndividual , ex:Cat .
 
 def make3():
     """Build indexes over MINI3 (classes with named individuals)."""
-    g = rdflib.Graph().parse(data=MINI3, format="turtle")
-    return build_indexes(build_ir(g))
+    return build_indexes(_ir(MINI3))
 
 
 def test_tree_reports_instance_counts() -> None:
@@ -219,8 +217,7 @@ def test_overview_multi_parent_child_not_duplicated() -> None:
     (wine#Sauternes / foaf:Person blanks), so the walk must dedupe nodes
     while still emitting one edge per real parent link.
     """
-    g = rdflib.Graph().parse(data=MINI_DIAMOND, format="turtle")
-    ix = build_indexes(build_ir(g))
+    ix = build_indexes(_ir(MINI_DIAMOND))
     ov = ix.overview()
     ids = [n["id"] for n in ov["nodes"]]
     assert len(ids) == len(set(ids)) == 3
@@ -247,8 +244,7 @@ ex:Ghost a owl:Class ; rdfs:subClassOf <http://external.org/X> .
 
 def make2():
     """Build indexes over MINI2 (labels, siblings, properties, orphan)."""
-    g = rdflib.Graph().parse(data=MINI2, format="turtle")
-    return build_indexes(build_ir(g))
+    return build_indexes(_ir(MINI2))
 
 
 def test_orphan_class_with_external_parent_is_root() -> None:
@@ -286,11 +282,8 @@ def test_individual_lookup_and_instance_search() -> None:
     """individual() 命中;search 覆盖实例并支持 type 过滤。."""
     from pathlib import Path
 
-    from ontoworkbench.core.ir import build_ir
-    from ontoworkbench.core.parsing import parse_graph
-
     data = (Path(__file__).parents[2] / "ontoworkbench" / "samples" / "library.ttl").read_bytes()
-    ix = build_indexes(build_ir(parse_graph(data, "turtle")))
+    ix = build_indexes(build_ir_store(*parse_store(data, "turtle")))
 
     tb_eid = "https://github.com/skymacro111666/ontology-workbench/samples/library#ThreeBody"
     assert ix.individual(tb_eid) is not None and ix.individual(tb_eid).kind == "instance"
@@ -323,9 +316,7 @@ ex:multiProp a owl:ObjectProperty ; rdfs:domain ex:Parent , ex:Child ; rdfs:rang
 
 def test_assertion_schema_branches() -> None:
     """Direct / inherited / domainless / multi-domain props with their targets."""
-    from ontoworkbench.core.parsing import parse_graph
-
-    ix = build_indexes(build_ir(parse_graph(ASSERT_MINI.encode(), "turtle")))
+    ix = build_indexes(_ir(ASSERT_MINI))
     props = {p.curie: p for p in ix.assertion_schema(["http://example.org/Child"])}
     assert set(props) == {"ex:directProp", "ex:parentProp", "ex:freeProp", "ex:multiProp"}
 
@@ -354,8 +345,6 @@ def _linked(n: int, cap: int | None = None) -> tuple[Indexes, list[str], int]:
     cap stops emitting pairs early; returns indexes, eids, and the true
     edge count — the fixture for truthful truncation totals.
     """
-    from ontoworkbench.core.parsing import parse_graph
-
     ttl = (
         "@prefix ex: <http://example.org/> .\n"
         "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
@@ -369,7 +358,7 @@ def _linked(n: int, cap: int | None = None) -> tuple[Indexes, list[str], int]:
                 continue
             ttl += f"ex:w{i} ex:knows ex:w{j} .\n"
             count += 1
-    ix = build_indexes(build_ir(parse_graph(ttl.encode(), "turtle")))
+    ix = build_indexes(_ir(ttl))
     return ix, [f"http://example.org/w{i}" for i in range(n)], count
 
 
@@ -411,8 +400,7 @@ ex:badgeNo a owl:DatatypeProperty ; rdfs:domain ex:Employee .
 
 def make_hr():
     """Indexes over a domain/range object property plus a datatype one."""
-    g = rdflib.Graph().parse(data=HR, format="turtle")
-    return build_indexes(build_ir(g))
+    return build_indexes(_ir(HR))
 
 
 def test_overview_object_property_becomes_direct_edge() -> None:
@@ -437,7 +425,7 @@ def test_overview_object_property_without_range_keeps_node() -> None:
     It stays visible rather than vanishing from the canvas.
     """
     ttl = HR.replace(" ; rdfs:range ex:Department .", " .", 1)
-    ix = build_indexes(build_ir(rdflib.Graph().parse(data=ttl, format="turtle")))
+    ix = build_indexes(_ir(ttl))
     ov = ix.overview()
     assert any(n["curie"] == "ex:worksIn" for n in ov["nodes"])
     assert any(e["kind"] == "property" for e in ov["edges"])

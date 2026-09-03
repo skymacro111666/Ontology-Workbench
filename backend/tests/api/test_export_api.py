@@ -228,15 +228,15 @@ def test_export_site_rides_shared_cache(
 
     client.app.state.cache.drop(oid)
     calls: list[int] = []
-    real = getattr(export_mod, "parse_graph", None)
+    real = getattr(export_mod, "parse_store", None)
 
     def spy(data, fmt):  # noqa: ANN001 — test-local shape
         calls.append(1)
         assert real is not None  # only reachable while export still parses itself
         return real(data, fmt)
 
-    # raising=False: valid even if export later drops the parse_graph import.
-    monkeypatch.setattr(export_mod, "parse_graph", spy, raising=False)
+    # raising=False: valid even if export later drops the parse_store import.
+    monkeypatch.setattr(export_mod, "parse_store", spy, raising=False)
     out2 = tmp_path / "exports" / "b"
     r = client.post(f"/api/ontologies/{oid}/export/site", json={"outDir": str(out2)})
     assert r.status_code == 200

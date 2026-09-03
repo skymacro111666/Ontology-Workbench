@@ -1,4 +1,8 @@
-"""rdflib parsing + format sniffing (extension first, content fallback)."""
+"""Parsing + format sniffing (extension first, content fallback).
+
+parse_store/serialize_store are the engine; the rdflib parse_graph family
+below is the migration-window oracle pending removal (plan 2026-09-03).
+"""
 
 from __future__ import annotations
 
@@ -10,6 +14,8 @@ import rdflib
 
 from ontoworkbench.core.errors import CoreError
 from ontoworkbench.core.prefixes import PrefixMap
+
+XSD_NS = "http://www.w3.org/2001/XMLSchema#"
 
 
 class ParseError(CoreError):
@@ -156,8 +162,6 @@ def literal_type_ok(value: str, datatype: str) -> bool:
     from collections.abc import Callable
     from datetime import date, datetime
 
-    from rdflib.namespace import XSD
-
     def _try(fn: Callable[[], object]) -> bool:
         try:
             fn()
@@ -166,11 +170,11 @@ def literal_type_ok(value: str, datatype: str) -> bool:
             return False
 
     table = {
-        str(XSD.integer): lambda v: v.lstrip("+-").isdigit() and v.lstrip("+-") != "",
-        str(XSD.decimal): lambda v: _is_decimal(v),
-        str(XSD.boolean): lambda v: v in ("true", "false", "0", "1"),
-        str(XSD.date): lambda v: _try(lambda: date.fromisoformat(v)),
-        str(XSD.dateTime): lambda v: _try(lambda: datetime.fromisoformat(v)),
+        XSD_NS + "integer": lambda v: v.lstrip("+-").isdigit() and v.lstrip("+-") != "",
+        XSD_NS + "decimal": lambda v: _is_decimal(v),
+        XSD_NS + "boolean": lambda v: v in ("true", "false", "0", "1"),
+        XSD_NS + "date": lambda v: _try(lambda: date.fromisoformat(v)),
+        XSD_NS + "dateTime": lambda v: _try(lambda: datetime.fromisoformat(v)),
     }
     check = table.get(datatype)
     return True if check is None else bool(check(value))
