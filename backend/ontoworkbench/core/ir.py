@@ -7,6 +7,7 @@ everything its detail page needs.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 import rdflib
@@ -192,17 +193,88 @@ def _is_class(graph: rdflib.Graph, uri: Node) -> bool:
     return (uri, RDF.type, OWL.Class) in graph
 
 
-def _serialize_triples_about(graph: rdflib.Graph, uri: URIRef) -> str:
-    """All triples where uri is subject, serialized as Turtle."""
-    sub = rdflib.Graph()
-    sub.bind("rdfs", RDFS)
-    sub.bind("owl", OWL)
-    for prefix, ns in graph.namespaces():
-        if prefix:
-            sub.bind(prefix, ns)
-    for triple in graph.triples((uri, None, None)):
-        sub.add(triple)
-    return sub.serialize(format="turtle").strip()
+_TTL_ESCAPES = {"\\": "\\\\", '"': '\\"', "\n": "\\n", "\r": "\\r", "\t": "\\t"}
+# Conservative PN_LOCAL whitelist; anything else renders as <iri> (always valid).
+_PN_LOCAL = re.compile(r"[A-Za-z0-9_](?:[A-Za-z0-9_\-.]*[A-Za-z0-9_\-])?\Z")
+
+
+def _ttl_literal(lit: Literal) -> str:
+    """One rdflib Literal as a Turtle quoted string with tag/datatype."""
+    text = "".join(_TTL_ESCAPES.get(ch, ch) for ch in str(lit))
+    if lit.language:
+        return f'"{text}"@{lit.language}'
+    if lit.datatype is not None:
+        return f'"{text}"^^<{lit.datatype}>'
+    return f'"{text}"'
+
+
+def _ttl_term(
+    graph: rdflib.Graph,
+    term: Node,
+    bindings: dict[str, str] | None = None,
+    bnodes: dict[Node, str] | None = None,
+) -> str:
+    """One RDF term as Turtle: prefixed name, <iri>, literal or bnode.
+
+    Prefixed renderings record their namespace in `bindings` (when given)
+    so the caller can emit a self-contained block with @prefix lines; a
+    `bnodes` map relabels blank nodes to _:b0, _:b1… by first appearance
+    (raw ids are random per parse, which would break rebuild determinism).
+    """
+    if isinstance(term, URIRef):
+        try:
+            prefix, namespace, local = graph.compute_qname(term)
+        except Exception:  # unbound or split-failing namespace
+            return f"<{term}>"
+        if prefix and _PN_LOCAL.match(local):
+            if bindings is not None:
+                bindings[prefix] = str(namespace)
+            return f"{prefix}:{local}"
+        return f"<{term}>"
+    if isinstance(term, Literal):
+        return _ttl_literal(term)
+    if bnodes is None:
+        return term.n3()
+    label = bnodes.get(term)
+    if label is None:
+        label = bnodes[term] = f"_:b{len(bnodes)}"
+    return label
+
+
+def _turtle_block(graph: rdflib.Graph, uri: URIRef) -> str:
+    """All triples with uri as subject, one self-contained Turtle block.
+
+    Replaces the per-entity rdflib sub-graph + turtle serializer (a full
+    prefix computation and sort per entity — the dominant build_ir cost on
+    50k-class ontologies). Same triple set, hand-grouped by predicate, with
+    the used @prefix declarations leading the block like the old output.
+    """
+    by_pred: dict[str, tuple[Node, list[Node]]] = {}
+    for _, p, o in graph.triples((uri, None, None)):
+        entry = by_pred.get(str(p))
+        if entry is None:
+            by_pred[str(p)] = (p, [o])
+        else:
+            entry[1].append(o)
+    if not by_pred:
+        return ""
+    bindings: dict[str, str] = {}
+    bnodes: dict[Node, str] = {}
+    parts: list[str] = []
+    for key in sorted(by_pred):
+        p, objs = by_pred[key]
+        pred = "a" if p == RDF.type else _ttl_term(graph, p, bindings, bnodes)
+        rendered = sorted(_ttl_term(graph, o, bindings, bnodes) for o in objs)
+        parts.append(f"{pred} " + " , ".join(rendered))
+    subject = _ttl_term(graph, uri, bindings, bnodes)
+    text = f"{subject} {parts[0]}"
+    for part in parts[1:]:
+        text += f" ;\n    {part}"
+    text += " ."
+    header = "".join(
+        f"@prefix {prefix}: <{namespace}> .\n" for prefix, namespace in sorted(bindings.items())
+    )
+    return f"{header}\n{text}" if header else text
 
 
 def build_ir(graph: rdflib.Graph) -> IRBundle:
@@ -305,7 +377,7 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
             children=children,
             properties=properties,
             referenced_by=_referenced(uri, is_class, children),
-            axioms=[Axiom(turtle=_serialize_triples_about(graph, uri))],
+            axioms=[Axiom(turtle=_turtle_block(graph, uri))],
             stats=Stats(direct_children=len(children)),
         )
 

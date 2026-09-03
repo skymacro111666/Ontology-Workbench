@@ -1,6 +1,9 @@
 """IR assembly from a small Turtle graph."""
 
 import rdflib
+from rdflib import OWL, RDFS
+from rdflib.compare import isomorphic
+from rdflib.term import URIRef
 
 from ontoworkbench.core.ir import build_ir
 
@@ -260,3 +263,54 @@ def test_ir_bundle_carries_ontology_iri() -> None:
         data=MINI + "<http://example.org/> a owl:Ontology .\n", format="turtle"
     )
     assert build_ir(declared).ontology_iri == "http://example.org/"
+
+
+def _old_serialize_triples_about(graph: rdflib.Graph, uri: URIRef) -> str:
+    """The pre-optimization implementation, kept as the equivalence oracle."""
+    sub = rdflib.Graph()
+    sub.bind("rdfs", RDFS)
+    sub.bind("owl", OWL)
+    for prefix, ns in graph.namespaces():
+        if prefix:
+            sub.bind(prefix, ns)
+    for triple in graph.triples((uri, None, None)):
+        sub.add(triple)
+    return sub.serialize(format="turtle").strip()
+
+
+EQUIV_TTL = b"""@prefix ex: <http://example.org/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+ex:Animal a owl:Class .
+ex:Dog a owl:Class ;
+    rdfs:label "Dog"@en , "Dog \\"aka\\" canine" , "4"^^xsd:integer , "tab\\there" ;
+    rdfs:comment "line1\\nline2" ;
+    rdfs:subClassOf ex:Animal , [ a owl:Restriction ] .
+"""
+
+
+def test_turtle_block_equivalent_to_old_serializer() -> None:
+    """Every URIRef subject renders a block isomorphic to the old output."""
+    from ontoworkbench.core.ir import _turtle_block
+
+    g = rdflib.Graph().parse(data=EQUIV_TTL, format="turtle")
+    subjects = [s for s in set(g.subjects()) if isinstance(s, URIRef)]
+    assert len(subjects) >= 2  # fixture sanity: at least Dog and Animal
+    for s in subjects:
+        old = rdflib.Graph().parse(data=_old_serialize_triples_about(g, s), format="turtle")
+        new = rdflib.Graph().parse(data=_turtle_block(g, s), format="turtle")
+        assert isomorphic(old, new), f"divergence on {s}"
+
+
+def test_turtle_block_grouped_and_deterministic() -> None:
+    """Predicates group with ';' , objects with ','; output is deterministic."""
+    from ontoworkbench.core.ir import _turtle_block
+
+    g = rdflib.Graph().parse(data=EQUIV_TTL, format="turtle")
+    dog = URIRef("http://example.org/Dog")
+    text = _turtle_block(g, dog)
+    assert text == _turtle_block(g, dog)  # stable across calls
+    assert "rdfs:label" in text and "@" in text  # lang tag survives
+    assert " ;\n" in text  # predicate grouping
+    assert text.endswith(" .")
