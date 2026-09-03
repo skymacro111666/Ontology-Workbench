@@ -355,13 +355,13 @@ def test_browse_serves_from_disk_ir_cache_after_memory_drop(
 
     client.app.state.cache.drop(oid)
     calls = []
-    real = browse_mod.parse_graph
+    real = browse_mod.timed_parse_store
 
     def spy(data, fmt):  # noqa: ANN001 — test-local shape
         calls.append(1)
         return real(data, fmt)
 
-    monkeypatch.setattr(browse_mod, "parse_graph", spy)
+    monkeypatch.setattr(browse_mod, "timed_parse_store", spy)
     second = client.get(f"/api/ontologies/{oid}/tree")
     assert second.status_code == 200
     assert second.json()["data"][0]["curie"] == "ex:Thing"
@@ -378,13 +378,13 @@ def test_upload_warms_disk_ir_cache(client: TestClient, monkeypatch) -> None:
     oid = _upload(client)
     client.app.state.cache.drop(oid)
     calls = []
-    real = browse_mod.parse_graph
+    real = browse_mod.timed_parse_store
 
     def spy(data, fmt):  # noqa: ANN001 — test-local shape
         calls.append(1)
         return real(data, fmt)
 
-    monkeypatch.setattr(browse_mod, "parse_graph", spy)
+    monkeypatch.setattr(browse_mod, "timed_parse_store", spy)
     tree = client.get(f"/api/ontologies/{oid}/tree")
     assert tree.status_code == 200
     assert calls == []

@@ -1,8 +1,8 @@
 """Pickled IR cache beside the stored ontology file (spec 2026-09-03 §2).
 
-Restarts skip the rdflib parse + build_ir pass (~21min on go.owl) by loading
-the persisted IRBundle. Indexes are deliberately NOT persisted: they rebuild
-in <1s and embed truncation policy that must not be frozen on disk.
+Restarts skip the parse + IR-build pass by loading the persisted IRBundle.
+Indexes are deliberately NOT persisted: they rebuild in <1s and embed
+truncation policy that must not be frozen on disk.
 """
 
 from __future__ import annotations
@@ -17,7 +17,10 @@ import structlog
 
 from ontoworkbench.core.ir import IRBundle
 
-IR_SCHEMA_VERSION = 1  # IRBundle 结构或 build_ir 语义变更时必须 bump
+# v2: pyoxigraph 迁移 — IR 改由 build_ir_store 组装(curie/prefix 口径从 rdflib
+# 内置命名表换成 PrefixMap),语义等价但产物不必逐字节同;旧 v1 pkl 因版本
+# 不匹配自动按 miss 处理、下次导入/浏览重建。
+IR_SCHEMA_VERSION = 2  # IRBundle 结构或 build_ir 语义变更时必须 bump
 CACHE_FILENAME = "index.pkl"
 
 _log = structlog.get_logger("ow.cache")

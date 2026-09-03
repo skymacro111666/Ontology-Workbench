@@ -182,9 +182,9 @@ def import_ontology(
     from uuid import uuid4
 
     from ontoworkbench.core.indexes import build_indexes
-    from ontoworkbench.core.ir import build_ir
+    from ontoworkbench.core.ir import build_ir_store
     from ontoworkbench.core.ir_cache import write_ir_cache
-    from ontoworkbench.core.parsing import sniff_format, timed_parse
+    from ontoworkbench.core.parsing import sniff_format, timed_parse_store
     from ontoworkbench.core.store import LocalUserDirStore
     from ontoworkbench.db.repositories import OntologyRepository, UserRepository
     from ontoworkbench.db.session import init_engine, sessionmaker_or_fail
@@ -220,9 +220,9 @@ def import_ontology(
             raise typer.Exit(code=0)
         dup_ms = time.perf_counter() - t_dup
         fmt = sniff_format(filename, data[:2048])
-        graph, parse_ms = timed_parse(data, fmt)
+        ox_store, prefixes, parse_ms = timed_parse_store(data, fmt)
         t_ir = time.perf_counter()
-        ir = build_ir(graph)
+        ir = build_ir_store(ox_store, prefixes)
         ir_ms = (time.perf_counter() - t_ir) * 1000
         store = LocalUserDirStore(settings.data_dir)
         oid = uuid4()
@@ -293,8 +293,8 @@ def export_site_cmd(
 
     from ontoworkbench.core.errors import CoreError
     from ontoworkbench.core.indexes import build_indexes
-    from ontoworkbench.core.ir import build_ir
-    from ontoworkbench.core.parsing import parse_graph
+    from ontoworkbench.core.ir import build_ir_store
+    from ontoworkbench.core.parsing import parse_store
     from ontoworkbench.db.repositories import OntologyRepository, UserRepository
     from ontoworkbench.db.session import init_engine, sessionmaker_or_fail
     from ontoworkbench.exporter.site import default_out_dir, export_site
@@ -323,7 +323,8 @@ def export_site_cmd(
             typer.echo(f"no such ontology: {ontology_id}", err=True)
             raise typer.Exit(code=2)
         data = Path(row.storage_path).read_bytes()
-        ir = build_ir(parse_graph(data, row.format))
+        ox_store, prefixes = parse_store(data, row.format)
+        ir = build_ir_store(ox_store, prefixes)
         target = Path(out) if out else default_out_dir(settings.data_dir, oid)
         try:
             result = export_site(ir, build_indexes(ir), target, row.title or row.filename, force)

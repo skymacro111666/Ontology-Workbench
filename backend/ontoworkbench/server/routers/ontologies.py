@@ -12,13 +12,16 @@ import structlog
 from fastapi import APIRouter, Depends, Request, UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+from pyoxigraph import DefaultGraph, NamedNode, Store
+from pyoxigraph import Literal as OxLiteral
 from rdflib import DCTERMS, OWL, RDF
 from sqlalchemy.orm import Session
 
+from ontoworkbench.core import terms
 from ontoworkbench.core.indexes import build_indexes
-from ontoworkbench.core.ir import build_ir
+from ontoworkbench.core.ir import build_ir_store
 from ontoworkbench.core.ir_cache import write_ir_cache
-from ontoworkbench.core.parsing import sniff_format, timed_parse
+from ontoworkbench.core.parsing import sniff_format, timed_parse_store
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import LayoutRepository, OntologyRepository
@@ -132,6 +135,26 @@ def title_of(graph, filename: str) -> str:
     return filename.rsplit(".", 1)[0]
 
 
+def title_of_store(store: Store, filename: str) -> str:
+    """dc:title of the owl:Ontology node, else the filename stem (ox path).
+
+    Same contract as title_of above — kept separate because the edit paths
+    (entities.py) still walk an rdflib graph. Subjects are sorted so the
+    pick under multiple owl:Ontology declarations is deterministic,
+    matching build_ir_store's ontology_iri choice.
+    """
+    subjects = sorted(
+        q.subject.value
+        for q in store.quads_for_pattern(None, terms.RDF_TYPE, terms.OWL_ONTOLOGY, DefaultGraph())
+        if isinstance(q.subject, NamedNode)
+    )
+    for ont in subjects:
+        for q in store.quads_for_pattern(NamedNode(ont), terms.DCTERMS_TITLE, None, DefaultGraph()):
+            if isinstance(q.object, OxLiteral):
+                return q.object.value
+    return filename.rsplit(".", 1)[0]
+
+
 def meta_of(row: Ontology) -> dict[str, Any]:
     """Assemble the camelCase OntologyMeta payload for a row."""
     prefixes = (row.stats_json or {}).get("prefixes", {})
@@ -204,11 +227,11 @@ def _import_bytes(
         fmt = sniff_format(filename, data[:2048])
         t_parse = time.perf_counter()
         with ow_parse_seconds.labels(fmt).time():
-            graph, parse_ms = timed_parse(data, fmt)
+            ox_store, prefixes, parse_ms = timed_parse_store(data, fmt)
         parse_ms = round((time.perf_counter() - t_parse) * 1000, 1)
         t_ir = time.perf_counter()
         with ow_build_seconds.time():
-            ir = build_ir(graph)
+            ir = build_ir_store(ox_store, prefixes)
         ir_ms = round((time.perf_counter() - t_ir) * 1000, 1)
 
         oid = uuid4()
@@ -219,7 +242,7 @@ def _import_bytes(
         row = repos.create(
             user.id,
             id=oid,
-            title=title_of(graph, filename),
+            title=title_of_store(ox_store, filename),
             filename=filename,
             storage_path=str(path),
             format=fmt,
@@ -368,9 +391,9 @@ def replace_source(
             "Reload the source and reapply your edits on top.",
         )
     with ow_parse_seconds.labels(row.format).time():
-        graph, parse_ms = timed_parse(data, row.format)
+        ox_store, prefixes, parse_ms = timed_parse_store(data, row.format)
     with ow_build_seconds.time():
-        ir = build_ir(graph)
+        ir = build_ir_store(ox_store, prefixes)
 
     store: LocalUserDirStore = request.app.state.store
     store.save(user.id, UUID(str(row.id)), row.filename, data)
@@ -378,7 +401,7 @@ def replace_source(
     row = (
         repos.update(
             row.id,
-            title=title_of(graph, row.filename),
+            title=title_of_store(ox_store, row.filename),
             class_count=ir.counts.class_count,
             property_count=ir.counts.property_count,
             axiom_count=ir.counts.axiom_count,

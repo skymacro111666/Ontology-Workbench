@@ -122,12 +122,12 @@ def test_source_put_refreshes_disk_ir_cache(client: TestClient, monkeypatch) -> 
 
     client.app.state.cache.drop(oid)
     calls = []
-    real = browse_mod.parse_graph
+    real = browse_mod.timed_parse_store
 
     def spy(data, fmt):  # noqa: ANN001 — test-local shape
         calls.append(1)
         return real(data, fmt)
 
-    monkeypatch.setattr(browse_mod, "parse_graph", spy)
+    monkeypatch.setattr(browse_mod, "timed_parse_store", spy)
     assert client.get(f"/api/ontologies/{oid}/tree").status_code == 200
     assert calls == []

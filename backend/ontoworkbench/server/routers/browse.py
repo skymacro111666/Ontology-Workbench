@@ -11,14 +11,18 @@ from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
 from ontoworkbench.core.indexes import Indexes, build_indexes
-from ontoworkbench.core.ir import build_ir
+from ontoworkbench.core.ir import build_ir_store
 from ontoworkbench.core.ir_cache import read_ir_cache, write_ir_cache
-from ontoworkbench.core.parsing import parse_graph
+from ontoworkbench.core.parsing import timed_parse_store
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import OntologyRepository
 from ontoworkbench.db.session import get_session
-from ontoworkbench.observability.metrics import ow_build_seconds, ow_ir_cache_reads_total
+from ontoworkbench.observability.metrics import (
+    ow_build_seconds,
+    ow_ir_cache_reads_total,
+    ow_parse_seconds,
+)
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
@@ -39,8 +43,10 @@ def _loader(request: Request):
         if cached.ir is not None:
             return build_indexes(cached.ir)
         data = store.read(Path(row.storage_path))
+        with ow_parse_seconds.labels(row.format).time():
+            ox_store, prefixes, _ = timed_parse_store(data, row.format)
         with ow_build_seconds.time():
-            ir = build_ir(parse_graph(data, row.format))
+            ir = build_ir_store(ox_store, prefixes)
         write_ir_cache(Path(row.storage_path), ir, row.file_hash)
         return build_indexes(ir)
 

@@ -244,13 +244,13 @@ def test_entity_write_refreshes_disk_ir_cache(client: TestClient, monkeypatch) -
 
     client.app.state.cache.drop(oid)
     calls = []
-    real = browse_mod.parse_graph
+    real = browse_mod.timed_parse_store
 
     def spy(data, fmt):  # noqa: ANN001 — test-local shape
         calls.append(1)
         return real(data, fmt)
 
-    monkeypatch.setattr(browse_mod, "parse_graph", spy)
+    monkeypatch.setattr(browse_mod, "timed_parse_store", spy)
     ov = client.get(f"/api/ontologies/{oid}/overview")
     assert ov.status_code == 200
     assert ov.json()["data"]["totalCount"] == 7  # MINI 6 entities + Cat

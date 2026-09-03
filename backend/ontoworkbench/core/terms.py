@@ -30,6 +30,7 @@ WELL_KNOWN_PREFIXES = dict(_NS)
 
 RDF_TYPE = ox.NamedNode(_NS["rdf"] + "type")
 RDFS_LABEL = ox.NamedNode(_NS["rdfs"] + "label")
+DCTERMS_TITLE = ox.NamedNode(_NS["dcterms"] + "title")
 RDFS_COMMENT = ox.NamedNode(_NS["rdfs"] + "comment")
 RDFS_SUBCLASSOF = ox.NamedNode(_NS["rdfs"] + "subClassOf")
 RDFS_DOMAIN = ox.NamedNode(_NS["rdfs"] + "domain")
