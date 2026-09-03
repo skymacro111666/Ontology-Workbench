@@ -14,7 +14,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from pyoxigraph import DefaultGraph, NamedNode, Store
 from pyoxigraph import Literal as OxLiteral
-from rdflib import DCTERMS, OWL, RDF
 from sqlalchemy.orm import Session
 
 from ontoworkbench.core import terms
@@ -126,22 +125,12 @@ def blank_skeleton(name: str, namespace: str, prefix: str) -> bytes:
     ).encode()
 
 
-def title_of(graph, filename: str) -> str:
-    """dc:title of the owl:Ontology node, else the filename stem."""
-    for ont in graph.subjects(RDF.type, OWL.Ontology):
-        title = graph.value(ont, DCTERMS.title)
-        if title:
-            return str(title)
-    return filename.rsplit(".", 1)[0]
-
-
 def title_of_store(store: Store, filename: str) -> str:
-    """dc:title of the owl:Ontology node, else the filename stem (ox path).
+    """dc:title of the owl:Ontology node, else the filename stem.
 
-    Same contract as title_of above — kept separate because the edit paths
-    (entities.py) still walk an rdflib graph. Subjects are sorted so the
-    pick under multiple owl:Ontology declarations is deterministic,
-    matching build_ir_store's ontology_iri choice.
+    Subjects are sorted so the pick under multiple owl:Ontology
+    declarations is deterministic, matching build_ir_store's ontology_iri
+    choice.
     """
     subjects = sorted(
         q.subject.value

@@ -1,19 +1,20 @@
 """Instance editing (B2): create/delete named individuals with assertions.
 
 Rides the exact A2 pipeline from entities.py (spec 2026-08-30 §3): load the
-stored file, mutate the graph, revalidate+persist through _persist with the
+stored file, mutate the Store, revalidate+persist through _persist with the
 baseFileHash optimistic lock. Separate module — EntityDialogs' class/property
 concerns stay out of instance concerns.
 """
 
 from __future__ import annotations
 
+import pyoxigraph as ox
 from fastapi import APIRouter, Depends, Request
 from pydantic import Field, field_validator
-from rdflib import OWL, RDF, RDFS, Graph, URIRef
-from rdflib import Literal as RDFLiteral
+from pyoxigraph import Store
 from sqlalchemy.orm import Session
 
+from ontoworkbench.core import terms
 from ontoworkbench.core.parsing import literal_type_ok
 from ontoworkbench.db.models import User
 from ontoworkbench.db.session import get_session
@@ -24,14 +25,18 @@ from ontoworkbench.server.routers.entities import (
     _check_lock,
     _entity_payload,
     _iri_for,
-    _load_graph,
+    _load_store,
     _owned_row,
     _persist,
+    _quad,
     _reject_duplicate,
+    _remove_all,
 )
 from ontoworkbench.server.routers.ontologies import meta_of
 
 router = APIRouter(prefix="/api", tags=["instances"])
+
+XSD_NS = "http://www.w3.org/2001/XMLSchema#"
 
 
 class InstanceCreate(CamelModel):
@@ -44,18 +49,38 @@ class InstanceCreate(CamelModel):
     base_file_hash: str
 
 
-def _individual(graph: Graph, eid: str) -> URIRef:
+def _individual(store: Store, eid: str) -> ox.NamedNode:
     """The instance IRI, verified a NamedIndividual, else 404."""
-    iri = URIRef(eid)
-    if (iri, RDF.type, OWL.NamedIndividual) not in graph:
+    try:
+        iri = ox.NamedNode(eid)
+    except ValueError:
+        # A non-IRI path can never name an instance (the old URIRef miss).
+        raise ApiError(ErrorCode.NOT_FOUND, "No such instance in this ontology") from None
+    if (
+        next(
+            store.quads_for_pattern(
+                iri, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL, ox.DefaultGraph()
+            ),
+            None,
+        )
+        is None
+    ):
         raise ApiError(ErrorCode.NOT_FOUND, "No such instance in this ontology")
     return iri
 
 
-def _declared_class(graph: Graph, eid: str) -> URIRef:
+def _declared_class(store: Store, eid: str) -> ox.NamedNode:
     """A declared class IRI, else 422 (spec §3 validation)."""
-    iri = URIRef(eid)
-    if (iri, RDF.type, OWL.Class) not in graph:
+    try:
+        iri = ox.NamedNode(eid)
+    except ValueError:
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR, f"'{eid}' is not a declared class in this ontology"
+        ) from None
+    if (
+        next(store.quads_for_pattern(iri, terms.RDF_TYPE, terms.OWL_CLASS, ox.DefaultGraph()), None)
+        is None
+    ):
         raise ApiError(
             ErrorCode.VALIDATION_ERROR, f"'{eid}' is not a declared class in this ontology"
         )
@@ -88,47 +113,74 @@ class InstanceUpdate(CamelModel):
     base_file_hash: str
 
 
-def _prop_of_kind(graph: Graph, eid: str, kind: str) -> URIRef:
+def _prop_of_kind(store: Store, eid: str, kind: str) -> ox.NamedNode:
     """Declared property of the requested kind, else 422 (spec §3)."""
-    iri = URIRef(eid)
-    want = OWL.ObjectProperty if kind == "object" else OWL.DatatypeProperty
-    if (iri, RDF.type, want) not in graph:
+    try:
+        iri = ox.NamedNode(eid)
+    except ValueError:
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR, f"'{eid}' is not a declared {kind} property"
+        ) from None
+    want = terms.OWL_OBJECTPROPERTY if kind == "object" else terms.OWL_DATATYPEPROPERTY
+    if next(store.quads_for_pattern(iri, terms.RDF_TYPE, want, ox.DefaultGraph()), None) is None:
         raise ApiError(ErrorCode.VALIDATION_ERROR, f"'{eid}' is not a declared {kind} property")
     return iri
 
 
-def _replace_assertions(graph: Graph, iri: URIRef, rows: list[AssertionInput]) -> None:
+def _replace_assertions(store: Store, iri: ox.NamedNode, rows: list[AssertionInput]) -> None:
     """Drop every declared-property assertion on iri, add the given rows."""
-    props = set(graph.subjects(RDF.type, OWL.ObjectProperty)) | set(
-        graph.subjects(RDF.type, OWL.DatatypeProperty)
-    )
-    for p in props:
-        for t in list(graph.triples((iri, p, None))):
-            graph.remove(t)
+    props = {
+        q.subject.value
+        for q in store.quads_for_pattern(
+            None, terms.RDF_TYPE, terms.OWL_OBJECTPROPERTY, ox.DefaultGraph()
+        )
+        if isinstance(q.subject, ox.NamedNode)
+    } | {
+        q.subject.value
+        for q in store.quads_for_pattern(
+            None, terms.RDF_TYPE, terms.OWL_DATATYPEPROPERTY, ox.DefaultGraph()
+        )
+        if isinstance(q.subject, ox.NamedNode)
+    }
+    for pred in props:
+        for q in list(store.quads_for_pattern(iri, ox.NamedNode(pred), None, ox.DefaultGraph())):
+            store.remove(q)
     for row in rows:
-        p = _prop_of_kind(graph, row.property, row.kind)
+        p = _prop_of_kind(store, row.property, row.kind)
         if row.kind == "object":
-            value = URIRef(row.value)
-            if (value, RDF.type, OWL.NamedIndividual) not in graph:
+            known = False
+            try:
+                value = ox.NamedNode(row.value)
+                known = (
+                    next(
+                        store.quads_for_pattern(
+                            value, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL, ox.DefaultGraph()
+                        ),
+                        None,
+                    )
+                    is not None
+                )
+            except ValueError:
+                known = False
+            if not known:
                 raise ApiError(
                     ErrorCode.VALIDATION_ERROR, f"'{row.value}' is not an existing instance"
                 )
-            graph.add((iri, p, value))
+            store.add(_quad(iri, p, value))
         else:
-            datatype = row.datatype or "http://www.w3.org/2001/XMLSchema#string"
+            datatype = row.datatype or f"{XSD_NS}string"
             # declared xsd range wins when present
-            for rng in graph.objects(p, RDFS.range):
-                if isinstance(rng, URIRef) and str(rng).startswith(
-                    "http://www.w3.org/2001/XMLSchema#"
-                ):
-                    datatype = str(rng)
+            for q in store.quads_for_pattern(p, terms.RDFS_RANGE, None, ox.DefaultGraph()):
+                rng = q.object
+                if isinstance(rng, ox.NamedNode) and rng.value.startswith(XSD_NS):
+                    datatype = rng.value
                     break
             if not literal_type_ok(row.value, datatype):
                 raise ApiError(
                     ErrorCode.VALIDATION_ERROR,
                     f"'{row.value}' is not a valid {datatype.rsplit('#', 1)[-1]}",
                 )
-            graph.add((iri, p, RDFLiteral(row.value, datatype=URIRef(datatype))))
+            store.add(_quad(iri, p, ox.Literal(row.value, datatype=ox.NamedNode(datatype))))
 
 
 @router.post("/ontologies/{ontology_id}/instances")
@@ -142,17 +194,18 @@ def create_instance(
     """Create a named individual with types + auto label (= name)."""
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    graph = _load_graph(row)
-    iri = _iri_for(graph, body.prefix, body.name)
-    _reject_duplicate(graph, iri)
-    graph.add((iri, RDF.type, OWL.NamedIndividual))
+    store, prefixes = _load_store(row)
+    iri = _iri_for(prefixes, body.prefix, body.name)
+    _reject_duplicate(store, iri)
+    ent = ox.NamedNode(iri)
+    store.add(_quad(ent, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL))
     for c in body.classes:
-        graph.add((iri, RDF.type, _declared_class(graph, c)))
-    graph.add((iri, RDFS.label, RDFLiteral(body.name)))
+        store.add(_quad(ent, terms.RDF_TYPE, _declared_class(store, c)))
+    store.add(_quad(ent, terms.RDFS_LABEL, ox.Literal(body.name)))
     if body.comment:
-        graph.add((iri, RDFS.comment, RDFLiteral(body.comment)))
-    row, _ = _persist(request, session, row, graph)
-    return respond({"meta": meta_of(row), "entity": _entity_payload(graph, iri, "Instance")})
+        store.add(_quad(ent, terms.RDFS_COMMENT, ox.Literal(body.comment)))
+    row, _ = _persist(request, session, row, store, prefixes)
+    return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Instance")})
 
 
 @router.delete("/ontologies/{ontology_id}/instances/{eid:path}")
@@ -171,18 +224,24 @@ def delete_instance(
     """
     row = _owned_row(user, session, ontology_id)
     _check_lock(baseFileHash, row)
-    graph = _load_graph(row)
-    iri = _individual(graph, eid)
+    store, prefixes = _load_store(row)
+    iri = _individual(store, eid)
     removed = 0
-    for t in list(graph.triples((iri, None, None))):
-        graph.remove(t)
+    for q in list(store.quads_for_pattern(iri, None, None, ox.DefaultGraph())):
+        store.remove(q)
         removed += 1
-    object_props = set(graph.subjects(RDF.type, OWL.ObjectProperty))
+    object_props = {
+        q.subject.value
+        for q in store.quads_for_pattern(
+            None, terms.RDF_TYPE, terms.OWL_OBJECTPROPERTY, ox.DefaultGraph()
+        )
+        if isinstance(q.subject, ox.NamedNode)
+    }
     for p in object_props:
-        for t in list(graph.triples((None, p, iri))):
-            graph.remove(t)
+        for q in list(store.quads_for_pattern(None, ox.NamedNode(p), iri, ox.DefaultGraph())):
+            store.remove(q)
             removed += 1
-    row, _ = _persist(request, session, row, graph)
+    row, _ = _persist(request, session, row, store, prefixes)
     return respond({"removed": removed, "meta": meta_of(row)})
 
 
@@ -198,21 +257,30 @@ def update_instance(
     """Edit comment/classes/assertions; absent keys stay untouched."""
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    graph = _load_graph(row)
-    iri = _individual(graph, eid)
+    store, prefixes = _load_store(row)
+    iri = _individual(store, eid)
     touched = body.model_fields_set
     # null = no-op (only comment clears via null); frontend sends [] to clear
     if "comment" in touched:
-        graph.remove((iri, RDFS.comment, None))
+        _remove_all(store, iri, terms.RDFS_COMMENT)
         if body.comment:
-            graph.add((iri, RDFS.comment, RDFLiteral(body.comment)))
+            store.add(_quad(iri, terms.RDFS_COMMENT, ox.Literal(body.comment)))
     if "classes" in touched and body.classes is not None:
-        for c in [o for o in graph.objects(iri, RDF.type) if isinstance(o, URIRef)]:
-            if (c, RDF.type, OWL.Class) in graph:
-                graph.remove((iri, RDF.type, c))
+        for q in list(store.quads_for_pattern(iri, terms.RDF_TYPE, None, ox.DefaultGraph())):
+            c = q.object
+            if (
+                isinstance(c, ox.NamedNode)
+                and next(
+                    store.quads_for_pattern(c, terms.RDF_TYPE, terms.OWL_CLASS, ox.DefaultGraph()),
+                    None,
+                )
+                is not None
+            ):
+                store.remove(q)
         for cls_iri in body.classes:
-            graph.add((iri, RDF.type, _declared_class(graph, cls_iri)))
+            store.add(_quad(iri, terms.RDF_TYPE, _declared_class(store, cls_iri)))
     if "assertions" in touched and body.assertions is not None:
-        _replace_assertions(graph, iri, body.assertions)
-    row, _ = _persist(request, session, row, graph)
-    return respond({"meta": meta_of(row), "entity": _entity_payload(graph, iri, "Instance")})
+        _replace_assertions(store, iri, body.assertions)
+    row, _ = _persist(request, session, row, store, prefixes)
+    payload = _entity_payload(prefixes, iri.value, "Instance")
+    return respond({"meta": meta_of(row), "entity": payload})

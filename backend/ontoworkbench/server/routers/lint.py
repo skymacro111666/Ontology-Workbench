@@ -7,24 +7,36 @@ trigger only, spec §0).
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+from rdflib import Graph
 from sqlalchemy.orm import Session
 
 from ontoworkbench.core.lint import CustomRuleSpec
 from ontoworkbench.core.lint import run as run_lint_engine
-from ontoworkbench.db.models import User
+from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import LintRuleRepository
 from ontoworkbench.db.session import get_session
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 from ontoworkbench.server.routers.browse import _camel, _owned
-from ontoworkbench.server.routers.entities import _load_graph
 
 router = APIRouter(prefix="/api/ontologies", tags=["lint"])
+
+_RDFFORMAT = {"turtle": "turtle", "rdfxml": "xml", "jsonld": "json-ld"}
+
+
+def _load_graph(row: Ontology) -> Graph:
+    """Parse the stored file into the rdflib graph the lint engine still walks.
+
+    The last legacy loader outside core/lint.py — dies with the lint
+    migration (spec 2026-09-03, plan Task 12).
+    """
+    return Graph().parse(data=Path(row.storage_path).read_bytes(), format=_RDFFORMAT[row.format])
 
 
 class CamelModel(BaseModel):

@@ -3,11 +3,8 @@
 Each write mutates a pyoxigraph Store loaded from the stored file, then
 walks the A1 persistence pipeline (serialize → atomic write → row/cache
 refresh). Optimistic lock via baseFileHash on every mutation, exactly like
-PUT /source (design spec 2026-08-26 §4).
-
-instances.py and lint.py still ride the pre-migration graph pipeline via
-the _graph_compat wrappers sprinkled below; they migrate next, and the
-wrappers (plus that module) die with them.
+PUT /source (design spec 2026-08-26 §4). instances.py rides the same
+pipeline; lint.py keeps its own legacy graph load until its migration.
 """
 
 from __future__ import annotations
@@ -15,7 +12,6 @@ from __future__ import annotations
 import re
 import time
 from pathlib import Path
-from typing import Any
 from uuid import UUID
 
 import pyoxigraph as ox
@@ -27,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from ontoworkbench.core import terms
 from ontoworkbench.core.indexes import build_indexes
-from ontoworkbench.core.ir import build_ir_store
+from ontoworkbench.core.ir import IRBundle, build_ir_store
 from ontoworkbench.core.ir_cache import write_ir_cache
 from ontoworkbench.core.parsing import parse_store, serialize_store
 from ontoworkbench.core.prefixes import PrefixMap
@@ -39,7 +35,6 @@ from ontoworkbench.observability.metrics import ow_build_seconds, ow_parse_secon
 from ontoworkbench.server.cache import OntologyCache
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
-from ontoworkbench.server.routers import _graph_compat
 from ontoworkbench.server.routers.ontologies import (
     MAX_UPLOAD,
     meta_of,
@@ -129,52 +124,38 @@ def _load_store(row: Ontology) -> tuple[Store, PrefixMap]:
     return store, prefixes
 
 
-def _load_graph(row: Ontology) -> Any:
-    """Legacy graph load — lint.py still rides it until its own migration."""
-    return _graph_compat.load_graph(row)
-
-
-def _iri_for(ns: Any, prefix: str, name: str) -> Any:
-    """Mint prefix:name; unknown prefix or bad name is a 422.
-
-    Store path takes a PrefixMap and returns an IRI string; a Graph (from
-    instances.py) falls back to the legacy graph branch.
-    """
-    if isinstance(ns, PrefixMap):
-        if not _NAME_RE.match(name):
-            raise ApiError(
-                ErrorCode.VALIDATION_ERROR,
-                f"Invalid name '{name}'",
-                "Use a letter/underscore start, then letters, digits, ., - or _.",
-            )
-        iri = ns.iri_for(prefix, name)
-        if iri is not None:
-            return iri
-        known = ", ".join(ns.known_prefixes()) or "(none)"
+def _iri_for(ns: PrefixMap, prefix: str, name: str) -> str:
+    """Mint prefix:name; unknown prefix or bad name is a 422."""
+    if not _NAME_RE.match(name):
         raise ApiError(
             ErrorCode.VALIDATION_ERROR,
-            f"Unknown prefix '{prefix}'",
-            f"Known prefixes: {known}",
-        ) from None
-    return _graph_compat.iri_for(ns, prefix, name)
-
-
-def _reject_duplicate(store: Any, iri: Any) -> None:
-    """Refuse to mint an IRI that already carries triples."""
-    if isinstance(store, Store):
-        node = ox.NamedNode(iri)
-        used = (
-            next(store.quads_for_pattern(node, None, None, ox.DefaultGraph()), None) is not None
-            or next(store.quads_for_pattern(None, None, node, ox.DefaultGraph()), None) is not None
+            f"Invalid name '{name}'",
+            "Use a letter/underscore start, then letters, digits, ., - or _.",
         )
-        if used:
-            raise ApiError(
-                ErrorCode.DUPLICATE_ENTITY,
-                f"'{iri}' is already used in this ontology",
-                "Pick a different name or prefix.",
-            )
-        return
-    _graph_compat.reject_duplicate(store, iri)
+    iri = ns.iri_for(prefix, name)
+    if iri is not None:
+        return iri
+    known = ", ".join(ns.known_prefixes()) or "(none)"
+    raise ApiError(
+        ErrorCode.VALIDATION_ERROR,
+        f"Unknown prefix '{prefix}'",
+        f"Known prefixes: {known}",
+    ) from None
+
+
+def _reject_duplicate(store: Store, iri: str) -> None:
+    """Refuse to mint an IRI that already carries triples."""
+    node = ox.NamedNode(iri)
+    used = (
+        next(store.quads_for_pattern(node, None, None, ox.DefaultGraph()), None) is not None
+        or next(store.quads_for_pattern(None, None, node, ox.DefaultGraph()), None) is not None
+    )
+    if used:
+        raise ApiError(
+            ErrorCode.DUPLICATE_ENTITY,
+            f"'{iri}' is already used in this ontology",
+            "Pick a different name or prefix.",
+        )
 
 
 def _quad(s: ox.NamedNode, p: ox.NamedNode, o: ox.NamedNode | ox.Literal) -> ox.Quad:
@@ -224,30 +205,17 @@ def _set_uriref_objects(
         store.add(_quad(ent, pred, ox.NamedNode(v)))
 
 
-def _entity_payload(ns: Any, iri: Any, kind: str) -> dict[str, Any]:
-    """Small entity reference for write responses (full data via GET).
-
-    Store path takes a PrefixMap; a Graph (from instances.py) falls back
-    to the legacy graph branch.
-    """
-    if isinstance(ns, PrefixMap):
-        pair = ns.curie_for(str(iri))
-        curie = f"{pair[0]}:{pair[1]}" if pair else str(iri)
-        return {"eid": str(iri), "curie": curie, "type": kind}
-    return _graph_compat.entity_payload(ns, iri, kind)
+def _entity_payload(ns: PrefixMap, iri: str, kind: str) -> dict[str, str]:
+    """Small entity reference for write responses (full data via GET)."""
+    pair = ns.curie_for(str(iri))
+    curie = f"{pair[0]}:{pair[1]}" if pair else str(iri)
+    return {"eid": str(iri), "curie": curie, "type": kind}
 
 
 def _persist(
-    request: Request, session: Session, row: Ontology, store: Any, prefixes: PrefixMap | None = None
-) -> tuple[Ontology, Any]:
-    """Serialize → build from the mutated store → atomic write → row/cache refresh.
-
-    Store path per the pyoxigraph migration; a Graph without prefixes
-    (from instances.py) falls back to the legacy graph branch.
-    """
-    if not isinstance(store, Store):
-        return _graph_compat.persist(request, session, row, store)
-    assert prefixes is not None  # every Store caller passes the parse's PrefixMap
+    request: Request, session: Session, row: Ontology, store: Store, prefixes: PrefixMap
+) -> tuple[Ontology, IRBundle]:
+    """Serialize → build from the mutated store → atomic write → row/cache refresh."""
     data = serialize_store(store, prefixes, row.format)
     if len(data) > MAX_UPLOAD:
         ow_uploads_total.labels("too_large").inc()
