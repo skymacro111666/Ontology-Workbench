@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import time
 
+import pyoxigraph as ox
 import rdflib
 
 from ontoworkbench.core.errors import CoreError
+from ontoworkbench.core.prefixes import PrefixMap
 
 
 class ParseError(CoreError):
@@ -47,7 +49,11 @@ def sniff_format(filename: str, head: bytes) -> str:
 
 
 def parse_graph(data: bytes, fmt: str) -> rdflib.Graph:
-    """Parse bytes into a Graph; wrap syntax errors with the parser's detail."""
+    """Parse bytes into a Graph; wrap syntax errors with the parser's detail.
+
+    Deprecated: rdflib path, kept only for pre-Store callers (M2 removal);
+    new code should use parse_store.
+    """
     g = rdflib.Graph()
     try:
         g.parse(data=data, format=_RDFFORMAT[fmt])
@@ -69,6 +75,45 @@ def timed_parse(data: bytes, fmt: str) -> tuple[rdflib.Graph, float]:
     start = time.perf_counter()
     graph = parse_graph(data, fmt)
     return graph, (time.perf_counter() - start) * 1000.0
+
+
+_OX_FORMAT = {
+    "turtle": ox.RdfFormat.TURTLE,
+    "rdfxml": ox.RdfFormat.RDF_XML,
+    "jsonld": ox.RdfFormat.JSON_LD,
+}
+
+
+def parse_store(data: bytes, fmt: str) -> tuple[ox.Store, PrefixMap]:
+    """Parse bytes into an in-memory pyoxigraph Store (default graph) + prefixes.
+
+    Unknown format names raise UNSUPPORTED_FORMAT; parser failures raise
+    PARSE_FAILED with ox's detail (SyntaxError/ValueError/OSError mapped).
+    """
+    fmt_enum = _OX_FORMAT.get(fmt)
+    if fmt_enum is None:
+        raise ParseError(
+            "UNSUPPORTED_FORMAT",
+            f"Unsupported format '{fmt}'",
+            "Supported: turtle, rdfxml, jsonld",
+        )
+    store = ox.Store()
+    try:
+        store.load(input=data, format=fmt_enum, to_graph=ox.DefaultGraph())
+    except SyntaxError as exc:
+        raise ParseError("PARSE_FAILED", f"Syntax error: {exc}") from exc
+    except ValueError as exc:
+        raise ParseError("UNSUPPORTED_FORMAT", f"Bad format: {exc}") from exc
+    except Exception as exc:  # OSError etc.
+        raise ParseError("PARSE_FAILED", f"Parse error: {exc}") from exc
+    return store, PrefixMap(data, fmt)
+
+
+def timed_parse_store(data: bytes, fmt: str) -> tuple[ox.Store, PrefixMap, float]:
+    """parse_store plus wall-clock duration in milliseconds (for meta)."""
+    start = time.perf_counter()
+    store, pm = parse_store(data, fmt)
+    return store, pm, (time.perf_counter() - start) * 1000.0
 
 
 def literal_type_ok(value: str, datatype: str) -> bool:
