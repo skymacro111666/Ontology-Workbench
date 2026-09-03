@@ -1,10 +1,15 @@
 """Store-side entity editing (A2): create classes/properties, edit, delete.
 
-Each write mutates a pyoxigraph Store loaded from the stored file, then
-walks the A1 persistence pipeline (serialize → atomic write → row/cache
-refresh). Optimistic lock via baseFileHash on every mutation, exactly like
+Each write mutates the ontology's pooled pyoxigraph Store (parsed once
+per file version — see OntologyCache.store_for), then walks the A1
+persistence pipeline (serialize → atomic write → row/cache refresh).
+Optimistic lock via baseFileHash on every mutation, exactly like
 PUT /source (design spec 2026-08-26 §4). instances.py rides the same
 pipeline; lint.py keeps its own legacy graph load until its migration.
+
+Pool discipline: handlers validate every input BEFORE the first Store
+mutation, so a refused edit leaves the pooled Store clean; _persist then
+either refreshes the entry (write landed) or evicts it (write failed).
 """
 
 from __future__ import annotations
@@ -124,6 +129,12 @@ def _load_store(row: Ontology) -> tuple[Store, PrefixMap]:
     return store, prefixes
 
 
+def _edit_store(request: Request, row: Ontology) -> tuple[Store, PrefixMap]:
+    """The pooled editable Store for this row (parse-free on repeat edits)."""
+    cache: OntologyCache = request.app.state.cache
+    return cache.store_for(row, _load_store)
+
+
 def _iri_for(ns: PrefixMap, prefix: str, name: str) -> str:
     """Mint prefix:name; unknown prefix or bad name is a 422."""
     if not _NAME_RE.match(name):
@@ -230,46 +241,56 @@ def _entity_payload(ns: PrefixMap, iri: str, kind: str) -> dict[str, str]:
 def _persist(
     request: Request, session: Session, row: Ontology, store: Store, prefixes: PrefixMap
 ) -> tuple[Ontology, IRBundle]:
-    """Serialize → build from the mutated store → atomic write → row/cache refresh."""
-    data = serialize_store(store, prefixes, row.format)
-    if len(data) > MAX_UPLOAD:
-        ow_uploads_total.labels("too_large").inc()
-        raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
-    # The mutated in-memory store IS the data just serialized — building the
-    # IR from it directly drops the old re-parse-for-validation (a full
-    # second parse per edit, ~3min on a 130MB ontology).
-    old_parse_ms = (row.stats_json or {}).get("parse_ms")
-    t0 = time.perf_counter()
-    with ow_build_seconds.time():
-        ir = build_ir_store(store, prefixes)
-    build_ms = (time.perf_counter() - t0) * 1000.0
+    """Serialize → build from the mutated store → atomic write → row/cache refresh.
 
-    dir_store: LocalUserDirStore = request.app.state.store
-    dir_store.save(row.owner_user_id, UUID(str(row.id)), row.filename, data)
-    repos = OntologyRepository(session)
-    row = (
-        repos.update(
-            row.id,
-            title=title_of_store(store, row.filename),
-            class_count=ir.counts.class_count,
-            property_count=ir.counts.property_count,
-            axiom_count=ir.counts.axiom_count,
-            instance_count=ir.counts.individual_count,
-            stats_json={
-                "prefixes": ir.prefixes,
-                "parse_ms": old_parse_ms,
-                "build_ms": round(build_ms, 1),
-            },
-            file_size_bytes=len(data),
-            file_hash=LocalUserDirStore.file_hash(data),
-        )
-        or row
-    )
-    # The disk cache must move with the file: the next cold start would
-    # otherwise re-pay the full parse for this ontology.
-    write_ir_cache(Path(row.storage_path), ir, row.file_hash)
+    Any failure evicts the pooled Store entry: it already carries this
+    edit while the file never changed, so serving it again would silently
+    land the edit inside the next write.
+    """
     cache: OntologyCache = request.app.state.cache
-    cache.indexes_for(row, lambda r: build_indexes(ir))
+    try:
+        data = serialize_store(store, prefixes, row.format)
+        if len(data) > MAX_UPLOAD:
+            ow_uploads_total.labels("too_large").inc()
+            raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
+        # The mutated in-memory store IS the data just serialized — building the
+        # IR from it directly drops the old re-parse-for-validation (a full
+        # second parse per edit, ~3min on a 130MB ontology).
+        old_parse_ms = (row.stats_json or {}).get("parse_ms")
+        t0 = time.perf_counter()
+        with ow_build_seconds.time():
+            ir = build_ir_store(store, prefixes)
+        build_ms = (time.perf_counter() - t0) * 1000.0
+
+        dir_store: LocalUserDirStore = request.app.state.store
+        dir_store.save(row.owner_user_id, UUID(str(row.id)), row.filename, data)
+        repos = OntologyRepository(session)
+        row = (
+            repos.update(
+                row.id,
+                title=title_of_store(store, row.filename),
+                class_count=ir.counts.class_count,
+                property_count=ir.counts.property_count,
+                axiom_count=ir.counts.axiom_count,
+                instance_count=ir.counts.individual_count,
+                stats_json={
+                    "prefixes": ir.prefixes,
+                    "parse_ms": old_parse_ms,
+                    "build_ms": round(build_ms, 1),
+                },
+                file_size_bytes=len(data),
+                file_hash=LocalUserDirStore.file_hash(data),
+            )
+            or row
+        )
+        # The disk cache must move with the file: the next cold start would
+        # otherwise re-pay the full parse for this ontology.
+        write_ir_cache(Path(row.storage_path), ir, row.file_hash)
+        cache.indexes_for(row, lambda r: build_indexes(ir))
+    except Exception:
+        cache.drop_store(str(row.id))
+        raise
+    cache.refresh_store(row, store, prefixes)
     return row, ir
 
 
@@ -305,7 +326,7 @@ def create_class(
     """Create a class (with optional parents → subclass) in the stored file."""
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    store, prefixes = _load_store(row)
+    store, prefixes = _edit_store(request, row)
     iri = _iri_for(prefixes, body.prefix, body.name)
     _reject_duplicate(store, iri)
     parents = [_iri_or_422(p) for p in body.parents]
@@ -334,7 +355,7 @@ def create_property(
         )
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    store, prefixes = _load_store(row)
+    store, prefixes = _edit_store(request, row)
     iri = _iri_for(prefixes, body.prefix, body.name)
     _reject_duplicate(store, iri)
     domains = [_iri_or_422(d) for d in body.domains]
@@ -366,7 +387,7 @@ def update_entity(
     """Edit label/comment/parents/domains/ranges; absent keys unchanged."""
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    store, prefixes = _load_store(row)
+    store, prefixes = _edit_store(request, row)
     ent = _declared(store, eid)
     kind = _kind_of(store, ent)
     touched = body.model_fields_set
@@ -401,7 +422,7 @@ def delete_entity(
     """
     row = _owned_row(user, session, ontology_id)
     _check_lock(baseFileHash, row)
-    store, prefixes = _load_store(row)
+    store, prefixes = _edit_store(request, row)
     iri = _declared(store, eid)
     removed = 0
     for q in list(store.quads_for_pattern(iri, None, None, ox.DefaultGraph())):

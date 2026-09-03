@@ -385,6 +385,11 @@ def replace_source(
         ir = build_ir_store(ox_store, prefixes)
 
     store: LocalUserDirStore = request.app.state.store
+    cache: OntologyCache = request.app.state.cache
+    # Evict the pooled editable Store BEFORE the file moves: it still
+    # reflects the old bytes, and a later failure in this handler must
+    # not leave it servable.
+    cache.drop_store(str(row.id))
     store.save(user.id, UUID(str(row.id)), row.filename, data)
     repos = OntologyRepository(session)
     row = (
@@ -401,7 +406,6 @@ def replace_source(
         )
         or row
     )  # update() of an owned row cannot miss; keep mypy happy
-    cache: OntologyCache = request.app.state.cache
     cache.indexes_for(row, lambda r: build_indexes(ir))
     write_ir_cache(Path(row.storage_path), ir, row.file_hash)
     return respond(meta_of(row))
