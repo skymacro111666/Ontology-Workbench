@@ -1,9 +1,13 @@
-"""Graph-side entity editing (A2): create classes/properties, edit, delete.
+"""Store-side entity editing (A2): create classes/properties, edit, delete.
 
-Each write mutates an rdflib graph loaded from the stored file, then walks
-the A1 persistence pipeline (serialize → reparse → atomic write → row/cache
+Each write mutates a pyoxigraph Store loaded from the stored file, then
+walks the A1 persistence pipeline (serialize → atomic write → row/cache
 refresh). Optimistic lock via baseFileHash on every mutation, exactly like
 PUT /source (design spec 2026-08-26 §4).
+
+instances.py and lint.py still ride the pre-migration graph pipeline via
+the _graph_compat wrappers sprinkled below; they migrate next, and the
+wrappers (plus that module) die with them.
 """
 
 from __future__ import annotations
@@ -14,29 +18,32 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import pyoxigraph as ox
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-from rdflib import OWL, RDF, RDFS, Graph, Literal, URIRef
-from rdflib.term import Node
+from pyoxigraph import Store
 from sqlalchemy.orm import Session
 
+from ontoworkbench.core import terms
 from ontoworkbench.core.indexes import build_indexes
-from ontoworkbench.core.ir import build_ir
+from ontoworkbench.core.ir import build_ir_store
 from ontoworkbench.core.ir_cache import write_ir_cache
-from ontoworkbench.core.parsing import serialize_graph
+from ontoworkbench.core.parsing import parse_store, serialize_store
+from ontoworkbench.core.prefixes import PrefixMap
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import OntologyRepository
 from ontoworkbench.db.session import get_session
-from ontoworkbench.observability.metrics import ow_build_seconds, ow_uploads_total
+from ontoworkbench.observability.metrics import ow_build_seconds, ow_parse_seconds, ow_uploads_total
 from ontoworkbench.server.cache import OntologyCache
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
+from ontoworkbench.server.routers import _graph_compat
 from ontoworkbench.server.routers.ontologies import (
     MAX_UPLOAD,
     meta_of,
-    title_of,
+    title_of_store,
 )
 
 router = APIRouter(prefix="/api", tags=["entities"])
@@ -114,117 +121,153 @@ def _check_lock(body_hash: str, row: Ontology) -> None:
         )
 
 
-def _load_graph(row: Ontology) -> Graph:
-    """Parse the stored file back into a mutable graph."""
-    return Graph().parse(data=Path(row.storage_path).read_bytes(), format=_rdf_format(row.format))
+def _load_store(row: Ontology) -> tuple[Store, PrefixMap]:
+    """Parse the stored file back into a mutable Store (parse timed per format)."""
+    data = Path(row.storage_path).read_bytes()
+    with ow_parse_seconds.labels(row.format).time():
+        store, prefixes = parse_store(data, row.format)
+    return store, prefixes
 
 
-def _rdf_format(fmt: str) -> str:
-    """Internal format name → rdflib serializer name."""
-    return {"turtle": "turtle", "rdfxml": "xml", "jsonld": "json-ld"}[fmt]
+def _load_graph(row: Ontology) -> Any:
+    """Legacy graph load — lint.py still rides it until its own migration."""
+    return _graph_compat.load_graph(row)
 
 
-def _iri_for(graph: Graph, prefix: str, name: str) -> URIRef:
-    """Mint prefix:name; unknown prefix or bad name is a 422."""
-    if not _NAME_RE.match(name):
+def _iri_for(ns: Any, prefix: str, name: str) -> Any:
+    """Mint prefix:name; unknown prefix or bad name is a 422.
+
+    Store path takes a PrefixMap and returns an IRI string; a Graph (from
+    instances.py) falls back to the legacy graph branch.
+    """
+    if isinstance(ns, PrefixMap):
+        if not _NAME_RE.match(name):
+            raise ApiError(
+                ErrorCode.VALIDATION_ERROR,
+                f"Invalid name '{name}'",
+                "Use a letter/underscore start, then letters, digits, ., - or _.",
+            )
+        iri = ns.iri_for(prefix, name)
+        if iri is not None:
+            return iri
+        known = ", ".join(ns.known_prefixes()) or "(none)"
         raise ApiError(
             ErrorCode.VALIDATION_ERROR,
-            f"Invalid name '{name}'",
-            "Use a letter/underscore start, then letters, digits, ., - or _.",
-        )
-    for p, ns in graph.namespaces():
-        if p == prefix:
-            return URIRef(str(ns) + name)
-    known = ", ".join(sorted({p for p, _ in graph.namespaces() if p})) or "(none)"
-    raise _unknown_prefix(prefix, known) from None
+            f"Unknown prefix '{prefix}'",
+            f"Known prefixes: {known}",
+        ) from None
+    return _graph_compat.iri_for(ns, prefix, name)
 
 
-def _unknown_prefix(prefix: str, known: str) -> ApiError:
-    """Build the unknown-prefix 422 with the usable-prefix hint."""
-    return ApiError(
-        ErrorCode.VALIDATION_ERROR,
-        f"Unknown prefix '{prefix}'",
-        f"Known prefixes: {known}",
-    )
-
-
-def _reject_duplicate(graph: Graph, iri: URIRef) -> None:
+def _reject_duplicate(store: Any, iri: Any) -> None:
     """Refuse to mint an IRI that already carries triples."""
-    if any(graph.triples((iri, None, None))) or any(graph.triples((None, None, iri))):
-        raise ApiError(
-            ErrorCode.DUPLICATE_ENTITY,
-            f"'{iri}' is already used in this ontology",
-            "Pick a different name or prefix.",
+    if isinstance(store, Store):
+        node = ox.NamedNode(iri)
+        used = (
+            next(store.quads_for_pattern(node, None, None, ox.DefaultGraph()), None) is not None
+            or next(store.quads_for_pattern(None, None, node, ox.DefaultGraph()), None) is not None
         )
-
-
-def _set_label(graph: Graph, ent: URIRef, label: LabelInput | None) -> None:
-    """Replace all rdfs:label values with the one given (None clears)."""
-    graph.remove((ent, RDFS.label, None))
-    if label and label.value:
-        graph.add(
-            (
-                ent,
-                RDFS.label,
-                Literal(label.value, lang=label.lang) if label.lang else Literal(label.value),
+        if used:
+            raise ApiError(
+                ErrorCode.DUPLICATE_ENTITY,
+                f"'{iri}' is already used in this ontology",
+                "Pick a different name or prefix.",
             )
+        return
+    _graph_compat.reject_duplicate(store, iri)
+
+
+def _quad(s: ox.NamedNode, p: ox.NamedNode, o: ox.NamedNode | ox.Literal) -> ox.Quad:
+    """A default-graph quad (the editing pipeline is graph-name-free)."""
+    return ox.Quad(s, p, o, ox.DefaultGraph())
+
+
+def _remove_all(store: Store, s: ox.NamedNode, p: ox.NamedNode) -> None:
+    """Drop every (s, p, *) quad from the default graph."""
+    for q in list(store.quads_for_pattern(s, p, None, ox.DefaultGraph())):
+        store.remove(q)
+
+
+def _set_label(store: Store, ent: ox.NamedNode, label: LabelInput | None) -> None:
+    """Replace all rdfs:label values with the one given (None clears)."""
+    _remove_all(store, ent, terms.RDFS_LABEL)
+    if label and label.value:
+        lit = (
+            ox.Literal(label.value, language=label.lang) if label.lang else ox.Literal(label.value)
         )
+        store.add(_quad(ent, terms.RDFS_LABEL, lit))
 
 
-def _set_comment(graph: Graph, ent: URIRef, comment: str | None) -> None:
+def _set_comment(store: Store, ent: ox.NamedNode, comment: str | None) -> None:
     """Replace all rdfs:comment values (None clears)."""
-    graph.remove((ent, RDFS.comment, None))
+    _remove_all(store, ent, terms.RDFS_COMMENT)
     if comment:
-        graph.add((ent, RDFS.comment, Literal(comment)))
+        store.add(_quad(ent, terms.RDFS_COMMENT, ox.Literal(comment)))
 
 
-def _set_uriref_objects(graph: Graph, ent: URIRef, pred: URIRef, values: list[str] | None) -> None:
+def _set_uriref_objects(
+    store: Store, ent: ox.NamedNode, pred: ox.NamedNode, values: list[str] | None
+) -> None:
     """Replace pred objects, keeping blank-node axioms (owl:Restriction etc.).
 
-    Only URIRef objects are removed: rdfs:subClassOf restrictions live in
+    Only IRI objects are removed: rdfs:subClassOf restrictions live in
     blank nodes and must survive reparenting untouched.
     """
-    for o in [o for o in graph.objects(ent, pred) if isinstance(o, URIRef)]:
-        graph.remove((ent, pred, o))
+    named = [
+        q
+        for q in store.quads_for_pattern(ent, pred, None, ox.DefaultGraph())
+        if isinstance(q.object, ox.NamedNode)
+    ]
+    for q in named:
+        store.remove(q)
     for v in values or []:
-        graph.add((ent, pred, URIRef(v)))
+        store.add(_quad(ent, pred, ox.NamedNode(v)))
 
 
-def _entity_payload(graph: Graph, iri: URIRef, kind: str) -> dict[str, Any]:
-    """Small entity reference for write responses (full data via GET)."""
-    try:
-        curie = graph.compute_qname(iri)[2]
-        prefix = graph.compute_qname(iri)[0]
-        curie = f"{prefix}:{curie}"
-    except Exception:
-        curie = str(iri)
-    return {"eid": str(iri), "curie": curie, "type": kind}
+def _entity_payload(ns: Any, iri: Any, kind: str) -> dict[str, Any]:
+    """Small entity reference for write responses (full data via GET).
+
+    Store path takes a PrefixMap; a Graph (from instances.py) falls back
+    to the legacy graph branch.
+    """
+    if isinstance(ns, PrefixMap):
+        pair = ns.curie_for(str(iri))
+        curie = f"{pair[0]}:{pair[1]}" if pair else str(iri)
+        return {"eid": str(iri), "curie": curie, "type": kind}
+    return _graph_compat.entity_payload(ns, iri, kind)
 
 
 def _persist(
-    request: Request, session: Session, row: Ontology, graph: Graph
+    request: Request, session: Session, row: Ontology, store: Any, prefixes: PrefixMap | None = None
 ) -> tuple[Ontology, Any]:
-    """Serialize → build from the mutated graph → atomic write → row/cache refresh."""
-    data = serialize_graph(graph, row.format)
+    """Serialize → build from the mutated store → atomic write → row/cache refresh.
+
+    Store path per the pyoxigraph migration; a Graph without prefixes
+    (from instances.py) falls back to the legacy graph branch.
+    """
+    if not isinstance(store, Store):
+        return _graph_compat.persist(request, session, row, store)
+    assert prefixes is not None  # every Store caller passes the parse's PrefixMap
+    data = serialize_store(store, prefixes, row.format)
     if len(data) > MAX_UPLOAD:
         ow_uploads_total.labels("too_large").inc()
         raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
-    # The mutated in-memory graph IS the data just serialized — building the
+    # The mutated in-memory store IS the data just serialized — building the
     # IR from it directly drops the old re-parse-for-validation (a full
     # second parse per edit, ~3min on a 130MB ontology).
     old_parse_ms = (row.stats_json or {}).get("parse_ms")
     t0 = time.perf_counter()
     with ow_build_seconds.time():
-        ir = build_ir(graph)
+        ir = build_ir_store(store, prefixes)
     build_ms = (time.perf_counter() - t0) * 1000.0
 
-    store: LocalUserDirStore = request.app.state.store
-    store.save(row.owner_user_id, UUID(str(row.id)), row.filename, data)
+    dir_store: LocalUserDirStore = request.app.state.store
+    dir_store.save(row.owner_user_id, UUID(str(row.id)), row.filename, data)
     repos = OntologyRepository(session)
     row = (
         repos.update(
             row.id,
-            title=title_of(graph, row.filename),
+            title=title_of_store(store, row.filename),
             class_count=ir.counts.class_count,
             property_count=ir.counts.property_count,
             axiom_count=ir.counts.axiom_count,
@@ -247,19 +290,25 @@ def _persist(
     return row, ir
 
 
-def _declared(graph: Graph, eid: str) -> URIRef:
-    """The entity IRI, verified declared (typed) in the graph, else 404."""
-    iri = URIRef(eid)
-    if not any(graph.triples((iri, RDF.type, None))):
+def _declared(store: Store, eid: str) -> ox.NamedNode:
+    """The entity IRI, verified declared (typed) in the store, else 404."""
+    try:
+        iri = ox.NamedNode(eid)
+    except ValueError:
+        # A non-IRI path can never name a declared entity (parity with the
+        # old 404 on unmatched terms).
+        raise ApiError(ErrorCode.NOT_FOUND, "No such entity in this ontology") from None
+    if next(store.quads_for_pattern(iri, terms.RDF_TYPE, None, ox.DefaultGraph()), None) is None:
         raise ApiError(ErrorCode.NOT_FOUND, "No such entity in this ontology")
     return iri
 
 
-def _kind_of(graph: Graph, iri: URIRef) -> str:
+def _kind_of(store: Store, iri: ox.NamedNode) -> str:
     """Class or property (for the response payload)."""
-    if (iri, RDF.type, OWL.Class) in graph:
-        return "Class"
-    return "Property"
+    typed = next(
+        store.quads_for_pattern(iri, terms.RDF_TYPE, terms.OWL_CLASS, ox.DefaultGraph()), None
+    )
+    return "Class" if typed is not None else "Property"
 
 
 @router.post("/ontologies/{ontology_id}/classes")
@@ -273,16 +322,17 @@ def create_class(
     """Create a class (with optional parents → subclass) in the stored file."""
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    graph = _load_graph(row)
-    iri = _iri_for(graph, body.prefix, body.name)
-    _reject_duplicate(graph, iri)
-    graph.add((iri, RDF.type, OWL.Class))
-    _set_label(graph, iri, body.label)
-    _set_comment(graph, iri, body.comment)
+    store, prefixes = _load_store(row)
+    iri = _iri_for(prefixes, body.prefix, body.name)
+    _reject_duplicate(store, iri)
+    ent = ox.NamedNode(iri)
+    store.add(_quad(ent, terms.RDF_TYPE, terms.OWL_CLASS))
+    _set_label(store, ent, body.label)
+    _set_comment(store, ent, body.comment)
     for parent in body.parents:
-        graph.add((iri, RDFS.subClassOf, URIRef(parent)))
-    row, _ = _persist(request, session, row, graph)
-    return respond({"meta": meta_of(row), "entity": _entity_payload(graph, iri, "Class")})
+        store.add(_quad(ent, terms.RDFS_SUBCLASSOF, ox.NamedNode(parent)))
+    row, _ = _persist(request, session, row, store, prefixes)
+    return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Class")})
 
 
 @router.post("/ontologies/{ontology_id}/properties")
@@ -300,24 +350,22 @@ def create_property(
         )
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    graph = _load_graph(row)
-    iri = _iri_for(graph, body.prefix, body.name)
-    _reject_duplicate(graph, iri)
-    graph.add(
-        (
-            iri,
-            RDF.type,
-            OWL.ObjectProperty if body.ptype == "ObjectProperty" else OWL.DatatypeProperty,
-        )
+    store, prefixes = _load_store(row)
+    iri = _iri_for(prefixes, body.prefix, body.name)
+    _reject_duplicate(store, iri)
+    ent = ox.NamedNode(iri)
+    ptype = (
+        terms.OWL_OBJECTPROPERTY if body.ptype == "ObjectProperty" else terms.OWL_DATATYPEPROPERTY
     )
-    _set_label(graph, iri, body.label)
-    _set_comment(graph, iri, body.comment)
+    store.add(_quad(ent, terms.RDF_TYPE, ptype))
+    _set_label(store, ent, body.label)
+    _set_comment(store, ent, body.comment)
     for d in body.domains:
-        graph.add((iri, RDFS.domain, URIRef(d)))
+        store.add(_quad(ent, terms.RDFS_DOMAIN, ox.NamedNode(d)))
     for r in body.ranges:
-        graph.add((iri, RDFS.range, URIRef(r)))
-    row, _ = _persist(request, session, row, graph)
-    return respond({"meta": meta_of(row), "entity": _entity_payload(graph, iri, "Property")})
+        store.add(_quad(ent, terms.RDFS_RANGE, ox.NamedNode(r)))
+    row, _ = _persist(request, session, row, store, prefixes)
+    return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Property")})
 
 
 @router.put("/ontologies/{ontology_id}/entities/{eid:path}")
@@ -332,22 +380,22 @@ def update_entity(
     """Edit label/comment/parents/domains/ranges; absent keys unchanged."""
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    graph = _load_graph(row)
-    iri = _declared(graph, eid)
-    kind = _kind_of(graph, iri)
+    store, prefixes = _load_store(row)
+    ent = _declared(store, eid)
+    kind = _kind_of(store, ent)
     touched = body.model_fields_set
     if "label" in touched:
-        _set_label(graph, iri, body.label)
+        _set_label(store, ent, body.label)
     if "comment" in touched:
-        _set_comment(graph, iri, body.comment)
+        _set_comment(store, ent, body.comment)
     if "parents" in touched and body.parents is not None:
-        _set_uriref_objects(graph, iri, RDFS.subClassOf, body.parents)
+        _set_uriref_objects(store, ent, terms.RDFS_SUBCLASSOF, body.parents)
     if "domains" in touched and body.domains is not None:
-        _set_uriref_objects(graph, iri, RDFS.domain, body.domains)
+        _set_uriref_objects(store, ent, terms.RDFS_DOMAIN, body.domains)
     if "ranges" in touched and body.ranges is not None:
-        _set_uriref_objects(graph, iri, RDFS.range, body.ranges)
-    row, _ = _persist(request, session, row, graph)
-    return respond({"meta": meta_of(row), "entity": _entity_payload(graph, iri, kind)})
+        _set_uriref_objects(store, ent, terms.RDFS_RANGE, body.ranges)
+    row, _ = _persist(request, session, row, store, prefixes)
+    return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, ent.value, kind)})
 
 
 @router.delete("/ontologies/{ontology_id}/entities/{eid:path}")
@@ -356,9 +404,9 @@ def delete_entity(
     eid: str,
     baseFileHash: str,
     request: Request,
-    prune: bool = True,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
+    prune: bool = True,
 ) -> dict:
     """Delete an entity's triples; prune also drops reverse references.
 
@@ -367,20 +415,17 @@ def delete_entity(
     """
     row = _owned_row(user, session, ontology_id)
     _check_lock(baseFileHash, row)
-    graph = _load_graph(row)
-    iri = _declared(graph, eid)
+    store, prefixes = _load_store(row)
+    iri = _declared(store, eid)
     removed = 0
-    for t in list(graph.triples((iri, None, None))):
-        graph.remove(t)
+    for q in list(store.quads_for_pattern(iri, None, None, ox.DefaultGraph())):
+        store.remove(q)
         removed += 1
     if prune:
-        reverse: list[tuple[Node, URIRef, Node]] = [
-            (s, p, iri)
-            for p in (RDFS.subClassOf, RDFS.domain, RDFS.range, RDF.type)
-            for s in graph.subjects(p, iri)
-        ]
-        for t in reverse:
-            graph.remove(t)
-            removed += 1
-    row, _ = _persist(request, session, row, graph)
+        preds = (terms.RDFS_SUBCLASSOF, terms.RDFS_DOMAIN, terms.RDFS_RANGE, terms.RDF_TYPE)
+        for pred in preds:
+            for q in list(store.quads_for_pattern(None, pred, iri, ox.DefaultGraph())):
+                store.remove(q)
+                removed += 1
+    row, _ = _persist(request, session, row, store, prefixes)
     return respond({"removed": removed, "meta": meta_of(row)})

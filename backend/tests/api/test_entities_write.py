@@ -260,25 +260,24 @@ def test_entity_write_refreshes_disk_ir_cache(client: TestClient, monkeypatch) -
 def test_edit_parses_file_once_and_keeps_parse_ms(client: TestClient, monkeypatch) -> None:
     """An edit parses the file exactly once.
 
-    _load_graph is the only parse; the _persist re-parse is gone.
+    _load_store is the only parse; the _persist re-parse is gone.
     stats_json keeps the old parse_ms and gains build_ms.
     """
     from uuid import UUID
 
-    import rdflib as rdflib_mod
-
+    import ontoworkbench.server.routers.entities as entities_mod
     from ontoworkbench.db.models import Ontology
     from ontoworkbench.db.session import sessionmaker_or_fail
 
     oid, meta = _upload(client)
     calls: list[int] = []
-    real = rdflib_mod.Graph.parse
+    real = entities_mod.parse_store
 
-    def spy(self, *a, **k):  # noqa: ANN001 — test-local shape
+    def spy(data, fmt):  # noqa: ANN001 — test-local shape
         calls.append(1)
-        return real(self, *a, **k)
+        return real(data, fmt)
 
-    monkeypatch.setattr(rdflib_mod.Graph, "parse", spy)
+    monkeypatch.setattr(entities_mod, "parse_store", spy)
     r = client.post(
         f"/api/ontologies/{oid}/classes",
         json={
@@ -289,7 +288,7 @@ def test_edit_parses_file_once_and_keeps_parse_ms(client: TestClient, monkeypatc
         },
     )
     assert r.status_code == 200, r.text
-    assert calls == [1]  # _load_graph only; the _persist re-parse is gone
+    assert calls == [1]  # _load_store only; the _persist re-parse is gone
 
     after = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
     assert after["parseMs"] == meta["parseMs"]  # kept from the original parse
@@ -298,3 +297,77 @@ def test_edit_parses_file_once_and_keeps_parse_ms(client: TestClient, monkeypatc
         assert row is not None
         assert row.stats_json["build_ms"] is not None  # new key
     assert "ow_build_seconds" in client.get("/metrics").text
+
+
+RDFXML_DEFAULT_NS = b"""<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns="http://example.org/"
+         xmlns:owl="http://www.w3.org/2002/07/owl#">
+  <owl:Class rdf:about="http://example.org/Thing"/>
+  <owl:Class rdf:about="http://example.org/Animal"/>
+</rdf:RDF>
+"""
+
+
+def test_edit_rdfxml_default_namespace_round_trips(client: TestClient) -> None:
+    """An edit on rdfxml with a default xmlns keeps it through the dump.
+
+    The empty-prefix declaration flows PrefixMap.as_dict() → store.dump
+    prefixes: the rewritten file must still parse and keep the default
+    namespace bound (2026-09-03 plan carry-in).
+    """
+    r = client.post(
+        "/api/ontologies",
+        files={"file": ("mini.rdf", io.BytesIO(RDFXML_DEFAULT_NS), "application/rdf+xml")},
+    )
+    assert r.status_code == 201
+    oid, meta = r.json()["data"]["id"], r.json()["data"]
+
+    r = client.put(
+        f"/api/ontologies/{oid}/entities/{THING}",
+        json={"comment": "root", "baseFileHash": meta["fileHash"]},
+    )
+    assert r.status_code == 200, r.text
+
+    src = _source(client, oid)
+    assert 'xmlns="http://example.org/"' in src  # default namespace survives
+    # The dumped file re-parses: a second edit on the refreshed hash works.
+    meta2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    r = client.put(
+        f"/api/ontologies/{oid}/entities/{ANIMAL}",
+        json={"comment": "child", "baseFileHash": meta2["fileHash"]},
+    )
+    assert r.status_code == 200, r.text
+    assert "child" in _source(client, oid)
+
+
+JSONLD_CONTEXT = b"""{
+  "@context": {
+    "ex": "http://example.org/",
+    "owl": "http://www.w3.org/2002/07/owl#"
+  },
+  "@id": "ex:Thing",
+  "@type": "owl:Class"
+}"""
+
+
+def test_edit_jsonld_round_trips(client: TestClient) -> None:
+    """Creating a class in a jsonld ontology survives the dump + re-parse."""
+    r = client.post(
+        "/api/ontologies",
+        files={"file": ("mini.jsonld", io.BytesIO(JSONLD_CONTEXT), "application/ld+json")},
+    )
+    assert r.status_code == 201
+    oid, meta = r.json()["data"]["id"], r.json()["data"]
+
+    r = client.post(
+        f"/api/ontologies/{oid}/classes",
+        json={"name": "Cat", "prefix": "ex", "baseFileHash": meta["fileHash"]},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["entity"]["curie"] == "ex:Cat"
+
+    # Force the cold path: the dumped file must re-parse and serve the edit.
+    client.app.state.cache.drop(oid)
+    ov = _overview(client, oid)
+    assert any(n["id"] == "http://example.org/Cat" for n in ov["nodes"])
