@@ -1,7 +1,6 @@
 """Parsing + format sniffing (extension first, content fallback).
 
-parse_store/serialize_store are the engine; the rdflib parse_graph family
-below is the migration-window oracle pending removal (plan 2026-09-03).
+parse_store/serialize_store load and dump bytes through pyoxigraph.
 """
 
 from __future__ import annotations
@@ -10,7 +9,6 @@ import time
 from typing import cast
 
 import pyoxigraph as ox
-import rdflib
 
 from ontoworkbench.core.errors import CoreError
 from ontoworkbench.core.prefixes import PrefixMap
@@ -32,7 +30,6 @@ _EXT_MAP = {
     ".jsonld": "jsonld",
     ".json": "jsonld",
 }
-_RDFFORMAT = {"turtle": "turtle", "rdfxml": "xml", "jsonld": "json-ld"}
 
 
 def sniff_format(filename: str, head: bytes) -> str:
@@ -53,35 +50,6 @@ def sniff_format(filename: str, head: bytes) -> str:
         "Cannot detect a supported RDF format",
         "Supported: Turtle (.ttl), RDF-XML (.owl/.rdf), JSON-LD (.jsonld)",
     )
-
-
-def parse_graph(data: bytes, fmt: str) -> rdflib.Graph:
-    """Parse bytes into a Graph; wrap syntax errors with the parser's detail.
-
-    Deprecated: rdflib path, kept only for pre-Store callers (M2 removal);
-    new code should use parse_store.
-    """
-    g = rdflib.Graph()
-    try:
-        g.parse(data=data, format=_RDFFORMAT[fmt])
-    except Exception as exc:  # rdflib raises many parser-specific types
-        raise ParseError("PARSE_FAILED", f"Syntax error: {exc}") from exc
-    return g
-
-
-def serialize_graph(graph: rdflib.Graph, fmt: str) -> bytes:
-    """Serialize a Graph back to bytes in the stored format (A2 writes)."""
-    try:
-        return graph.serialize(format=_RDFFORMAT[fmt]).encode("utf-8")
-    except Exception as exc:
-        raise ParseError("PARSE_FAILED", f"Serialization error: {exc}") from exc
-
-
-def timed_parse(data: bytes, fmt: str) -> tuple[rdflib.Graph, float]:
-    """parse_graph plus wall-clock duration in milliseconds (for meta)."""
-    start = time.perf_counter()
-    graph = parse_graph(data, fmt)
-    return graph, (time.perf_counter() - start) * 1000.0
 
 
 _OX_FORMAT = {

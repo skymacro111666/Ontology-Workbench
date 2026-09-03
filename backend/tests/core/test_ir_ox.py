@@ -1,7 +1,7 @@
 """build_ir_store on an ox Store: bnode axioms, literal forms, prefix filter."""
 
-from ontoworkbench.core.ir import build_ir, build_ir_store
-from ontoworkbench.core.parsing import parse_graph, parse_store
+from ontoworkbench.core.ir import build_ir_store
+from ontoworkbench.core.parsing import parse_store
 
 GO_STYLE = b"""@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -100,20 +100,3 @@ def test_individuals_typed_data_assertions_only() -> None:
     assert [r.curie for r in ir.instances["http://example.org/Dog"]] == ["ex:Rex"]
     assert ir.counts.individual_count == 2
     assert ir.entities["http://example.org/Old"].deprecated is True
-
-
-def test_parity_with_rdflib_build_ir() -> None:
-    """Same bytes through the old rdflib path and the new Store path agree.
-
-    Guards the migration window (Task 8 deletes the rdflib side); IR is
-    the stable contract, so every field must match byte-for-byte.
-    """
-    for data in (GO_STYLE, TWO_BNODES, INDIVIDUALS):
-        old = build_ir(parse_graph(data, "turtle"))
-        new = _build(data)
-        assert new.counts == old.counts
-        assert new.prefixes == old.prefixes
-        assert new.ontology_iri == old.ontology_iri
-        assert new.instances == old.instances
-        assert new.individuals == old.individuals
-        assert new.entities == old.entities

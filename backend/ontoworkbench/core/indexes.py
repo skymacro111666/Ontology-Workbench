@@ -419,5 +419,5 @@ class Indexes:
 
 
 def build_indexes(ir: IRBundle) -> Indexes:
-    """Factory kept for API symmetry with build_ir."""
+    """Factory kept for API symmetry with build_ir_store."""
     return Indexes(ir)

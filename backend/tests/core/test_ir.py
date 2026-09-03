@@ -2,8 +2,7 @@
 
 from pathlib import Path
 
-import rdflib
-from rdflib.compare import isomorphic
+import pyoxigraph as ox
 
 from ontoworkbench.core.ir import _ox_curie, _ox_curie_for, _ox_turtle_block, build_ir_store
 from ontoworkbench.core.parsing import parse_store
@@ -251,19 +250,6 @@ def test_ir_bundle_carries_ontology_iri() -> None:
     assert _build(declared).ontology_iri == "http://example.org/"
 
 
-def _old_serialize_triples_about(ttl: str, uri: str) -> str:
-    """The pre-optimization rdflib sub-graph serializer, kept as the oracle."""
-    graph = rdflib.Graph().parse(data=ttl.encode(), format="turtle")
-    from rdflib import RDFS
-    from rdflib.term import URIRef
-
-    sub = rdflib.Graph()
-    sub.bind("rdfs", RDFS)
-    for triple in graph.triples((URIRef(uri), None, None)):
-        sub.add(triple)
-    return sub.serialize(format="turtle").strip()
-
-
 EQUIV_TTL = """@prefix ex: <http://example.org/> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
@@ -276,10 +262,25 @@ ex:Dog a owl:Class ;
 """
 
 
+def _term_key(t: ox.NamedNode | ox.BlankNode | ox.Literal) -> tuple:
+    """A comparison key; blank nodes normalize to one placeholder."""
+    if isinstance(t, ox.NamedNode):
+        return ("iri", t.value)
+    if isinstance(t, ox.Literal):
+        return ("lit", t.value, t.language, t.datatype.value if t.datatype else None)
+    return ("bnode",)
+
+
+def _subject_quads(store: ox.Store, uri: str) -> set[tuple]:
+    """(predicate, object-key) pairs of the subject's default-graph triples."""
+    return {
+        (q.predicate.value, _term_key(q.object))
+        for q in store.quads_for_pattern(ox.NamedNode(uri), None, None, ox.DefaultGraph())
+    }
+
+
 def _subjects(ttl: str) -> list[str]:
     """Distinct IRI subjects of the parsed store, deterministic order."""
-    import pyoxigraph as ox
-
     store, _ = parse_store(ttl.encode(), "turtle")
     return sorted(
         {
@@ -290,17 +291,20 @@ def _subjects(ttl: str) -> list[str]:
     )
 
 
-def test_turtle_block_equivalent_to_old_serializer() -> None:
-    """Every IRI subject renders a block isomorphic to the old output."""
+def test_turtle_block_round_trips_every_subject() -> None:
+    """Every IRI subject renders a block that re-parses to the same triples.
+
+    The block is self-contained (@prefix lines included), so re-parsing it
+    through the engine must reproduce the store's (predicate, object) set
+    for that subject — literals with tag/datatype, blank nodes by shape.
+    """
     store, pm = parse_store(EQUIV_TTL.encode(), "turtle")
     subjects = [s for s in _subjects(EQUIV_TTL) if s.startswith("http://")]
     assert len(subjects) >= 2  # fixture sanity: at least Dog and Animal
     for uri in subjects:
-        old = rdflib.Graph().parse(
-            data=_old_serialize_triples_about(EQUIV_TTL, uri), format="turtle"
-        )
-        new = rdflib.Graph().parse(data=_ox_turtle_block(store, pm, uri), format="turtle")
-        assert isomorphic(old, new), f"divergence on {uri}"
+        block = _ox_turtle_block(store, pm, uri)
+        reparsed, _ = parse_store(block.encode(), "turtle")
+        assert _subject_quads(reparsed, uri) == _subject_quads(store, uri), f"divergence on {uri}"
 
 
 def test_turtle_block_grouped_and_deterministic() -> None:

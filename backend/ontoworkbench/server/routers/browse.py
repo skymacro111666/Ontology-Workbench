@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api/ontologies", tags=["browse"])
 def _loader(request: Request):
     """Build a cache-miss loader: disk IR cache first, re-parse as fallback.
 
-    A hit skips parse+build_ir entirely (restart recovery for big
+    A hit skips parse+build_ir_store entirely (restart recovery for big
     ontologies); a miss re-parses and writes the bundle back through.
     """
     store: LocalUserDirStore = request.app.state.store

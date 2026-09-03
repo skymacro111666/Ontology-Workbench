@@ -1,8 +1,9 @@
-"""Format sniffing and graph parsing."""
+"""Format sniffing and store parsing."""
 
+import pyoxigraph as ox
 import pytest
 
-from ontoworkbench.core.parsing import ParseError, parse_graph, sniff_format
+from ontoworkbench.core.parsing import ParseError, parse_store, sniff_format
 
 TTL = b"""@prefix ex: <http://example.org/> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -32,19 +33,27 @@ def test_sniff_rejects_garbage() -> None:
 
 
 def test_parse_and_syntax_error() -> None:
-    """Valid turtle parses to one triple; garbage raises PARSE_FAILED."""
-    g = parse_graph(TTL, "turtle")
-    assert len(g) == 1
+    """Valid turtle parses to one quad; garbage raises PARSE_FAILED."""
+    store, _ = parse_store(TTL, "turtle")
+    quads = list(store.quads_for_pattern(None, None, None, ox.DefaultGraph()))
+    assert len(quads) == 1
     with pytest.raises(ParseError) as e:
-        parse_graph(b"this is @not turtle", "turtle")
+        parse_store(b"this is @not turtle", "turtle")
     assert e.value.code == "PARSE_FAILED"
 
 
 def test_parse_error_carries_detail() -> None:
     """ParseError exposes code/message/hint fields for the API layer."""
     with pytest.raises(ParseError) as e:
-        parse_graph(b"<http://x> <http://y>", "rdfxml")
+        parse_store(b"<http://x> <http://y>", "rdfxml")
     err = e.value
     assert err.code == "PARSE_FAILED"
     assert err.message
     assert isinstance(err.hint, str | type(None))
+
+
+def test_parse_rejects_unknown_format() -> None:
+    """A format name outside turtle/rdfxml/jsonld is UNSUPPORTED_FORMAT."""
+    with pytest.raises(ParseError) as e:
+        parse_store(TTL, "n3")
+    assert e.value.code == "UNSUPPORTED_FORMAT"
