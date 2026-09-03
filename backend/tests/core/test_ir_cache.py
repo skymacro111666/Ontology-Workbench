@@ -98,3 +98,22 @@ def test_write_failure_returns_false(tmp_path: Path, monkeypatch: pytest.MonkeyP
     store.write_bytes(TTL)
 
     assert write_ir_cache(store, _ir(), HASH) is False
+
+
+def test_write_never_clobbers_a_source_named_like_the_cache(tmp_path: Path) -> None:
+    """An ontology file named index.pkl (or index.pkl.tmp) must survive.
+
+    The cache path / tmp path can coincide with the source file itself;
+    writing would silently destroy the uploaded ontology. Both calls
+    refuse, and not one byte of either file changes.
+    """
+    src_cache_named = tmp_path / "index.pkl"
+    src_tmp_named = tmp_path / "index.pkl.tmp"
+    src_cache_named.write_bytes(TTL)
+    src_tmp_named.write_bytes(TTL)
+
+    assert write_ir_cache(src_cache_named, _ir(), HASH) is False
+    assert write_ir_cache(src_tmp_named, _ir(), HASH) is False
+
+    assert src_cache_named.read_bytes() == TTL
+    assert src_tmp_named.read_bytes() == TTL

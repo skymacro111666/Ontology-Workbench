@@ -17,7 +17,7 @@ import structlog
 
 from ontoworkbench.core.ir import IRBundle
 
-IR_SCHEMA_VERSION = 1
+IR_SCHEMA_VERSION = 1  # IRBundle 结构或 build_ir 语义变更时必须 bump
 CACHE_FILENAME = "index.pkl"
 
 _log = structlog.get_logger("ow.cache")
@@ -44,8 +44,9 @@ def ir_cache_path(storage_path: Path) -> Path:
 def read_ir_cache(storage_path: Path, file_hash: str) -> IrCacheResult:
     """Load cached IR on hash+version match; never raises.
 
-    Missing file, hash mismatch and version drift are expected staleness
-    ("miss"); anything that fails to unpickle or shape-check is "corrupt".
+    Missing file, hash mismatch, version drift and unexpected payload shape
+    are expected staleness ("miss"); only a payload that fails to unpickle
+    is "corrupt".
     """
     path = ir_cache_path(storage_path)
     if not path.is_file():
@@ -72,10 +73,13 @@ def write_ir_cache(storage_path: Path, ir: IRBundle, file_hash: str) -> bool:
     midway never leaves a half-written cache a later read could trust.
     """
     path = ir_cache_path(storage_path)
+    tmp = path.with_name(CACHE_FILENAME + ".tmp")
+    if path == storage_path or tmp == storage_path:
+        _log.warning("ir_cache.refuses_same_path", target=str(storage_path))
+        return False
     started = time.perf_counter()
     try:
         payload = pickle.dumps({"v": IR_SCHEMA_VERSION, "file_hash": file_hash, "ir": ir})
-        tmp = path.with_name(CACHE_FILENAME + ".tmp")
         tmp.write_bytes(payload)
         os.replace(tmp, path)
     except Exception as exc:
