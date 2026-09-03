@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from typing import cast
 
 import pyoxigraph as ox
 import rdflib
@@ -114,6 +115,37 @@ def timed_parse_store(data: bytes, fmt: str) -> tuple[ox.Store, PrefixMap, float
     start = time.perf_counter()
     store, pm = parse_store(data, fmt)
     return store, pm, (time.perf_counter() - start) * 1000.0
+
+
+_OX_OUT = {
+    "turtle": ox.RdfFormat.TURTLE,
+    "rdfxml": ox.RdfFormat.RDF_XML,
+    "jsonld": ox.RdfFormat.JSON_LD,
+}
+
+
+def serialize_store(store: ox.Store, prefixes: PrefixMap, fmt: str) -> bytes:
+    """Dump the default graph back to bytes in the stored format (A2 writes).
+
+    prefixes feeds the serializer's @prefix/xmlns table (jsonld output
+    ignores it). from_graph=DefaultGraph scopes the dump: jsonld is a
+    dataset format and would otherwise write the full store, named
+    graphs included. Unknown fmt raises UNSUPPORTED_FORMAT; dump
+    failures raise PARSE_FAILED with ox's detail.
+    """
+    fmt_enum = _OX_OUT.get(fmt)
+    if fmt_enum is None:
+        raise ParseError(
+            "UNSUPPORTED_FORMAT",
+            f"Unsupported format '{fmt}'",
+            "Supported: turtle, rdfxml, jsonld",
+        )
+    try:
+        out = store.dump(format=fmt_enum, from_graph=ox.DefaultGraph(), prefixes=prefixes.as_dict())
+        # dump returns None only when an output stream is given; we omit it.
+        return cast("bytes", out)
+    except Exception as exc:
+        raise ParseError("PARSE_FAILED", f"Serialization error: {exc}") from exc
 
 
 def literal_type_ok(value: str, datatype: str) -> bool:
