@@ -29,8 +29,9 @@ CONVERSATION.md
 # 工具默认输出(tools/gen_big_ontology.py 生成于 cwd)
 tmp_big_ontology.ttl
 
-# 临时目录(竞品截图、mockup、打包产物)
+# 临时目录(竞品截图、mockup、打包产物、评审稿)
 tmp/
+.tmp/
 
 # SDD 执行工作区(ledger/brief/report 草稿)
 .superpowers/
