@@ -388,3 +388,11 @@ def test_upload_warms_disk_ir_cache(client: TestClient, monkeypatch) -> None:
     tree = client.get(f"/api/ontologies/{oid}/tree")
     assert tree.status_code == 200
     assert calls == []
+
+
+def test_browse_records_build_metric(client: TestClient) -> None:
+    """ow_build_seconds appears on /metrics after a cold browse."""
+    oid = _upload(client)
+    client.app.state.cache.drop(oid)
+    assert client.get(f"/api/ontologies/{oid}/tree").status_code == 200
+    assert "ow_build_seconds" in client.get("/metrics").text

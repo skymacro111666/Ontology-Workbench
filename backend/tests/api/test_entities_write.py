@@ -255,3 +255,46 @@ def test_entity_write_refreshes_disk_ir_cache(client: TestClient, monkeypatch) -
     assert ov.status_code == 200
     assert ov.json()["data"]["totalCount"] == 7  # MINI 6 entities + Cat
     assert calls == []
+
+
+def test_edit_parses_file_once_and_keeps_parse_ms(client: TestClient, monkeypatch) -> None:
+    """An edit parses the file exactly once.
+
+    _load_graph is the only parse; the _persist re-parse is gone.
+    stats_json keeps the old parse_ms and gains build_ms.
+    """
+    from uuid import UUID
+
+    import rdflib as rdflib_mod
+
+    from ontoworkbench.db.models import Ontology
+    from ontoworkbench.db.session import sessionmaker_or_fail
+
+    oid, meta = _upload(client)
+    calls: list[int] = []
+    real = rdflib_mod.Graph.parse
+
+    def spy(self, *a, **k):  # noqa: ANN001 — test-local shape
+        calls.append(1)
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(rdflib_mod.Graph, "parse", spy)
+    r = client.post(
+        f"/api/ontologies/{oid}/classes",
+        json={
+            "name": "Cat",
+            "prefix": "ex",
+            "parents": [ANIMAL],
+            "baseFileHash": meta["fileHash"],
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert calls == [1]  # _load_graph only; the _persist re-parse is gone
+
+    after = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    assert after["parseMs"] == meta["parseMs"]  # kept from the original parse
+    with sessionmaker_or_fail()() as session:
+        row = session.get(Ontology, UUID(oid))
+        assert row is not None
+        assert row.stats_json["build_ms"] is not None  # new key
+    assert "ow_build_seconds" in client.get("/metrics").text

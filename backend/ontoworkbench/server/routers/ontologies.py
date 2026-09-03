@@ -23,7 +23,7 @@ from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import LayoutRepository, OntologyRepository
 from ontoworkbench.db.session import get_session
-from ontoworkbench.observability.metrics import ow_parse_seconds, ow_uploads_total
+from ontoworkbench.observability.metrics import ow_build_seconds, ow_parse_seconds, ow_uploads_total
 from ontoworkbench.observability.middleware import request_id_ctx
 from ontoworkbench.server.cache import OntologyCache
 from ontoworkbench.server.deps import get_current_user
@@ -207,7 +207,8 @@ def _import_bytes(
             graph, parse_ms = timed_parse(data, fmt)
         parse_ms = round((time.perf_counter() - t_parse) * 1000, 1)
         t_ir = time.perf_counter()
-        ir = build_ir(graph)
+        with ow_build_seconds.time():
+            ir = build_ir(graph)
         ir_ms = round((time.perf_counter() - t_ir) * 1000, 1)
 
         oid = uuid4()
@@ -368,7 +369,8 @@ def replace_source(
         )
     with ow_parse_seconds.labels(row.format).time():
         graph, parse_ms = timed_parse(data, row.format)
-    ir = build_ir(graph)
+    with ow_build_seconds.time():
+        ir = build_ir(graph)
 
     store: LocalUserDirStore = request.app.state.store
     store.save(user.id, UUID(str(row.id)), row.filename, data)

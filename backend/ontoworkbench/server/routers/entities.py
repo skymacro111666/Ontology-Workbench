@@ -9,6 +9,7 @@ PUT /source (design spec 2026-08-26 §4).
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -23,12 +24,12 @@ from sqlalchemy.orm import Session
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir
 from ontoworkbench.core.ir_cache import write_ir_cache
-from ontoworkbench.core.parsing import serialize_graph, timed_parse
+from ontoworkbench.core.parsing import serialize_graph
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import OntologyRepository
 from ontoworkbench.db.session import get_session
-from ontoworkbench.observability.metrics import ow_parse_seconds, ow_uploads_total
+from ontoworkbench.observability.metrics import ow_build_seconds, ow_uploads_total
 from ontoworkbench.server.cache import OntologyCache
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
@@ -203,14 +204,19 @@ def _entity_payload(graph: Graph, iri: URIRef, kind: str) -> dict[str, Any]:
 def _persist(
     request: Request, session: Session, row: Ontology, graph: Graph
 ) -> tuple[Ontology, Any]:
-    """Serialize → revalidate → atomic write → row/cache refresh (A1 shape)."""
+    """Serialize → build from the mutated graph → atomic write → row/cache refresh."""
     data = serialize_graph(graph, row.format)
     if len(data) > MAX_UPLOAD:
         ow_uploads_total.labels("too_large").inc()
         raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
-    with ow_parse_seconds.labels(row.format).time():
-        check, parse_ms = timed_parse(data, row.format)
-    ir = build_ir(check)
+    # The mutated in-memory graph IS the data just serialized — building the
+    # IR from it directly drops the old re-parse-for-validation (a full
+    # second parse per edit, ~3min on a 130MB ontology).
+    old_parse_ms = (row.stats_json or {}).get("parse_ms")
+    t0 = time.perf_counter()
+    with ow_build_seconds.time():
+        ir = build_ir(graph)
+    build_ms = (time.perf_counter() - t0) * 1000.0
 
     store: LocalUserDirStore = request.app.state.store
     store.save(row.owner_user_id, UUID(str(row.id)), row.filename, data)
@@ -223,7 +229,11 @@ def _persist(
             property_count=ir.counts.property_count,
             axiom_count=ir.counts.axiom_count,
             instance_count=ir.counts.individual_count,
-            stats_json={"prefixes": ir.prefixes, "parse_ms": round(parse_ms, 1)},
+            stats_json={
+                "prefixes": ir.prefixes,
+                "parse_ms": old_parse_ms,
+                "build_ms": round(build_ms, 1),
+            },
             file_size_bytes=len(data),
             file_hash=LocalUserDirStore.file_hash(data),
         )
