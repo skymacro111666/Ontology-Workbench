@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
+import threading
+from collections import OrderedDict, defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
@@ -20,13 +21,19 @@ class OntologyCache:
         """Start empty with the given capacity."""
         self._max_size = max_size
         self._entries: OrderedDict[str, tuple[str, float, Indexes]] = OrderedDict()
+        self._locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
 
     def indexes_for(
         self,
         ontology: Ontology,
         loader: Callable[[Ontology], Indexes],
     ) -> Indexes:
-        """Return cached indexes, rebuilding when the stored file changed."""
+        """Return cached indexes, rebuilding when the stored file changed.
+
+        Concurrent misses for the same ontology collapse into one loader
+        run: the first request through the per-oid lock builds, the rest
+        double-check the cache inside the lock and share the result.
+        """
         key = str(ontology.id)
         try:
             mtime = Path(ontology.storage_path).stat().st_mtime
@@ -36,12 +43,17 @@ class OntologyCache:
         if cached and cached[0] == ontology.file_hash and cached[1] == mtime:
             self._entries.move_to_end(key)
             return cached[2]
-        indexes = loader(ontology)
-        self._entries[key] = (ontology.file_hash, mtime, indexes)
-        while len(self._entries) > self._max_size:
-            self._entries.popitem(last=False)
-        ow_cached_ontologies.set(len(self._entries))
-        return indexes
+        with self._locks[key]:
+            cached = self._entries.get(key)
+            if cached and cached[0] == ontology.file_hash and cached[1] == mtime:
+                self._entries.move_to_end(key)
+                return cached[2]
+            indexes = loader(ontology)
+            self._entries[key] = (ontology.file_hash, mtime, indexes)
+            while len(self._entries) > self._max_size:
+                self._entries.popitem(last=False)
+            ow_cached_ontologies.set(len(self._entries))
+            return indexes
 
     def drop(self, ontology_id: str) -> bool:
         """Evict one ontology (called on delete); True when a live entry existed."""
