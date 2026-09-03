@@ -314,3 +314,26 @@ def test_turtle_block_grouped_and_deterministic() -> None:
     assert "rdfs:label" in text and "@" in text  # lang tag survives
     assert " ;\n" in text  # predicate grouping
     assert text.endswith(" .")
+
+
+def test_curie_cache_roundtrip_and_reuse() -> None:
+    """Cached qnames equal uncached curies; a hit must come from the cache."""
+    from ontoworkbench.core.ir import _curie
+
+    g = rdflib.Graph().parse(data=MINI, format="turtle")
+    dog = URIRef("http://example.org/Dog")
+    cc: dict[URIRef, object] = {}
+    first = _curie(g, dog, cc)
+    assert first == _curie(g, dog) == "ex:Dog"
+    assert dog in cc
+    cc[dog] = ("ex", "http://example.org/", "POISONED")  # bogus memo entry
+    assert _curie(g, dog, cc) == "ex:POISONED"  # served from the cache
+
+
+def test_build_ir_with_memo_changes_nothing() -> None:
+    """The threaded memo changes no observable IR content."""
+    ir = build_ir(rdflib.Graph().parse(data=EQUIV_TTL, format="turtle"))
+    dog = ir.entities["http://example.org/Dog"]
+    assert dog.curie == "ex:Dog"
+    assert any("rdfs:label" in a.turtle for a in dog.axioms)
+    assert "ex" in ir.prefixes

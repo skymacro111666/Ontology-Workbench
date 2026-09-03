@@ -136,13 +136,33 @@ class IRBundle(BaseModel):
     individuals: dict[str, IndividualIR] = {}
 
 
-def _curie(graph: rdflib.Graph, uri: URIRef) -> str:
-    """Compact URI via namespace manager; fall back to full IRI."""
+_QName = tuple[str, str, str]
+_QNameCache = dict[URIRef, _QName | None]
+
+
+def _qname(graph: rdflib.Graph, uri: URIRef, cache: _QNameCache | None = None) -> _QName | None:
+    """compute_qname with an optional per-build memo (None = unresolvable).
+
+    The same URI is qname-resolved many times per build (entity curie,
+    refs, axiom blocks); one memo across the whole build_ir walk keeps
+    compute_qname's namespace search to once per distinct URI.
+    """
+    if cache is not None and uri in cache:
+        return cache[uri]
     try:
-        prefix, _, local = graph.compute_qname(uri)
-        return f"{prefix}:{local}"
+        prefix, namespace, local = graph.compute_qname(uri)
+        qname = (prefix, str(namespace), local)
     except Exception:  # unbound or split-failing namespaces
-        return str(uri)
+        qname = None
+    if cache is not None:
+        cache[uri] = qname
+    return qname
+
+
+def _curie(graph: rdflib.Graph, uri: URIRef, cache: _QNameCache | None = None) -> str:
+    """Compact URI via namespace manager; fall back to full IRI."""
+    qname = _qname(graph, uri, cache)
+    return f"{qname[0]}:{qname[2]}" if qname else str(uri)
 
 
 def _labels(graph: rdflib.Graph, s: URIRef) -> dict[str, str]:
@@ -154,14 +174,16 @@ def _labels(graph: rdflib.Graph, s: URIRef) -> dict[str, str]:
     }
 
 
-def _ref(graph: rdflib.Graph, uri: URIRef) -> Ref:
+def _ref(graph: rdflib.Graph, uri: URIRef, cache: _QNameCache | None = None) -> Ref:
     """Build a Ref for any URIRef in the graph."""
-    return Ref(eid=str(uri), curie=_curie(graph, uri), label=_labels(graph, uri))
+    return Ref(eid=str(uri), curie=_curie(graph, uri, cache), label=_labels(graph, uri))
 
 
-def _uri_refs(graph: rdflib.Graph, nodes: Iterable[Node]) -> list[Ref]:
+def _uri_refs(
+    graph: rdflib.Graph, nodes: Iterable[Node], cache: _QNameCache | None = None
+) -> list[Ref]:
     """Map nodes to Refs, keeping only URIRefs (blank nodes dropped)."""
-    refs = [_ref(graph, n) for n in nodes if isinstance(n, URIRef)]
+    refs = [_ref(graph, n, cache) for n in nodes if isinstance(n, URIRef)]
     return sorted(refs, key=lambda r: r.curie)
 
 
@@ -179,13 +201,13 @@ def _ptype_of(graph: rdflib.Graph, uri: URIRef) -> str:
 XSD_STRING = "http://www.w3.org/2001/XMLSchema#string"
 
 
-def _prop_ref(graph: rdflib.Graph, uri: URIRef) -> PropRef:
+def _prop_ref(graph: rdflib.Graph, uri: URIRef, cache: _QNameCache | None = None) -> PropRef:
     """PropRef for a declared property URI, with its domain/range classes."""
     return PropRef(
-        **_ref(graph, uri).model_dump(),
+        **_ref(graph, uri, cache).model_dump(),
         ptype=_ptype_of(graph, uri),
-        domain=_uri_refs(graph, graph.objects(uri, RDFS.domain)),
-        range=_uri_refs(graph, graph.objects(uri, RDFS.range)),
+        domain=_uri_refs(graph, graph.objects(uri, RDFS.domain), cache),
+        range=_uri_refs(graph, graph.objects(uri, RDFS.range), cache),
     )
 
 
@@ -213,6 +235,7 @@ def _ttl_term(
     term: Node,
     bindings: dict[str, str] | None = None,
     bnodes: dict[Node, str] | None = None,
+    cache: _QNameCache | None = None,
 ) -> str:
     """One RDF term as Turtle: prefixed name, <iri>, literal or bnode.
 
@@ -222,14 +245,11 @@ def _ttl_term(
     (raw ids are random per parse, which would break rebuild determinism).
     """
     if isinstance(term, URIRef):
-        try:
-            prefix, namespace, local = graph.compute_qname(term)
-        except Exception:  # unbound or split-failing namespace
-            return f"<{term}>"
-        if prefix and _PN_LOCAL.match(local):
+        qname = _qname(graph, term, cache)
+        if qname is not None and qname[0] and _PN_LOCAL.match(qname[2]):
             if bindings is not None:
-                bindings[prefix] = str(namespace)
-            return f"{prefix}:{local}"
+                bindings[qname[0]] = qname[1]
+            return f"{qname[0]}:{qname[2]}"
         return f"<{term}>"
     if isinstance(term, Literal):
         return _ttl_literal(term)
@@ -241,7 +261,7 @@ def _ttl_term(
     return label
 
 
-def _turtle_block(graph: rdflib.Graph, uri: URIRef) -> str:
+def _turtle_block(graph: rdflib.Graph, uri: URIRef, cache: _QNameCache | None = None) -> str:
     """All triples with uri as subject, one self-contained Turtle block.
 
     Replaces the per-entity rdflib sub-graph + turtle serializer (a full
@@ -263,10 +283,10 @@ def _turtle_block(graph: rdflib.Graph, uri: URIRef) -> str:
     parts: list[str] = []
     for key in sorted(by_pred):
         p, objs = by_pred[key]
-        pred = "a" if p == RDF.type else _ttl_term(graph, p, bindings, bnodes)
-        rendered = sorted(_ttl_term(graph, o, bindings, bnodes) for o in objs)
+        pred = "a" if p == RDF.type else _ttl_term(graph, p, bindings, bnodes, cache)
+        rendered = sorted(_ttl_term(graph, o, bindings, bnodes, cache) for o in objs)
         parts.append(f"{pred} " + " , ".join(rendered))
-    subject = _ttl_term(graph, uri, bindings, bnodes)
+    subject = _ttl_term(graph, uri, bindings, bnodes, cache)
     text = f"{subject} {parts[0]}"
     for part in parts[1:]:
         text += f" ;\n    {part}"
@@ -297,6 +317,9 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
     )
 
     entities: dict[str, EntityIR] = {}
+    # One qname memo for the whole walk: entity curies, refs and axiom
+    # blocks re-resolve the same URIs constantly.
+    cc: _QNameCache = {}
 
     # Domain/range links walked once: props by class and classes by prop.
     props_by_class: dict[URIRef, list[URIRef]] = {}
@@ -321,7 +344,9 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
             far = next((o for o in graph.objects(prop, other) if isinstance(o, URIRef)), None)
             if far is None:
                 return None
-            return CounterpartRef(**_ref(graph, far).model_dump(), declared=far in declared_uris)
+            return CounterpartRef(
+                **_ref(graph, far, cc).model_dump(), declared=far in declared_uris
+            )
 
         refs = {
             r.eid: ReferencedRef(eid=r.eid, curie=r.curie, label=r.label, relation="subClassOf")
@@ -329,7 +354,7 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
         }
         if is_class:
             for p in props_by_class.get(uri, []):
-                base = _ref(graph, p)
+                base = _ref(graph, p, cc)
                 relation = "rdfs:domain" if uri in graph.objects(p, RDFS.domain) else "rdfs:range"
                 refs[base.eid] = ReferencedRef(
                     eid=base.eid,
@@ -340,7 +365,7 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
                 )
         else:
             for c, relation in classes_by_prop.get(uri, []):
-                base = _ref(graph, c)
+                base = _ref(graph, c, cc)
                 refs[base.eid] = ReferencedRef(
                     eid=base.eid,
                     curie=base.curie,
@@ -354,13 +379,13 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
         is_class = _is_class(graph, uri)
         etype = "Class" if is_class else _ptype_of(graph, uri)
 
-        parents = _uri_refs(graph, graph.objects(uri, RDFS.subClassOf))
-        children = _uri_refs(graph, graph.subjects(RDFS.subClassOf, uri)) if is_class else []
+        parents = _uri_refs(graph, graph.objects(uri, RDFS.subClassOf), cc)
+        children = _uri_refs(graph, graph.subjects(RDFS.subClassOf, uri), cc) if is_class else []
 
         properties: list[PropRef] = []
         if is_class:
             for p in props_by_class.get(uri, []):
-                properties.append(_prop_ref(graph, p))
+                properties.append(_prop_ref(graph, p, cc))
 
         comment = next(
             (str(c) for c in graph.objects(uri, RDFS.comment) if isinstance(c, Literal)),
@@ -368,7 +393,7 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
         )
         entities[str(uri)] = EntityIR(
             eid=str(uri),
-            curie=_curie(graph, uri),
+            curie=_curie(graph, uri, cc),
             type=etype,
             label=_labels(graph, uri),
             comment=comment,
@@ -377,7 +402,7 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
             children=children,
             properties=properties,
             referenced_by=_referenced(uri, is_class, children),
-            axioms=[Axiom(turtle=_turtle_block(graph, uri))],
+            axioms=[Axiom(turtle=_turtle_block(graph, uri, cc))],
             stats=Stats(direct_children=len(children)),
         )
 
@@ -406,7 +431,16 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
         axiom_count=len(graph),
     )
     # Only namespaces the graph actually uses; rdflib seeds ~29 built-ins.
-    used_iris = {str(t) for triple in graph for t in triple if isinstance(t, URIRef)}
+    # One explicit pass (no per-term generator frames) over 1.4M+ triples.
+    used_iris: set[str] = set()
+    _add_used = used_iris.add
+    for subj, pred, obj in graph:
+        if type(subj) is URIRef:
+            _add_used(str(subj))
+        if type(pred) is URIRef:
+            _add_used(str(pred))
+        if type(obj) is URIRef:
+            _add_used(str(obj))
     prefixes = {
         p or "base": str(n)
         for p, n in graph.namespaces()
@@ -434,11 +468,13 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
         for pred, obj in graph.predicate_objects(ind):
             if pred == RDF.type:
                 if obj in class_set and isinstance(obj, URIRef):
-                    instances.setdefault(str(obj), []).append(_ref(graph, ind))
-                    cls.append(_ref(graph, obj))
+                    instances.setdefault(str(obj), []).append(_ref(graph, ind, cc))
+                    cls.append(_ref(graph, obj, cc))
             elif isinstance(pred, URIRef) and pred in object_props and isinstance(obj, URIRef):
                 obj_asserts.append(
-                    ObjectAssertion(property=_prop_ref(graph, pred), object=_ref(graph, obj))
+                    ObjectAssertion(
+                        property=_prop_ref(graph, pred, cc), object=_ref(graph, obj, cc)
+                    )
                 )
             elif (
                 isinstance(pred, URIRef)
@@ -448,12 +484,14 @@ def build_ir(graph: rdflib.Graph) -> IRBundle:
             ):
                 data_asserts.append(
                     DataAssertion(
-                        property=_prop_ref(graph, pred), value=str(obj), datatype=str(obj.datatype)
+                        property=_prop_ref(graph, pred, cc),
+                        value=str(obj),
+                        datatype=str(obj.datatype),
                     )
                 )
         individuals_out[str(ind)] = IndividualIR(
             eid=str(ind),
-            curie=_curie(graph, ind),
+            curie=_curie(graph, ind, cc),
             label=_labels(graph, ind),
             comment=comment,
             classes=sorted(cls, key=lambda r: r.curie),
