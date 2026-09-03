@@ -143,6 +143,18 @@ def _iri_for(ns: PrefixMap, prefix: str, name: str) -> str:
     ) from None
 
 
+def _iri_or_422(value: str) -> ox.NamedNode:
+    """A user-supplied IRI (parents/domains/ranges); bad lexical form is a 422."""
+    try:
+        return ox.NamedNode(value)
+    except ValueError:
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR,
+            f"Invalid IRI '{value}'",
+            "Parents, domains, and ranges must be absolute IRIs.",
+        ) from None
+
+
 def _reject_duplicate(store: Store, iri: str) -> None:
     """Refuse to mint an IRI that already carries triples."""
     node = ox.NamedNode(iri)
@@ -194,6 +206,9 @@ def _set_uriref_objects(
     Only IRI objects are removed: rdfs:subClassOf restrictions live in
     blank nodes and must survive reparenting untouched.
     """
+    # Validate every IRI before touching the store: a mid-list failure must
+    # leave nothing half-applied.
+    nodes = [_iri_or_422(v) for v in values or []]
     named = [
         q
         for q in store.quads_for_pattern(ent, pred, None, ox.DefaultGraph())
@@ -201,8 +216,8 @@ def _set_uriref_objects(
     ]
     for q in named:
         store.remove(q)
-    for v in values or []:
-        store.add(_quad(ent, pred, ox.NamedNode(v)))
+    for node in nodes:
+        store.add(_quad(ent, pred, node))
 
 
 def _entity_payload(ns: PrefixMap, iri: str, kind: str) -> dict[str, str]:
@@ -293,12 +308,13 @@ def create_class(
     store, prefixes = _load_store(row)
     iri = _iri_for(prefixes, body.prefix, body.name)
     _reject_duplicate(store, iri)
+    parents = [_iri_or_422(p) for p in body.parents]
     ent = ox.NamedNode(iri)
     store.add(_quad(ent, terms.RDF_TYPE, terms.OWL_CLASS))
     _set_label(store, ent, body.label)
     _set_comment(store, ent, body.comment)
-    for parent in body.parents:
-        store.add(_quad(ent, terms.RDFS_SUBCLASSOF, ox.NamedNode(parent)))
+    for parent in parents:
+        store.add(_quad(ent, terms.RDFS_SUBCLASSOF, parent))
     row, _ = _persist(request, session, row, store, prefixes)
     return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Class")})
 
@@ -321,6 +337,8 @@ def create_property(
     store, prefixes = _load_store(row)
     iri = _iri_for(prefixes, body.prefix, body.name)
     _reject_duplicate(store, iri)
+    domains = [_iri_or_422(d) for d in body.domains]
+    ranges = [_iri_or_422(r) for r in body.ranges]
     ent = ox.NamedNode(iri)
     ptype = (
         terms.OWL_OBJECTPROPERTY if body.ptype == "ObjectProperty" else terms.OWL_DATATYPEPROPERTY
@@ -328,10 +346,10 @@ def create_property(
     store.add(_quad(ent, terms.RDF_TYPE, ptype))
     _set_label(store, ent, body.label)
     _set_comment(store, ent, body.comment)
-    for d in body.domains:
-        store.add(_quad(ent, terms.RDFS_DOMAIN, ox.NamedNode(d)))
-    for r in body.ranges:
-        store.add(_quad(ent, terms.RDFS_RANGE, ox.NamedNode(r)))
+    for d in domains:
+        store.add(_quad(ent, terms.RDFS_DOMAIN, d))
+    for r in ranges:
+        store.add(_quad(ent, terms.RDFS_RANGE, r))
     row, _ = _persist(request, session, row, store, prefixes)
     return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Property")})
 

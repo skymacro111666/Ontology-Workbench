@@ -156,6 +156,58 @@ def test_write_guards_conflict_duplicate_prefix_notfound(client: TestClient) -> 
     assert r.status_code == 404
 
 
+def test_invalid_iri_refs_are_422_and_file_unchanged(client: TestClient) -> None:
+    """Scheme-less/spacey IRIs into parents/domains/ranges are 422, not 500.
+
+    Every gate fires before the first mutation, so the stored file (and its
+    hash — the lock token) is byte-identical after each refusal.
+    """
+    oid, meta = _upload(client)
+    before = _source(client, oid)
+
+    r = client.post(
+        f"/api/ontologies/{oid}/classes",
+        json={
+            "name": "X",
+            "prefix": "ex",
+            "parents": ["not an iri"],
+            "baseFileHash": meta["fileHash"],
+        },
+    )
+    assert r.status_code == 422
+    assert r.json()["code"] == "VALIDATION_ERROR"
+
+    r = client.post(
+        f"/api/ontologies/{oid}/properties",
+        json={
+            "name": "p",
+            "prefix": "ex",
+            "ptype": "ObjectProperty",
+            "domains": [DOG],
+            "ranges": ["example.org/B"],
+            "baseFileHash": meta["fileHash"],
+        },
+    )
+    assert r.status_code == 422
+
+    r = client.put(
+        f"/api/ontologies/{oid}/entities/{DOG}",
+        json={"parents": ["http://exa mple.org/A"], "baseFileHash": meta["fileHash"]},
+    )
+    assert r.status_code == 422
+    assert "absolute IRI" in (r.json()["hint"] or "")
+
+    # Refused everywhere: file untouched, hash still valid for the next write.
+    assert _source(client, oid) == before
+    meta2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    assert meta2["fileHash"] == meta["fileHash"]
+    r = client.post(
+        f"/api/ontologies/{oid}/classes",
+        json={"name": "Y", "prefix": "ex", "parents": [], "baseFileHash": meta["fileHash"]},
+    )
+    assert r.status_code == 200
+
+
 def test_update_entity_label_comment_parents(client: TestClient) -> None:
     """PUT /entities rewrites label/comment/parents but keeps restrictions."""
     oid, meta = _upload(client)
