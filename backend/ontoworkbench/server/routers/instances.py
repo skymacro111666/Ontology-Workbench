@@ -202,19 +202,19 @@ def create_instance(
     """Create a named individual with types + auto label (= name)."""
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    store, prefixes = _edit_store(request, row)
-    iri = _iri_for(prefixes, body.prefix, body.name)
-    _reject_duplicate(store, iri)
-    classes = [_declared_class(store, c) for c in body.classes]
-    ent = ox.NamedNode(iri)
-    store.add(_quad(ent, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL))
-    for cls_iri in classes:
-        store.add(_quad(ent, terms.RDF_TYPE, cls_iri))
-    store.add(_quad(ent, terms.RDFS_LABEL, ox.Literal(body.name)))
-    if body.comment:
-        store.add(_quad(ent, terms.RDFS_COMMENT, ox.Literal(body.comment)))
-    row, _ = _persist(request, session, row, store, prefixes)
-    return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Instance")})
+    with _edit_store(request, row) as (store, prefixes):
+        iri = _iri_for(prefixes, body.prefix, body.name)
+        _reject_duplicate(store, iri)
+        classes = [_declared_class(store, c) for c in body.classes]
+        ent = ox.NamedNode(iri)
+        store.add(_quad(ent, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL))
+        for cls_iri in classes:
+            store.add(_quad(ent, terms.RDF_TYPE, cls_iri))
+        store.add(_quad(ent, terms.RDFS_LABEL, ox.Literal(body.name)))
+        if body.comment:
+            store.add(_quad(ent, terms.RDFS_COMMENT, ox.Literal(body.comment)))
+        row, _ = _persist(request, session, row, store, prefixes)
+        return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Instance")})
 
 
 @router.delete("/ontologies/{ontology_id}/instances/{eid:path}")
@@ -233,25 +233,25 @@ def delete_instance(
     """
     row = _owned_row(user, session, ontology_id)
     _check_lock(baseFileHash, row)
-    store, prefixes = _edit_store(request, row)
-    iri = _individual(store, eid)
-    removed = 0
-    for q in list(store.quads_for_pattern(iri, None, None, ox.DefaultGraph())):
-        store.remove(q)
-        removed += 1
-    object_props = {
-        q.subject.value
-        for q in store.quads_for_pattern(
-            None, terms.RDF_TYPE, terms.OWL_OBJECTPROPERTY, ox.DefaultGraph()
-        )
-        if isinstance(q.subject, ox.NamedNode)
-    }
-    for p in object_props:
-        for q in list(store.quads_for_pattern(None, ox.NamedNode(p), iri, ox.DefaultGraph())):
+    with _edit_store(request, row) as (store, prefixes):
+        iri = _individual(store, eid)
+        removed = 0
+        for q in list(store.quads_for_pattern(iri, None, None, ox.DefaultGraph())):
             store.remove(q)
             removed += 1
-    row, _ = _persist(request, session, row, store, prefixes)
-    return respond({"removed": removed, "meta": meta_of(row)})
+        object_props = {
+            q.subject.value
+            for q in store.quads_for_pattern(
+                None, terms.RDF_TYPE, terms.OWL_OBJECTPROPERTY, ox.DefaultGraph()
+            )
+            if isinstance(q.subject, ox.NamedNode)
+        }
+        for p in object_props:
+            for q in list(store.quads_for_pattern(None, ox.NamedNode(p), iri, ox.DefaultGraph())):
+                store.remove(q)
+                removed += 1
+        row, _ = _persist(request, session, row, store, prefixes)
+        return respond({"removed": removed, "meta": meta_of(row)})
 
 
 @router.put("/ontologies/{ontology_id}/instances/{eid:path}")
@@ -266,33 +266,35 @@ def update_instance(
     """Edit comment/classes/assertions; absent keys stay untouched."""
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    store, prefixes = _edit_store(request, row)
-    iri = _individual(store, eid)
-    touched = body.model_fields_set
-    # null = no-op (only comment clears via null); frontend sends [] to clear
-    if "comment" in touched:
-        _remove_all(store, iri, terms.RDFS_COMMENT)
-        if body.comment:
-            store.add(_quad(iri, terms.RDFS_COMMENT, ox.Literal(body.comment)))
-    if "classes" in touched and body.classes is not None:
-        # Resolve every class before the first removal: a bad name must
-        # leave the pooled Store untouched.
-        nodes = [_declared_class(store, c) for c in body.classes]
-        for q in list(store.quads_for_pattern(iri, terms.RDF_TYPE, None, ox.DefaultGraph())):
-            c = q.object
-            if (
-                isinstance(c, ox.NamedNode)
-                and next(
-                    store.quads_for_pattern(c, terms.RDF_TYPE, terms.OWL_CLASS, ox.DefaultGraph()),
-                    None,
-                )
-                is not None
-            ):
-                store.remove(q)
-        for cls_iri in nodes:
-            store.add(_quad(iri, terms.RDF_TYPE, cls_iri))
-    if "assertions" in touched and body.assertions is not None:
-        _replace_assertions(store, iri, body.assertions)
-    row, _ = _persist(request, session, row, store, prefixes)
-    payload = _entity_payload(prefixes, iri.value, "Instance")
-    return respond({"meta": meta_of(row), "entity": payload})
+    with _edit_store(request, row) as (store, prefixes):
+        iri = _individual(store, eid)
+        touched = body.model_fields_set
+        # null = no-op (only comment clears via null); frontend sends [] to clear
+        if "comment" in touched:
+            _remove_all(store, iri, terms.RDFS_COMMENT)
+            if body.comment:
+                store.add(_quad(iri, terms.RDFS_COMMENT, ox.Literal(body.comment)))
+        if "classes" in touched and body.classes is not None:
+            # Resolve every class before the first removal: a bad name must
+            # leave the pooled Store untouched.
+            nodes = [_declared_class(store, c) for c in body.classes]
+            for q in list(store.quads_for_pattern(iri, terms.RDF_TYPE, None, ox.DefaultGraph())):
+                c = q.object
+                if (
+                    isinstance(c, ox.NamedNode)
+                    and next(
+                        store.quads_for_pattern(
+                            c, terms.RDF_TYPE, terms.OWL_CLASS, ox.DefaultGraph()
+                        ),
+                        None,
+                    )
+                    is not None
+                ):
+                    store.remove(q)
+            for cls_iri in nodes:
+                store.add(_quad(iri, terms.RDF_TYPE, cls_iri))
+        if "assertions" in touched and body.assertions is not None:
+            _replace_assertions(store, iri, body.assertions)
+        row, _ = _persist(request, session, row, store, prefixes)
+        payload = _entity_payload(prefixes, iri.value, "Instance")
+        return respond({"meta": meta_of(row), "entity": payload})

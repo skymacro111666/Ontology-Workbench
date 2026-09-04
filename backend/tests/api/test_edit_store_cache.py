@@ -24,6 +24,9 @@ ex:Dog a owl:Class ; rdfs:subClassOf ex:Animal .
 
 MINI2 = MINI + b"ex:Wolf a owl:Class ; rdfs:subClassOf ex:Animal .\n"
 
+EX = "http://example.org/"
+DOG = f"{EX}Dog"
+
 
 def _upload(client: TestClient, data: bytes = MINI, name: str = "mini.ttl") -> tuple[str, Any]:
     r = client.post("/api/ontologies", files={"file": (name, io.BytesIO(data), "text/turtle")})
@@ -148,3 +151,73 @@ def test_store_pool_lru_cap_is_two(client: TestClient, monkeypatch: pytest.Monke
     r = _create_class(client, oids[0], "Again", meta0["fileHash"])
     assert r.status_code == 200
     assert len(calls) == 4
+
+
+def test_rejected_entity_update_never_lands_via_next_edit(client: TestClient) -> None:
+    """C1 repro: a 422'd comment must not ride along with the next legal edit.
+
+    update_entity applies label/comment before parents/domains/ranges
+    validate; the 422 escapes _persist's guard, so without checkout-level
+    eviction the pooled Store keeps the refused comment and the next
+    successful write persists it.
+    """
+    oid, meta = _upload(client)
+    r = client.put(
+        f"/api/ontologies/{oid}/entities/{DOG}",
+        json={
+            "comment": "entity-leak-marker",
+            "parents": ["not an iri"],  # 422 after the comment already applied
+            "baseFileHash": meta["fileHash"],
+        },
+    )
+    assert r.status_code == 422
+
+    h2 = _meta(client, oid)["fileHash"]
+    r2 = client.put(
+        f"/api/ontologies/{oid}/entities/{DOG}",
+        json={"parents": [f"{EX}Thing"], "baseFileHash": h2},  # legal, leaves comment alone
+    )
+    assert r2.status_code == 200
+    src = _source(client, oid)
+    assert "entity-leak-marker" not in src  # the refused edit never landed
+    assert "ex:Dog" in src and "subClassOf ex:Thing" in src  # positive control
+
+
+def test_rejected_instance_update_never_lands_via_next_edit(client: TestClient) -> None:
+    """C1 repro (instances): same shape — 422'd comment vs. later classes.
+
+    update_instance applies the comment before the classes/assertions
+    branches validate.
+    """
+    oid, meta = _upload(client)
+    r = client.post(
+        f"/api/ontologies/{oid}/instances",
+        json={
+            "name": "ThreeBody",
+            "prefix": "ex",
+            "classes": [f"{EX}Animal"],
+            "baseFileHash": meta["fileHash"],
+        },
+    )
+    assert r.status_code == 200
+    h2 = _meta(client, oid)["fileHash"]
+
+    r = client.put(
+        f"/api/ontologies/{oid}/instances/{EX}ThreeBody",
+        json={
+            "comment": "instance-leak-marker",
+            "classes": [f"{EX}Nope"],  # undeclared → 422 after the comment applied
+            "baseFileHash": h2,
+        },
+    )
+    assert r.status_code == 422
+
+    h3 = _meta(client, oid)["fileHash"]
+    r2 = client.put(
+        f"/api/ontologies/{oid}/instances/{EX}ThreeBody",
+        json={"classes": [f"{EX}Thing"], "baseFileHash": h3},  # legal, leaves comment alone
+    )
+    assert r2.status_code == 200
+    src = _source(client, oid)
+    assert "instance-leak-marker" not in src
+    assert "ex:ThreeBody" in src and "ex:Thing" in src  # positive control

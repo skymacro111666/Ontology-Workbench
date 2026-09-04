@@ -7,15 +7,22 @@ Optimistic lock via baseFileHash on every mutation, exactly like
 PUT /source (design spec 2026-08-26 §4). instances.py rides the same
 pipeline; lint.py keeps its own legacy graph load until its migration.
 
-Pool discipline: handlers validate every input BEFORE the first Store
-mutation, so a refused edit leaves the pooled Store clean; _persist then
-either refreshes the entry (write landed) or evicts it (write failed).
+Pool discipline: mutations land in the SHARED cached Store, so the
+_edit_store checkout is a context manager that evicts the entry when a
+request dies between checkout and _persist (a 422 on a later field, an
+unexpected error) — otherwise the refused edit would ride along with
+the next successful write. _persist keeps its own guard for its
+internal failures; handlers still validate before mutating where they
+can (keeps requests all-or-nothing in memory), but correctness never
+depends on that ordering.
 """
 
 from __future__ import annotations
 
 import re
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
 
@@ -129,10 +136,25 @@ def _load_store(row: Ontology) -> tuple[Store, PrefixMap]:
     return store, prefixes
 
 
-def _edit_store(request: Request, row: Ontology) -> tuple[Store, PrefixMap]:
-    """The pooled editable Store for this row (parse-free on repeat edits)."""
+@contextmanager
+def _edit_store(request: Request, row: Ontology) -> Iterator[tuple[Store, PrefixMap]]:
+    """Check out the pooled editable Store; evict it if the request dies.
+
+    Mutations land in the SHARED cached instance (parse-free on repeat
+    edits), so any exception between checkout and _persist — a 422 on a
+    later field, an unexpected error — must drop the entry: the Store
+    may already carry part of the refused edit while the file never
+    changed. The next edit re-parses disk truth. _persist keeps its own
+    guard for failures inside the write pipeline; this one makes the
+    no-dirty-entry invariant structural for every write endpoint.
+    """
     cache: OntologyCache = request.app.state.cache
-    return cache.store_for(row, _load_store)
+    store, prefixes = cache.store_for(row, _load_store)
+    try:
+        yield store, prefixes
+    except Exception:
+        cache.drop_store(str(row.id))
+        raise
 
 
 def _iri_for(ns: PrefixMap, prefix: str, name: str) -> str:
@@ -326,18 +348,18 @@ def create_class(
     """Create a class (with optional parents → subclass) in the stored file."""
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    store, prefixes = _edit_store(request, row)
-    iri = _iri_for(prefixes, body.prefix, body.name)
-    _reject_duplicate(store, iri)
-    parents = [_iri_or_422(p) for p in body.parents]
-    ent = ox.NamedNode(iri)
-    store.add(_quad(ent, terms.RDF_TYPE, terms.OWL_CLASS))
-    _set_label(store, ent, body.label)
-    _set_comment(store, ent, body.comment)
-    for parent in parents:
-        store.add(_quad(ent, terms.RDFS_SUBCLASSOF, parent))
-    row, _ = _persist(request, session, row, store, prefixes)
-    return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Class")})
+    with _edit_store(request, row) as (store, prefixes):
+        iri = _iri_for(prefixes, body.prefix, body.name)
+        _reject_duplicate(store, iri)
+        parents = [_iri_or_422(p) for p in body.parents]
+        ent = ox.NamedNode(iri)
+        store.add(_quad(ent, terms.RDF_TYPE, terms.OWL_CLASS))
+        _set_label(store, ent, body.label)
+        _set_comment(store, ent, body.comment)
+        for parent in parents:
+            store.add(_quad(ent, terms.RDFS_SUBCLASSOF, parent))
+        row, _ = _persist(request, session, row, store, prefixes)
+        return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Class")})
 
 
 @router.post("/ontologies/{ontology_id}/properties")
@@ -355,24 +377,26 @@ def create_property(
         )
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    store, prefixes = _edit_store(request, row)
-    iri = _iri_for(prefixes, body.prefix, body.name)
-    _reject_duplicate(store, iri)
-    domains = [_iri_or_422(d) for d in body.domains]
-    ranges = [_iri_or_422(r) for r in body.ranges]
-    ent = ox.NamedNode(iri)
-    ptype = (
-        terms.OWL_OBJECTPROPERTY if body.ptype == "ObjectProperty" else terms.OWL_DATATYPEPROPERTY
-    )
-    store.add(_quad(ent, terms.RDF_TYPE, ptype))
-    _set_label(store, ent, body.label)
-    _set_comment(store, ent, body.comment)
-    for d in domains:
-        store.add(_quad(ent, terms.RDFS_DOMAIN, d))
-    for r in ranges:
-        store.add(_quad(ent, terms.RDFS_RANGE, r))
-    row, _ = _persist(request, session, row, store, prefixes)
-    return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Property")})
+    with _edit_store(request, row) as (store, prefixes):
+        iri = _iri_for(prefixes, body.prefix, body.name)
+        _reject_duplicate(store, iri)
+        domains = [_iri_or_422(d) for d in body.domains]
+        ranges = [_iri_or_422(r) for r in body.ranges]
+        ent = ox.NamedNode(iri)
+        ptype = (
+            terms.OWL_OBJECTPROPERTY
+            if body.ptype == "ObjectProperty"
+            else terms.OWL_DATATYPEPROPERTY
+        )
+        store.add(_quad(ent, terms.RDF_TYPE, ptype))
+        _set_label(store, ent, body.label)
+        _set_comment(store, ent, body.comment)
+        for d in domains:
+            store.add(_quad(ent, terms.RDFS_DOMAIN, d))
+        for r in ranges:
+            store.add(_quad(ent, terms.RDFS_RANGE, r))
+        row, _ = _persist(request, session, row, store, prefixes)
+        return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Property")})
 
 
 @router.put("/ontologies/{ontology_id}/entities/{eid:path}")
@@ -387,22 +411,22 @@ def update_entity(
     """Edit label/comment/parents/domains/ranges; absent keys unchanged."""
     row = _owned_row(user, session, ontology_id)
     _check_lock(body.base_file_hash, row)
-    store, prefixes = _edit_store(request, row)
-    ent = _declared(store, eid)
-    kind = _kind_of(store, ent)
-    touched = body.model_fields_set
-    if "label" in touched:
-        _set_label(store, ent, body.label)
-    if "comment" in touched:
-        _set_comment(store, ent, body.comment)
-    if "parents" in touched and body.parents is not None:
-        _set_uriref_objects(store, ent, terms.RDFS_SUBCLASSOF, body.parents)
-    if "domains" in touched and body.domains is not None:
-        _set_uriref_objects(store, ent, terms.RDFS_DOMAIN, body.domains)
-    if "ranges" in touched and body.ranges is not None:
-        _set_uriref_objects(store, ent, terms.RDFS_RANGE, body.ranges)
-    row, _ = _persist(request, session, row, store, prefixes)
-    return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, ent.value, kind)})
+    with _edit_store(request, row) as (store, prefixes):
+        ent = _declared(store, eid)
+        kind = _kind_of(store, ent)
+        touched = body.model_fields_set
+        if "label" in touched:
+            _set_label(store, ent, body.label)
+        if "comment" in touched:
+            _set_comment(store, ent, body.comment)
+        if "parents" in touched and body.parents is not None:
+            _set_uriref_objects(store, ent, terms.RDFS_SUBCLASSOF, body.parents)
+        if "domains" in touched and body.domains is not None:
+            _set_uriref_objects(store, ent, terms.RDFS_DOMAIN, body.domains)
+        if "ranges" in touched and body.ranges is not None:
+            _set_uriref_objects(store, ent, terms.RDFS_RANGE, body.ranges)
+        row, _ = _persist(request, session, row, store, prefixes)
+        return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, ent.value, kind)})
 
 
 @router.delete("/ontologies/{ontology_id}/entities/{eid:path}")
@@ -422,17 +446,17 @@ def delete_entity(
     """
     row = _owned_row(user, session, ontology_id)
     _check_lock(baseFileHash, row)
-    store, prefixes = _edit_store(request, row)
-    iri = _declared(store, eid)
-    removed = 0
-    for q in list(store.quads_for_pattern(iri, None, None, ox.DefaultGraph())):
-        store.remove(q)
-        removed += 1
-    if prune:
-        preds = (terms.RDFS_SUBCLASSOF, terms.RDFS_DOMAIN, terms.RDFS_RANGE, terms.RDF_TYPE)
-        for pred in preds:
-            for q in list(store.quads_for_pattern(None, pred, iri, ox.DefaultGraph())):
-                store.remove(q)
-                removed += 1
-    row, _ = _persist(request, session, row, store, prefixes)
-    return respond({"removed": removed, "meta": meta_of(row)})
+    with _edit_store(request, row) as (store, prefixes):
+        iri = _declared(store, eid)
+        removed = 0
+        for q in list(store.quads_for_pattern(iri, None, None, ox.DefaultGraph())):
+            store.remove(q)
+            removed += 1
+        if prune:
+            preds = (terms.RDFS_SUBCLASSOF, terms.RDFS_DOMAIN, terms.RDFS_RANGE, terms.RDF_TYPE)
+            for pred in preds:
+                for q in list(store.quads_for_pattern(None, pred, iri, ox.DefaultGraph())):
+                    store.remove(q)
+                    removed += 1
+        row, _ = _persist(request, session, row, store, prefixes)
+        return respond({"removed": removed, "meta": meta_of(row)})
