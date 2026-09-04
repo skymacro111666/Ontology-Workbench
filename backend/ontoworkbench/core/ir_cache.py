@@ -20,8 +20,9 @@ from ontoworkbench.core.ir import IRBundle
 # v2: pyoxigraph 迁移 — IR 由 build_ir_store 从 Store 组装(curie/prefix 口径
 # 来自 PrefixMap),与旧实现语义等价但产物不必逐字节同;旧 v1 pkl 因版本
 # 不匹配自动按 miss 处理、下次导入/浏览重建。
-# v3: data_assertions 纳入 xsd:string 断言(裸字面量,datatype 带完整 IRI);
-# 旧 v2 pkl 缺字符串断言,按版本不匹配 miss、下次导入/浏览重建。
+# v3: data_assertions 纳入 xsd:string 断言(裸字面量,datatype 带完整 IRI),
+# 且空前缀(:)本体的 curie/axiom 渲染为 :local;旧 v2 pkl 内容缺口径,
+# 按版本不匹配 miss、下次导入/浏览重建。
 IR_SCHEMA_VERSION = 3  # IRBundle 结构或 build_ir_store 语义变更时必须 bump
 CACHE_FILENAME = "index.pkl"
 

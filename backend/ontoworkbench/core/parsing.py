@@ -59,10 +59,14 @@ _OX_FORMAT = {
 
 
 def parse_store(data: bytes, fmt: str) -> tuple[ox.Store, PrefixMap]:
-    """Parse bytes into an in-memory pyoxigraph Store (default graph) + prefixes.
+    """Parse bytes into an in-memory pyoxigraph Store + prefixes.
 
-    Unknown format names raise UNSUPPORTED_FORMAT; parser failures raise
-    PARSE_FAILED with ox's detail (SyntaxError/ValueError/OSError mapped).
+    to_graph only pins content without a graph of its own: JSON-LD named
+    graphs keep their quads in the named graph (to_graph is silently
+    ignored there, not applied) — IR traversals pin the default graph
+    instead. Unknown format names raise UNSUPPORTED_FORMAT; parser
+    failures raise PARSE_FAILED with ox's detail
+    (SyntaxError/ValueError/OSError mapped).
     """
     fmt_enum = _OX_FORMAT.get(fmt)
     if fmt_enum is None:

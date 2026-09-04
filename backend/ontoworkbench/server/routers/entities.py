@@ -160,7 +160,8 @@ def _iri_for(ns: PrefixMap, prefix: str, name: str) -> str:
     iri = ns.iri_for(prefix, name)
     if iri is not None:
         return iri
-    known = ", ".join(ns.known_prefixes()) or "(none)"
+    # "" is the default namespace (pizza-style `@prefix :`); display it as ":"
+    known = ", ".join(p or ":" for p in ns.known_prefixes()) or "(none)"
     raise ApiError(
         ErrorCode.VALIDATION_ERROR,
         f"Unknown prefix '{prefix}'",

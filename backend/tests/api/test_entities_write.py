@@ -361,6 +361,44 @@ RDFXML_DEFAULT_NS = b"""<?xml version="1.0"?>
 """
 
 
+EMPTY_PREFIX_TTL = b"""@prefix : <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+:Thing a owl:Class .
+"""
+
+
+def test_create_class_in_default_namespace(client: TestClient) -> None:
+    """An empty prefix mints in the declared default namespace (pizza-style).
+
+    The rdflib era allowed default-namespace creation (`@prefix :`); the
+    migration lost it to a 422 "Unknown prefix" until PrefixMap captured
+    the empty prefix.
+    """
+    r = client.post(
+        "/api/ontologies",
+        files={"file": ("pizza.ttl", io.BytesIO(EMPTY_PREFIX_TTL), "text/turtle")},
+    )
+    assert r.status_code == 201
+    oid, meta = r.json()["data"]["id"], r.json()["data"]
+
+    r = client.post(
+        f"/api/ontologies/{oid}/classes",
+        json={"name": "Cat", "prefix": "", "parents": [], "baseFileHash": meta["fileHash"]},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["entity"] == {
+        "eid": "http://example.org/Cat",
+        "curie": ":Cat",
+        "type": "Class",
+    }
+
+    # The dumped file keeps the default prefix bound and re-parses cold
+    client.app.state.cache.drop(oid)
+    ov = _overview(client, oid)
+    assert any(n["id"] == "http://example.org/Cat" and n["curie"] == ":Cat" for n in ov["nodes"])
+    assert ":Cat a owl:Class" in _source(client, oid)
+
+
 def test_edit_rdfxml_default_namespace_round_trips(client: TestClient) -> None:
     """An edit on rdfxml with a default xmlns keeps it through the dump.
 

@@ -14,8 +14,11 @@ from xml.etree import ElementTree as ET
 
 from ontoworkbench.core.terms import WELL_KNOWN_PREFIXES
 
+# The prefix name is optional: `@prefix : <ns>` / `PREFIX : <ns>` bind the
+# default namespace (prefix ""). SPARQL-style PREFIX matches any case;
+# Turtle's @prefix directive itself is lowercase-only in the grammar.
 _TTL_PREFIX = re.compile(
-    rb"^\s*(?:@prefix|PREFIX)\s+([A-Za-z_][\w.-]*):\s*<([^>\s]+)>", re.MULTILINE
+    rb"^\s*(?:@prefix|(?i:PREFIX))\s+([A-Za-z_][\w.-]*)?:\s*<([^>\s]+)>", re.MULTILINE
 )
 _PN_LOCAL = re.compile(r"[A-Za-z0-9_](?:[A-Za-z0-9_\-.]*[A-Za-z0-9_\-])?\Z")
 
@@ -35,7 +38,10 @@ class PrefixMap:
         """
         decls: dict[str, str] = {}
         if fmt == "turtle":
-            decls = {m.group(1).decode(): m.group(2).decode() for m in _TTL_PREFIX.finditer(data)}
+            decls = {
+                (m.group(1) or b"").decode(): m.group(2).decode()
+                for m in _TTL_PREFIX.finditer(data)
+            }
         elif fmt == "rdfxml":
             decls = dict(_xmlns_decls(data))
         elif fmt == "jsonld":
@@ -66,8 +72,12 @@ class PrefixMap:
         return ns + local if ns is not None else None
 
     def known_prefixes(self) -> list[str]:
-        """Sorted prefix names present in the map (default xmlns excluded)."""
-        return sorted(p for p in self._decls if p)
+        """Sorted prefix names present in the map, "" (default ns) first.
+
+        The empty name is the default namespace (`@prefix :` / xmlns=""):
+        callers rendering it for humans should display it as ":".
+        """
+        return sorted(self._decls)
 
     def as_dict(self) -> dict[str, str]:
         """A copy of the full prefix → namespace table, for dump output."""

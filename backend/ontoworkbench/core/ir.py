@@ -277,7 +277,9 @@ def _ox_ttl_term(
     """
     if isinstance(term, ox.NamedNode):
         curie = _ox_curie_for(prefixes, term.value, cache)
-        if curie is not None and curie[0] and _PN_LOCAL.match(curie[1]):
+        # curie[0] may be "" (the default namespace, `@prefix :`): ":Dog" is
+        # valid Turtle, with bindings[""] emitting `@prefix : <ns> .`
+        if curie is not None and _PN_LOCAL.match(curie[1]):
             if bindings is not None:
                 # Namespace reconstructed from the split: uri == ns + local.
                 bindings[curie[0]] = term.value[: len(term.value) - len(curie[1])]

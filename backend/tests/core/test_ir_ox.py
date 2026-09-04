@@ -88,6 +88,32 @@ def test_two_bnode_restrictions_relabel_stably() -> None:
     assert "rdfs:subClassOf _:b0 , _:b1" in block
 
 
+DEFAULT_PREFIX = b"""@prefix : <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+:Dog a owl:Class ; rdfs:subClassOf :Animal .
+:Animal a owl:Class .
+
+
+"""
+
+
+def test_default_prefix_terms_render_compact() -> None:
+    """Default-namespace terms render :Dog (pizza/wine/go style), not <iri>."""
+    ir = _build(DEFAULT_PREFIX)
+    dog = ir.entities["http://example.org/Dog"]
+    assert dog.curie == ":Dog"
+    assert dog.parents[0].curie == ":Animal"
+    block = dog.axioms[0].turtle
+    assert "@prefix : <http://example.org/> ." in block
+    assert ":Dog a owl:Class" in block
+    assert ":subClassOf :Animal" in block
+    assert "<http://example.org/Dog>" not in block
+    assert "<http://example.org/Animal>" not in block
+    # IR prefixes keep the rdflib-era display name for "" (meta payload only)
+    assert ir.prefixes["base"] == "http://example.org/"
+
+
 def test_individuals_data_assertions_include_plain_strings() -> None:
     """Typed and plain-string literals assert with full datatype IRIs.
 
