@@ -12,8 +12,7 @@ import pyoxigraph as ox
 
 from ontoworkbench.core.errors import CoreError
 from ontoworkbench.core.prefixes import PrefixMap
-
-XSD_NS = "http://www.w3.org/2001/XMLSchema#"
+from ontoworkbench.core.terms import XSD_NS
 
 
 class ParseError(CoreError):

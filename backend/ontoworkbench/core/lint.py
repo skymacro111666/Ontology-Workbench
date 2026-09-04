@@ -14,11 +14,9 @@ import pyoxigraph as ox
 from pydantic import BaseModel
 
 from ontoworkbench.core.ir import IRBundle
-from ontoworkbench.core.terms import OWL_DISJOINTWITH
+from ontoworkbench.core.terms import OWL_DISJOINTWITH, XSD_NS
 
 MAX_FINDINGS = 200
-
-XSD_NS = "http://www.w3.org/2001/XMLSchema#"
 
 
 class Finding(BaseModel):

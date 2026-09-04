@@ -1,8 +1,8 @@
 """Prefix declarations extracted from source bytes (ox stores no prefixes).
 
-Replaces rdflib's compute_qname/namespaces(): file declarations are parsed
-per format (Turtle @prefix/PREFIX lines, RDF-XML xmlns attrs, JSON-LD
-@context), then merged over the well-known table. File declarations win.
+File declarations are parsed per format (Turtle @prefix/PREFIX lines,
+RDF-XML xmlns attrs, JSON-LD @context), then merged over the well-known
+table. File declarations win.
 """
 
 from __future__ import annotations

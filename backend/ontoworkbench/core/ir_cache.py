@@ -17,8 +17,8 @@ import structlog
 
 from ontoworkbench.core.ir import IRBundle
 
-# v2: pyoxigraph 迁移 — IR 改由 build_ir_store 组装(curie/prefix 口径从 rdflib
-# 内置命名表换成 PrefixMap),语义等价但产物不必逐字节同;旧 v1 pkl 因版本
+# v2: pyoxigraph 迁移 — IR 由 build_ir_store 从 Store 组装(curie/prefix 口径
+# 来自 PrefixMap),与旧实现语义等价但产物不必逐字节同;旧 v1 pkl 因版本
 # 不匹配自动按 miss 处理、下次导入/浏览重建。
 IR_SCHEMA_VERSION = 2  # IRBundle 结构或 build_ir_store 语义变更时必须 bump
 CACHE_FILENAME = "index.pkl"

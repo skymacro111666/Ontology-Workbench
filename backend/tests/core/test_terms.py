@@ -1,4 +1,4 @@
-"""terms.py: ox NamedNode constants replace rdflib namespace imports."""
+"""terms.py: shared ox NamedNode constants and namespace strings."""
 
 import pyoxigraph as ox
 
@@ -18,3 +18,4 @@ def test_well_known_prefixes_cover_common_vocab() -> None:
     assert terms.WELL_KNOWN_PREFIXES["rdf"] == "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
     assert terms.WELL_KNOWN_PREFIXES["rdfs"] == "http://www.w3.org/2000/01/rdf-schema#"
     assert terms.WELL_KNOWN_PREFIXES["xsd"] == "http://www.w3.org/2001/XMLSchema#"
+    assert terms.XSD_NS == "http://www.w3.org/2001/XMLSchema#"

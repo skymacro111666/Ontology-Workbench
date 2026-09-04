@@ -36,8 +36,6 @@ from ontoworkbench.server.routers.ontologies import meta_of
 
 router = APIRouter(prefix="/api", tags=["instances"])
 
-XSD_NS = "http://www.w3.org/2001/XMLSchema#"
-
 
 class InstanceCreate(CamelModel):
     """POST /instances body: minimal shell (assertions join via PUT)."""
@@ -158,11 +156,11 @@ def _replace_assertions(store: Store, iri: ox.NamedNode, rows: list[AssertionInp
                 )
             plan.append((p, value))
         else:
-            datatype = row.datatype or f"{XSD_NS}string"
+            datatype = row.datatype or f"{terms.XSD_NS}string"
             # declared xsd range wins when present
             for q in store.quads_for_pattern(p, terms.RDFS_RANGE, None, ox.DefaultGraph()):
                 rng = q.object
-                if isinstance(rng, ox.NamedNode) and rng.value.startswith(XSD_NS):
+                if isinstance(rng, ox.NamedNode) and rng.value.startswith(terms.XSD_NS):
                     datatype = rng.value
                     break
             if not literal_type_ok(row.value, datatype):

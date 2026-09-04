@@ -335,8 +335,8 @@ def _ox_turtle_block(
 def build_ir_store(store: ox.Store, prefixes: PrefixMap) -> IRBundle:
     """Walk the store's default graph once and assemble page-shaped entities.
 
-    Same IR contract as build_ir (entities stay byte-identical); callers
-    pass the parse_store output directly.
+    Built straight from the pyoxigraph Store + PrefixMap (parse_store
+    output) — there is no intermediate graph model.
     """
     classes = sorted(
         s.value

@@ -30,7 +30,7 @@ Prerequisites: **Python ≥ 3.11** with [uv](https://docs.astral.sh/uv/), **Node
 ```bash
 git clone <your-fork> && cd ontology-workbench
 
-# Backend — FastAPI + rdflib (SQLite by default)
+# Backend — FastAPI + pyoxigraph (SQLite by default)
 cd backend && uv sync
 
 # Frontend — React 19 + Vite

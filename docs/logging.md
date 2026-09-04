@@ -57,7 +57,7 @@
 
 ### `ontology.import_failed`(level=error)
 
-`source`、`filename`、`size_bytes`、`error_code`(envelope 错误码,如 `PARSE_FAILED`/`DUPLICATE_FILENAME`)、`error_type`(异常类名)、`user_id`、`request_id`。注:rdflib 语法错误信息可能引用出错行原文(有界,便于定位)。
+`source`、`filename`、`size_bytes`、`error_code`(envelope 错误码,如 `PARSE_FAILED`/`DUPLICATE_FILENAME`)、`error_type`(异常类名)、`user_id`、`request_id`。注:pyoxigraph 语法错误信息带行/列定位与出错片段(有界,便于定位)。
 
 ### `ontology.delete`(删除成功审计)
 

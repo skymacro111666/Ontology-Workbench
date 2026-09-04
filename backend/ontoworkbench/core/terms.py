@@ -1,7 +1,8 @@
 """Shared RDF term constants (pyoxigraph NamedNode) + well-known prefixes.
 
-Every module that used to import rdflib's OWL/RDF/RDFS namespaces imports
-these instead; pyoxigraph ships no vocabulary constants of its own.
+The single source for namespace strings and vocabulary NamedNodes — pyoxigraph
+ships no vocabulary constants of its own, so modules import these instead of
+declaring their own.
 """
 
 from __future__ import annotations
@@ -27,6 +28,8 @@ _NS = {
 }
 
 WELL_KNOWN_PREFIXES = dict(_NS)
+
+XSD_NS = _NS["xsd"]
 
 RDF_TYPE = ox.NamedNode(_NS["rdf"] + "type")
 RDFS_LABEL = ox.NamedNode(_NS["rdfs"] + "label")

@@ -19,7 +19,6 @@ dependencies = [
     "pyjwt>=2.10",
     "pyoxigraph==0.5.11",
     "python-multipart>=0.0.32",
-    "rdflib>=7.6.0",
     "sqlalchemy>=2.0.52",
     "structlog>=26.1.0",
     "typer>=0.27.1",

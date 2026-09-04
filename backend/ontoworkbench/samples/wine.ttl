@@ -1,5 +1,5 @@
 # Sample ontology 'wine' — source: https://www.w3.org/TR/owl-guide/wine.rdf, W3C Document License
-# Converted to Turtle with rdflib for bundling.
+# Converted to Turtle for bundling.
 @prefix : <http://www.w3.org/TR/2003/PR-owl-guide-20031209/wine#> .
 @prefix food: <http://www.w3.org/TR/2003/PR-owl-guide-20031209/food#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
