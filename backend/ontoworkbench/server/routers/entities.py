@@ -5,7 +5,7 @@ per file version — see OntologyCache.store_for), then walks the A1
 persistence pipeline (serialize → atomic write → row/cache refresh).
 Optimistic lock via baseFileHash on every mutation, exactly like
 PUT /source (design spec 2026-08-26 §4). instances.py rides the same
-pipeline; lint.py keeps its own legacy graph load until its migration.
+pipeline; lint.py reads the same pool without ever mutating it.
 
 Pool discipline: mutations land in the SHARED cached Store, so the
 _edit_store checkout is a context manager that evicts the entry when a
@@ -37,14 +37,14 @@ from ontoworkbench.core import terms
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import IRBundle, build_ir_store
 from ontoworkbench.core.ir_cache import write_ir_cache
-from ontoworkbench.core.parsing import parse_store, serialize_store
+from ontoworkbench.core.parsing import serialize_store
 from ontoworkbench.core.prefixes import PrefixMap
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import OntologyRepository
 from ontoworkbench.db.session import get_session
-from ontoworkbench.observability.metrics import ow_build_seconds, ow_parse_seconds, ow_uploads_total
-from ontoworkbench.server.cache import OntologyCache
+from ontoworkbench.observability.metrics import ow_build_seconds, ow_uploads_total
+from ontoworkbench.server.cache import OntologyCache, load_store
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 from ontoworkbench.server.routers.ontologies import (
@@ -128,14 +128,6 @@ def _check_lock(body_hash: str, row: Ontology) -> None:
         )
 
 
-def _load_store(row: Ontology) -> tuple[Store, PrefixMap]:
-    """Parse the stored file back into a mutable Store (parse timed per format)."""
-    data = Path(row.storage_path).read_bytes()
-    with ow_parse_seconds.labels(row.format).time():
-        store, prefixes = parse_store(data, row.format)
-    return store, prefixes
-
-
 @contextmanager
 def _edit_store(request: Request, row: Ontology) -> Iterator[tuple[Store, PrefixMap]]:
     """Check out the pooled editable Store; evict it if the request dies.
@@ -149,7 +141,7 @@ def _edit_store(request: Request, row: Ontology) -> Iterator[tuple[Store, Prefix
     no-dirty-entry invariant structural for every write endpoint.
     """
     cache: OntologyCache = request.app.state.cache
-    store, prefixes = cache.store_for(row, _load_store)
+    store, prefixes = cache.store_for(row, load_store)
     try:
         yield store, prefixes
     except Exception:

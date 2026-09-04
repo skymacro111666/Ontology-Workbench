@@ -12,7 +12,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-import ontoworkbench.server.routers.entities as entities_mod
+import ontoworkbench.server.cache as cache_mod
 
 MINI = b"""@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
@@ -50,15 +50,15 @@ def _create_class(client: TestClient, oid: str, name: str, base: str):  # noqa: 
 
 
 def _parse_spy(monkeypatch: pytest.MonkeyPatch) -> list[int]:
-    """Count parses on the edit path (entities._load_store's parse_store)."""
+    """Count parses on the edit path (cache.load_store's parse_store)."""
     calls: list[int] = []
-    real = entities_mod.parse_store
+    real = cache_mod.parse_store
 
     def spy(data: bytes, fmt: str) -> object:
         calls.append(1)
         return real(data, fmt)
 
-    monkeypatch.setattr(entities_mod, "parse_store", spy)
+    monkeypatch.setattr(cache_mod, "parse_store", spy)
     return calls
 
 

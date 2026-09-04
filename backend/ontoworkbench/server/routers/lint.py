@@ -1,42 +1,30 @@
 """Lint configuration + manual runs (B3).
 
-Config lives in DB per ontology; runs reparse the stored file (manual
+Config lives in DB per ontology; runs read the pooled Store (manual
 trigger only, spec §0).
 """
 
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-from rdflib import Graph
 from sqlalchemy.orm import Session
 
 from ontoworkbench.core.lint import CustomRuleSpec
 from ontoworkbench.core.lint import run as run_lint_engine
-from ontoworkbench.db.models import Ontology, User
+from ontoworkbench.db.models import User
 from ontoworkbench.db.repositories import LintRuleRepository
 from ontoworkbench.db.session import get_session
+from ontoworkbench.server.cache import OntologyCache, load_store
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 from ontoworkbench.server.routers.browse import _camel, _owned
 
 router = APIRouter(prefix="/api/ontologies", tags=["lint"])
-
-_RDFFORMAT = {"turtle": "turtle", "rdfxml": "xml", "jsonld": "json-ld"}
-
-
-def _load_graph(row: Ontology) -> Graph:
-    """Parse the stored file into the rdflib graph the lint engine still walks.
-
-    The last legacy loader outside core/lint.py — dies with the lint
-    migration (spec 2026-09-03, plan Task 12).
-    """
-    return Graph().parse(data=Path(row.storage_path).read_bytes(), format=_RDFFORMAT[row.format])
 
 
 class CamelModel(BaseModel):
@@ -136,7 +124,9 @@ def run_lint(
 ) -> dict:
     """Run the whole lint set manually (spec §0: 仅手动).
 
-    Reparses the stored file — that cost is why runs are never automatic.
+    Walks the pooled editable Store — read-only, never mutated, never
+    evicted here; a pool miss still pays the parse, which is why runs
+    are never automatic.
     """
     row, ix = _owned(request, user, ontology_id, session)
     rows = LintRuleRepository(session).list_for(row.id)
@@ -151,10 +141,10 @@ def run_lint(
         for r in rows
         if r.kind == "custom" and r.enabled
     ]
+    cache: OntologyCache = request.app.state.cache
+    store, _ = cache.store_for(row, load_store)
     t0 = time.perf_counter()
-    report = run_lint_engine(
-        _load_graph(row), ix.ir, disabled, custom, only_rule_id=body.only_rule_id
-    )
+    report = run_lint_engine(store, ix.ir, disabled, custom, only_rule_id=body.only_rule_id)
     return respond(
         _camel(
             {

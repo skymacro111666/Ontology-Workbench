@@ -73,3 +73,68 @@ def test_run_lint_endpoint_assembles_builtin_and_custom(client: TestClient) -> N
     rid = next(res for res in data["results"] if res.get("name") == "x")["ruleId"]
     r = client.post(f"/api/ontologies/{oid}/lint/run", json={"onlyRuleId": rid})
     assert len(r.json()["data"]["results"]) == 1
+
+
+def test_run_lint_never_evicts_pooled_store(client: TestClient, monkeypatch) -> None:
+    """Lint warms the Store pool; a follow-up edit parses zero times (T12).
+
+    Lint goes through store_for read-only — never mutating, never
+    evicting — so the edit after a lint run reuses the warmed entry.
+    """
+    import ontoworkbench.server.cache as cache_mod
+
+    oid = _upload(client)
+    assert client.post(f"/api/ontologies/{oid}/lint/run", json={}).status_code == 200
+
+    calls: list[int] = []
+    real = cache_mod.parse_store
+
+    def spy(data, fmt):  # noqa: ANN001 — test-local shape
+        calls.append(1)
+        return real(data, fmt)
+
+    monkeypatch.setattr(cache_mod, "parse_store", spy)
+    base = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
+    r = client.post(
+        f"/api/ontologies/{oid}/classes",
+        json={"name": "Cat", "prefix": "ex", "parents": [], "baseFileHash": base},
+    )
+    assert r.status_code == 200, r.text
+    assert calls == []  # the lint-warmed Store carried the edit, parse-free
+
+
+def test_custom_update_rule_errors_and_nothing_lands(client: TestClient) -> None:
+    """A custom rule shaped as UPDATE is a per-rule error, never a mutation.
+
+    Even against the shared pooled Store the query must not run: the
+    next successful edit would otherwise persist whatever it changed.
+    """
+    oid = _upload(client)
+    client.put(
+        f"/api/ontologies/{oid}/lint/config",
+        json={
+            "disabled": [],
+            "custom": [
+                {
+                    "name": "evil",
+                    "severity": "info",
+                    "sparql": "DELETE WHERE { ?s ?p ?o }",
+                    "enabled": True,
+                }
+            ],
+        },
+    )
+    data = client.post(f"/api/ontologies/{oid}/lint/run", json={}).json()["data"]
+    evil = next(res for res in data["results"] if res.get("name") == "evil")
+    assert (evil["error"] or "").startswith("SPARQL_ERROR")
+
+    # The pooled Store survived intact: the next edit persists everything.
+    base = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
+    r = client.post(
+        f"/api/ontologies/{oid}/classes",
+        json={"name": "Cat", "prefix": "ex", "parents": [], "baseFileHash": base},
+    )
+    assert r.status_code == 200, r.text
+    after = client.get(f"/api/ontologies/{oid}/source").json()["data"]["content"]
+    assert "ex:Cat" in after
+    assert "ex:Animal" in after and "subClassOf" in after  # nothing was deleted

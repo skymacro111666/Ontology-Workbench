@@ -1,6 +1,6 @@
 """Structural lint rules: each rule gets a positive and a negative sample."""
 
-from rdflib import Graph
+import pyoxigraph as ox
 
 from ontoworkbench.core.ir import build_ir_store
 from ontoworkbench.core.lint import RULES, run_rule
@@ -17,9 +17,9 @@ ex:i2 a owl:NamedIndividual , ex:D .
 """
 
 
-def _graph(src: str) -> Graph:
-    """The rdflib Graph the lint engine still walks (its migration is T12)."""
-    return Graph().parse(data=src.encode(), format="turtle")
+def _store(src: str) -> ox.Store:
+    """Parse turtle into the Store the lint engine walks."""
+    return parse_store(src.encode(), "turtle")[0]
 
 
 def _ir(src: str = TTL):
@@ -28,7 +28,7 @@ def _ir(src: str = TTL):
 
 def test_disjoint_parents_flags_c() -> None:
     """C parents both A and B (disjoint); D parents only A."""
-    res = run_rule("disjoint-parents", _graph(TTL), _ir())
+    res = run_rule("disjoint-parents", _store(TTL), _ir())
     subs = {f.subject for f in res.findings}
     assert "http://example.org/C" in subs
     assert "http://example.org/D" not in subs
@@ -36,7 +36,7 @@ def test_disjoint_parents_flags_c() -> None:
 
 def test_instance_disjoint_flags_i1_not_i2() -> None:
     """i1 types into both sides of the disjoint pair; i2 stays clean."""
-    res = run_rule("instance-disjoint", _graph(TTL), _ir())
+    res = run_rule("instance-disjoint", _store(TTL), _ir())
     subs = {f.subject for f in res.findings}
     assert "http://example.org/i1" in subs
     assert "http://example.org/i2" not in subs
@@ -45,7 +45,7 @@ def test_instance_disjoint_flags_i1_not_i2() -> None:
 def test_subclass_cycle_detected() -> None:
     """A ← D ← A: every member of the loop is flagged."""
     cyclic = TTL + "ex:A rdfs:subClassOf ex:D .\n"  # A ← D ← A
-    res = run_rule("subclass-cycle", _graph(cyclic), _ir(cyclic))
+    res = run_rule("subclass-cycle", _store(cyclic), _ir(cyclic))
     subs = {f.subject for f in res.findings}
     assert {"http://example.org/A", "http://example.org/D"} <= subs
 
@@ -75,8 +75,7 @@ def test_domain_range_flags_object_and_data() -> None:
     wrote→typeless BadBook (object out of range) and year "二〇〇八"
     against xsd:integer (data out of range).
     """
-    g = _graph(R456_TTL)
-    res = run_rule("domain-range", g, _ir(R456_TTL))
+    res = run_rule("domain-range", _store(R456_TTL), _ir(R456_TTL))
     subs = {f.subject for f in res.findings}
     assert "http://example.org/GoodBook" in subs
     assert "http://example.org/BadBook" not in subs
@@ -84,12 +83,11 @@ def test_domain_range_flags_object_and_data() -> None:
 
 def test_missing_label_and_orphan() -> None:
     """Orphan has no label and no wiring; Novel is labeled and instanced."""
-    g = _graph(R456_TTL)
-    ir = _ir(R456_TTL)
-    orphan = {f.subject for f in run_rule("orphan-class", g, ir).findings}
+    store, ir = _store(R456_TTL), _ir(R456_TTL)
+    orphan = {f.subject for f in run_rule("orphan-class", store, ir).findings}
     assert "http://example.org/Orphan" in orphan
     assert "http://example.org/Novel" not in orphan
-    labeled = {f.subject for f in run_rule("missing-label", g, ir).findings}
+    labeled = {f.subject for f in run_rule("missing-label", store, ir).findings}
     assert "http://example.org/Orphan" in labeled
     assert "http://example.org/GoodBook" not in labeled
 
@@ -111,18 +109,17 @@ def test_unused_property_and_undeclared_ref() -> None:
 
     Novel's subClassOf points at the never-declared foaf:Document.
     """
-    g, ir = _graph(R789_TTL), _ir(R789_TTL)
+    store, ir = _store(R789_TTL), _ir(R789_TTL)
     assert "http://example.org/deadProp" in {
-        f.subject for f in run_rule("unused-property", g, ir).findings
+        f.subject for f in run_rule("unused-property", store, ir).findings
     }
-    refs = {f.subject for f in run_rule("undeclared-ref", g, ir).findings}
+    refs = {f.subject for f in run_rule("undeclared-ref", store, ir).findings}
     assert "http://example.org/Novel" in refs  # foaf:Document 未声明
 
 
 def test_duplicate_label_groups() -> None:
     """i1/i2 share the label "same"; the group surfaces with its params."""
-    g, ir = _graph(R789_TTL), _ir(R789_TTL)
-    res = run_rule("duplicate-label", g, ir)
+    res = run_rule("duplicate-label", _store(R789_TTL), _ir(R789_TTL))
     assert any(f.params.get("label") == "same" for f in res.findings)
 
 
@@ -137,8 +134,7 @@ def test_custom_rule_rows_to_findings() -> None:
         severity="info",
         sparql="SELECT ?s WHERE { ?s <http://example.org/year> ?y . FILTER(?y < 1950) }",
     )
-    g = _graph(src)
-    report = run(g, _ir(src), disabled=set(), custom=[spec])
+    report = run(_store(src), _ir(src), disabled=set(), custom=[spec])
     custom = next(r for r in report.results if r.rule_id == "c1")
     assert custom.error is None
     assert "http://example.org/GoodBook" in {f.subject for f in custom.findings}
@@ -148,7 +144,7 @@ def test_custom_rule_timeout(monkeypatch) -> None:
     """A hung SPARQL query returns TIMEOUT instead of blocking the run."""
     import time as _time
 
-    from rdflib import Graph as _Graph
+    import pyoxigraph as _ox
 
     from ontoworkbench.core.lint import CustomRuleSpec, _run_custom
 
@@ -156,9 +152,9 @@ def test_custom_rule_timeout(monkeypatch) -> None:
         _time.sleep(0.3)
         return []
 
-    monkeypatch.setattr(_Graph, "query", slow_query)
+    monkeypatch.setattr(_ox.Store, "query", slow_query)
     spec = CustomRuleSpec(id="c2", name="x", severity="info", sparql="SELECT ?s WHERE {}")
-    res = _run_custom(spec, None, _Graph(), timeout_s=0.05)
+    res = _run_custom(spec, None, _ox.Store(), timeout_s=0.05)
     assert res.error == "TIMEOUT" and res.findings == []
     # The Task 16/17 config surface names rules by id; pin the first three.
     assert {"disjoint-parents", "instance-disjoint", "subclass-cycle"} <= set(RULES)

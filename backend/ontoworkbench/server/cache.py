@@ -10,12 +10,24 @@ from pathlib import Path
 from pyoxigraph import Store
 
 from ontoworkbench.core.indexes import Indexes
+from ontoworkbench.core.parsing import parse_store
 from ontoworkbench.core.prefixes import PrefixMap
 from ontoworkbench.db.models import Ontology
-from ontoworkbench.observability.metrics import ow_cached_ontologies
+from ontoworkbench.observability.metrics import ow_cached_ontologies, ow_parse_seconds
 
 CACHE_SIZE = 10
 STORE_CACHE_SIZE = 2
+
+
+def load_store(row: Ontology) -> tuple[Store, PrefixMap]:
+    """Parse the stored file into a Store for the pool (parse timed per format).
+
+    The canonical store_for loader: entities' write endpoints and lint's
+    read-only runs both feed the pool through it.
+    """
+    data = Path(row.storage_path).read_bytes()
+    with ow_parse_seconds.labels(row.format).time():
+        return parse_store(data, row.format)
 
 
 class OntologyCache:

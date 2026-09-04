@@ -312,24 +312,24 @@ def test_entity_write_refreshes_disk_ir_cache(client: TestClient, monkeypatch) -
 def test_edit_parses_file_once_and_keeps_parse_ms(client: TestClient, monkeypatch) -> None:
     """An edit parses the file exactly once.
 
-    _load_store is the only parse; the _persist re-parse is gone.
+    cache.load_store is the only parse; the _persist re-parse is gone.
     stats_json keeps the old parse_ms and gains build_ms.
     """
     from uuid import UUID
 
-    import ontoworkbench.server.routers.entities as entities_mod
+    import ontoworkbench.server.cache as cache_mod
     from ontoworkbench.db.models import Ontology
     from ontoworkbench.db.session import sessionmaker_or_fail
 
     oid, meta = _upload(client)
     calls: list[int] = []
-    real = entities_mod.parse_store
+    real = cache_mod.parse_store
 
     def spy(data, fmt):  # noqa: ANN001 — test-local shape
         calls.append(1)
         return real(data, fmt)
 
-    monkeypatch.setattr(entities_mod, "parse_store", spy)
+    monkeypatch.setattr(cache_mod, "parse_store", spy)
     r = client.post(
         f"/api/ontologies/{oid}/classes",
         json={
@@ -340,7 +340,7 @@ def test_edit_parses_file_once_and_keeps_parse_ms(client: TestClient, monkeypatc
         },
     )
     assert r.status_code == 200, r.text
-    assert calls == [1]  # _load_store only; the _persist re-parse is gone
+    assert calls == [1]  # load_store only; the _persist re-parse is gone
 
     after = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
     assert after["parseMs"] == meta["parseMs"]  # kept from the original parse

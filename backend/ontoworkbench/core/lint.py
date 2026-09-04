@@ -1,4 +1,4 @@
-"""Structural ontology lint (B3): pure (graph, ir) -> findings.
+"""Structural ontology lint (B3): pure (store, ir) -> findings.
 
 No reasoner — every rule is a hand-written linear-ish walk (spec §5/§9);
 each rule caps at MAX_FINDINGS with a truthful pre-cap total.
@@ -10,11 +10,11 @@ import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
+import pyoxigraph as ox
 from pydantic import BaseModel
-from rdflib import OWL, Graph
-from rdflib.term import URIRef
 
 from ontoworkbench.core.ir import IRBundle
+from ontoworkbench.core.terms import OWL_DISJOINTWITH
 
 MAX_FINDINGS = 200
 
@@ -53,17 +53,17 @@ class LintReport(BaseModel):
 
 @dataclass(frozen=True)
 class RuleDef:
-    """A builtin rule: id, default severity, and its (graph, ir) check."""
+    """A builtin rule: id, default severity, and its (store, ir) check."""
 
     rule_id: str
     severity: str
-    check: Callable[[Graph, IRBundle], Iterable[tuple[str, dict[str, str]]]]
+    check: Callable[[ox.Store, IRBundle], Iterable[tuple[str, dict[str, str]]]]
 
 
 RULES: dict[str, RuleDef] = {}
 
-# A rule check's shape: (graph, ir) -> (subject_eid, params) pairs.
-CheckFn = Callable[[Graph, IRBundle], Iterable[tuple[str, dict[str, str]]]]
+# A rule check's shape: (store, ir) -> (subject_eid, params) pairs.
+CheckFn = Callable[[ox.Store, IRBundle], Iterable[tuple[str, dict[str, str]]]]
 
 
 def rule(rule_id: str, severity: str) -> Callable[[CheckFn], CheckFn]:
@@ -106,11 +106,11 @@ def _ancestors_factory(ir: IRBundle) -> Callable[[str], set[str]]:
     return closure
 
 
-def run_rule(rule_id: str, graph: Graph, ir: IRBundle) -> RuleResult:
+def run_rule(rule_id: str, store: ox.Store, ir: IRBundle) -> RuleResult:
     """Run one builtin rule with timing and the findings cap."""
     defn = RULES[rule_id]
     t0 = time.perf_counter()
-    raw = list(defn.check(graph, ir))
+    raw = list(defn.check(store, ir))
     total = len(raw)
     findings = [
         Finding(
@@ -131,23 +131,24 @@ def run_rule(rule_id: str, graph: Graph, ir: IRBundle) -> RuleResult:
     )
 
 
-def _disjoint_pairs(graph: Graph) -> set[frozenset[str]]:
+def _disjoint_pairs(store: ox.Store) -> set[frozenset[str]]:
     """All owl:disjointWith class pairs as frozensets, one pass."""
     out: set[frozenset[str]] = set()
-    for s, _, o in graph.triples((None, OWL.disjointWith, None)):
-        if isinstance(s, URIRef) and isinstance(o, URIRef):
-            out.add(frozenset((str(s), str(o))))
+    for q in store.quads_for_pattern(None, OWL_DISJOINTWITH, None, ox.DefaultGraph()):
+        s, o = q.subject, q.object
+        if isinstance(s, ox.NamedNode) and isinstance(o, ox.NamedNode):
+            out.add(frozenset((s.value, o.value)))
     return out
 
 
 @rule("disjoint-parents", "error")
-def _disjoint_parents(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+def _disjoint_parents(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
     """Flag classes whose direct parents include a disjoint pair.
 
     The pizza ontology's CheeseyVegetableTopping pattern: unsatisfiable
     without any reasoning.
     """
-    dis = _disjoint_pairs(graph)
+    dis = _disjoint_pairs(store)
     if not dis:
         return
     for e in ir.entities.values():
@@ -161,13 +162,13 @@ def _disjoint_parents(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[st
 
 
 @rule("instance-disjoint", "error")
-def _instance_disjoint(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+def _instance_disjoint(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
     """Flag instances whose type closure spans a disjoint pair.
 
     Direct types plus their superclasses; unsatisfiable without any
     reasoner.
     """
-    dis = _disjoint_pairs(graph)
+    dis = _disjoint_pairs(store)
     if not dis:
         return
     closure = _ancestors_factory(ir)
@@ -182,7 +183,7 @@ def _instance_disjoint(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[s
 
 
 @rule("subclass-cycle", "error")
-def _subclass_cycle(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+def _subclass_cycle(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
     """SubClassOf cycles via iterative three-color DFS (GO-scale safe)."""
     children: dict[str, list[str]] = {}
     for e in ir.entities.values():
@@ -235,7 +236,7 @@ def _range_index(ir: IRBundle) -> tuple[dict[str, list[str]], dict[str, list[str
 
 
 @rule("domain-range", "error")
-def _domain_range(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+def _domain_range(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
     """Flag assertions outside the property's declared range.
 
     Object assertion values whose type closure misses every declared class
@@ -271,7 +272,7 @@ def _domain_range(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, s
 
 
 @rule("missing-label", "warning")
-def _missing_label(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+def _missing_label(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
     """Flag declared entities and individuals with no rdfs:label at all."""
     for e in ir.entities.values():
         if not e.label:
@@ -282,7 +283,7 @@ def _missing_label(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, 
 
 
 @rule("orphan-class", "warning")
-def _orphan_class(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+def _orphan_class(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
     """Flag classes with no parents, children, instances or domain/range wiring."""
     for e in ir.entities.values():
         if e.type != "Class":
@@ -297,7 +298,7 @@ def _orphan_class(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, s
 
 
 @rule("unused-property", "warning")
-def _unused_property(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+def _unused_property(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
     """Flag declared properties with no assertions anywhere and no domain/range."""
     used: set[str] = set()
     for ind in ir.individuals.values():
@@ -314,7 +315,7 @@ def _unused_property(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str
 
 
 @rule("undeclared-ref", "info")
-def _undeclared_ref(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+def _undeclared_ref(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
     """Flag external IRIs used as parents / ranges / assertion values.
 
     Legal vocabulary reuse — informational only.
@@ -334,7 +335,7 @@ def _undeclared_ref(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str,
 
 
 @rule("duplicate-label", "info")
-def _duplicate_label(graph: Graph, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+def _duplicate_label(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
     """Flag the same (lang, value) label shared by several entities/individuals."""
     groups: dict[tuple[str, str], list[str]] = {}
     for coll in (ir.entities.values(), ir.individuals.values()):
@@ -355,14 +356,19 @@ class CustomRuleSpec(BaseModel):
     sparql: str
 
 
+def _term_str(term: object) -> str:
+    """A term's bare string: IRI / lexical form / bnode id (None → "None")."""
+    return term.value if isinstance(term, ox.NamedNode | ox.Literal | ox.BlankNode) else str(term)
+
+
 def _run_custom(
-    spec: CustomRuleSpec, ir: IRBundle | None, graph: Graph, timeout_s: float = 10.0
+    spec: CustomRuleSpec, ir: IRBundle | None, store: ox.Store, timeout_s: float = 10.0
 ) -> RuleResult:
     """Run one custom SPARQL SELECT with a hard timeout.
 
-    rdflib has no query timeout, so an executor we refuse to join is the
-    escape hatch (a hung worker leaks until it eventually finishes —
-    recorded tradeoff).
+    pyoxigraph's query has no timeout knob either, so an executor we
+    refuse to join is the escape hatch (a hung worker leaks until it
+    eventually finishes — recorded tradeoff).
     """
     from concurrent.futures import ThreadPoolExecutor
     from concurrent.futures import TimeoutError as FutTimeout
@@ -370,7 +376,10 @@ def _run_custom(
     t0 = time.perf_counter()
 
     def _query() -> list:
-        return list(graph.query(spec.sparql))
+        results = store.query(spec.sparql)
+        if isinstance(results, ox.QueryBoolean):  # custom rules are SELECT-shaped
+            raise TypeError("custom rules must be SELECT queries")
+        return list(results)
 
     try:
         ex = ThreadPoolExecutor(max_workers=1)
@@ -403,14 +412,14 @@ def _run_custom(
     findings = []
     for row in rows[:MAX_FINDINGS]:
         terms = list(row)
-        subject = str(terms[0]) if terms else ""
+        subject = _term_str(terms[0]) if terms else ""
         findings.append(
             Finding(
                 rule_id=spec.id,
                 severity=spec.severity,
                 subject=subject,
                 subject_curie=_curie_of(ir, subject) if ir else subject.rsplit("/", 1)[-1],
-                params={f"v{i}": str(t) for i, t in enumerate(terms[1:], start=1)},
+                params={f"v{i}": _term_str(t) for i, t in enumerate(terms[1:], start=1)},
             )
         )
     return RuleResult(
@@ -425,7 +434,7 @@ def _run_custom(
 
 
 def run(
-    graph: Graph,
+    store: ox.Store,
     ir: IRBundle,
     disabled: set[str],
     custom: list[CustomRuleSpec],
@@ -439,11 +448,11 @@ def run(
             continue
         if defn.rule_id in disabled:
             continue
-        results.append(run_rule(defn.rule_id, graph, ir))
+        results.append(run_rule(defn.rule_id, store, ir))
     for spec in custom:
         if only_rule_id and spec.id != only_rule_id:
             continue
-        results.append(_run_custom(spec, ir, graph, timeout_s))
+        results.append(_run_custom(spec, ir, store, timeout_s))
     counts = {"error": 0, "warning": 0, "info": 0}
     for r in results:
         for f in r.findings:
