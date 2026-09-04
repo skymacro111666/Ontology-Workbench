@@ -35,10 +35,13 @@ INDIVIDUALS = b"""@prefix ex: <http://example.org/> .
 ex:Dog a owl:Class .
 ex:Old a owl:Class ; owl:deprecated true .
 ex:age a owl:DatatypeProperty ; rdfs:domain ex:Dog ; rdfs:range xsd:integer .
+ex:nick a owl:DatatypeProperty .
+ex:bio a owl:DatatypeProperty .
 ex:knows a owl:ObjectProperty .
 ex:Rex a owl:NamedIndividual , ex:Dog ;
   ex:age "5"^^xsd:integer ;
   ex:nick "rex" ;
+  ex:bio "good dog"@en ;
   rdfs:comment "good boy" ;
   ex:knows ex:Ace .
 ex:Ace a owl:NamedIndividual .
@@ -85,8 +88,11 @@ def test_two_bnode_restrictions_relabel_stably() -> None:
     assert "rdfs:subClassOf _:b0 , _:b1" in block
 
 
-def test_individuals_typed_data_assertions_only() -> None:
-    """Typed literals assert, plain/lang-tagged ones stay out; instances group."""
+def test_individuals_data_assertions_include_plain_strings() -> None:
+    """Typed and plain-string literals assert with full datatype IRIs.
+
+    Language-tagged ones stay out; instances group.
+    """
     ir = _build(INDIVIDUALS)
     rex = ir.individuals["http://example.org/Rex"]
     assert [c.curie for c in rex.classes] == ["ex:Dog"]
@@ -94,8 +100,11 @@ def test_individuals_typed_data_assertions_only() -> None:
     assert [(a.property.curie, a.object.curie) for a in rex.object_assertions] == [
         ("ex:knows", "ex:Ace")
     ]
+    # RDF 1.1: the bare "rex" IS xsd:string, so it asserts with the full
+    # datatype IRI — only the @en bio is filtered.
     assert [(a.property.curie, a.value, a.datatype) for a in rex.data_assertions] == [
-        ("ex:age", "5", "http://www.w3.org/2001/XMLSchema#integer")
+        ("ex:age", "5", "http://www.w3.org/2001/XMLSchema#integer"),
+        ("ex:nick", "rex", "http://www.w3.org/2001/XMLSchema#string"),
     ]
     assert [r.curie for r in ir.instances["http://example.org/Dog"]] == ["ex:Rex"]
     assert ir.counts.individual_count == 2

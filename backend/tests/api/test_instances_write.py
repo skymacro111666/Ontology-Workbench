@@ -22,6 +22,16 @@ ex:FanSequel a owl:NamedIndividual , ex:FanFic ;
   ex:inspiredBy ex:ThreeBody ; ex:knows ex:ThreeBody .
 """
 
+# 数据断言用最小本体:rating 无 rdfs:range → 写入路径默认 xsd:string(正是
+# 曾被 IR 过滤吞掉的场景)
+MINI_DATA = b"""@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:Novel a owl:Class .
+ex:rating a owl:DatatypeProperty ; rdfs:domain ex:Novel .
+ex:ThreeBody a owl:NamedIndividual , ex:Novel ; rdfs:label "ThreeBody" .
+"""
+
 
 def _upload(client: TestClient, data: bytes = MINI_INST) -> tuple[str, dict[str, Any]]:
     r = client.post(
@@ -153,6 +163,54 @@ def test_update_instance_replaces_assertions(client: TestClient) -> None:
     assert "ex:ThreeBody ex:inspiredBy ex:ThreeBody" not in src
     # New assertion must be present (Turtle serializer uses ; separator)
     assert "ex:inspiredBy ex:FanSequel" in src
+
+
+def test_update_instance_data_assertion_string_roundtrip(client: TestClient) -> None:
+    """Default-datatype (xsd:string) data assertions read back from the IR.
+
+    The IR build historically dropped bare-string literals (RDF 1.1: they
+    report datatype xsd:string), so a PUT that landed 200 vanished from the
+    instance payload — and the UI's next full-replace PUT deleted them from
+    the file. Write with no explicit datatype, then read back.
+    """
+    oid, _ = _upload(client, MINI_DATA)
+    h = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
+    r = _put(
+        client,
+        oid,
+        TB,
+        {
+            "assertions": [
+                {"property": "http://example.org/rating", "kind": "data", "value": "5 stars"},
+            ],
+            "baseFileHash": h,
+        },
+    )
+    assert r.status_code == 200
+    got = client.get(f"/api/ontologies/{oid}/entities/{TB}").json()["data"]
+    assert [(a["property"]["curie"], a["value"], a["datatype"]) for a in got["dataAssertions"]] == [
+        ("ex:rating", "5 stars", "http://www.w3.org/2001/XMLSchema#string")
+    ]
+    # UI 契约:全量替换 PUT 原样回传页面所见(含完整 datatype IRI)→ 不丢
+    h2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
+    r = _put(
+        client,
+        oid,
+        TB,
+        {
+            "assertions": [
+                {
+                    "property": "http://example.org/rating",
+                    "kind": "data",
+                    "value": "5 stars",
+                    "datatype": "http://www.w3.org/2001/XMLSchema#string",
+                },
+            ],
+            "baseFileHash": h2,
+        },
+    )
+    assert r.status_code == 200
+    assert '"5 stars"' in _source(client, oid)
 
 
 def test_update_instance_clears_all_assertions(client: TestClient) -> None:

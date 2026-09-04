@@ -93,7 +93,7 @@ class ObjectAssertion(BaseModel):
 
 
 class DataAssertion(BaseModel):
-    """实例 → 类型字面量(谓词为已声明 DatatypeProperty,无语言标签)."""
+    """实例 → 字面量(谓词为已声明 DatatypeProperty,无语言标签;datatype 为完整 IRI)."""
 
     property: PropRef
     value: str
@@ -561,10 +561,10 @@ def build_ir_store(store: ox.Store, prefixes: PrefixMap) -> IRBundle:
                 isinstance(pred, ox.NamedNode)
                 and pred.value in datatype_props
                 and isinstance(obj, ox.Literal)
-                # Only explicitly-typed literals count: exclude the implicit
-                # xsd:string form and language-tagged literals.
+                # RDF 1.1: a bare literal IS xsd:string, so string assertions
+                # count too (the instance editor's default datatype), with
+                # the full datatype IRI; only language-tagged literals stay out.
                 and obj.language is None
-                and obj.datatype != terms.XSD_STRING
             ):
                 data_asserts.append(
                     DataAssertion(

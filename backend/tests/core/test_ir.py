@@ -208,13 +208,16 @@ def test_individuals_collect_assertions() -> None:
     objs = {a.property.curie: a.object.curie for a in tb.object_assertions}
     assert objs == {"lib:hasCreator": "lib:LiuCixin", "lib:locatedIn": "lib:MainStacks"}
     data_values = {a.property.curie: a.value for a in tb.data_assertions}
-    # lib:isbn is a plain literal without explicit datatype (^^(xsd:string)) so it's NOT collected
-    # (only explicitly-typed literals are collected per spec)
+    # lib:isbn is a bare string literal — RDF 1.1 makes it xsd:string, so it
+    # IS collected, with the full datatype IRI (final-review fix 2026-09-04)
     assert data_values == {
+        "lib:isbn": "978-7-5366-9293-0",
         "lib:publicationYear": "2008",
         "lib:pageCount": "302",
         "lib:available": "true",
     }
+    isbn = next(a for a in tb.data_assertions if a.property.curie == "lib:isbn")
+    assert isbn.datatype == "http://www.w3.org/2001/XMLSchema#string"
     year = next(a for a in tb.data_assertions if a.property.curie == "lib:publicationYear")
     assert year.datatype == "http://www.w3.org/2001/XMLSchema#integer"
     # 既有 instances 映射不回归(徽章口径)
