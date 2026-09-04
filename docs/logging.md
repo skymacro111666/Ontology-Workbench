@@ -47,7 +47,7 @@
 |---|---|
 | `read_ms` | 读取上传 body(CLI 为读本地文件) |
 | `parse_ms` | RDF 解析(含语法校验) |
-| `ir_ms` | `build_ir` 中间表示构建 |
+| `ir_ms` | `build_ir_store` 中间表示构建 |
 | `store_ms` | 文件落盘 |
 | `db_ms` | 重复名查询 + 行写入(两次 DB 往返之和,不含其间的 parse/IR) |
 | `index_ms` | 索引构建 |

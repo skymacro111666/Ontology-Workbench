@@ -1,7 +1,8 @@
 """Lint configuration + manual runs (B3).
 
 Config lives in DB per ontology; runs read the pooled Store (manual
-trigger only, spec §0).
+trigger only, spec §0). A run concurrent with an in-flight edit may
+observe that edit's not-yet-persisted changes (shared pooled Store).
 """
 
 from __future__ import annotations

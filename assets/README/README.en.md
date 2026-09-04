@@ -19,6 +19,7 @@
 - **Smart graph visualization** — canvas hosts local-neighbor and global-overview graphs, edges colored by semantics, node positions remembered after dragging
 - **Point-and-edit canvas** — right-click to create, edit, and delete classes and properties, no page-hopping needed
 - **Integrated source editing** — built-in editor with full find-and-replace
+- **Zero re-parse on repeat edits** — consecutive edits to the same file version reuse one in-memory Store and parse zero times (pinned by `backend/tests/api/test_edit_store_cache.py`)
 - **Offline docs export** — generates a static site with zero external dependencies
 
 ## 📸 Feature Showcase
