@@ -13,7 +13,11 @@ from ontoworkbench.core.indexes import Indexes
 from ontoworkbench.core.parsing import parse_store
 from ontoworkbench.core.prefixes import PrefixMap
 from ontoworkbench.db.models import Ontology
-from ontoworkbench.observability.metrics import ow_cached_ontologies, ow_parse_seconds
+from ontoworkbench.observability.metrics import (
+    ow_cached_ontologies,
+    ow_cached_stores,
+    ow_parse_seconds,
+)
 
 CACHE_SIZE = 10
 STORE_CACHE_SIZE = 2
@@ -106,6 +110,7 @@ class OntologyCache:
             self._stores.move_to_end(key)
             while len(self._stores) > self._store_max_size:
                 self._stores.popitem(last=False)
+            ow_cached_stores.set(len(self._stores))
             return store, prefixes
 
     def refresh_store(self, ontology: Ontology, store: Store, prefixes: PrefixMap) -> None:
@@ -116,11 +121,16 @@ class OntologyCache:
             self._stores.move_to_end(key)
             while len(self._stores) > self._store_max_size:
                 self._stores.popitem(last=False)
+            ow_cached_stores.set(len(self._stores))
 
     def drop_store(self, ontology_id: str) -> bool:
         """Evict one editable Store (persist failure, source replace); True when live."""
         with self._locks[ontology_id]:
-            return self._stores.pop(ontology_id, None) is not None
+            lived = self._stores.pop(ontology_id, None) is not None
+            if lived:
+                # drop() routes here too, so its evictions stay gauged.
+                ow_cached_stores.set(len(self._stores))
+            return lived
 
     def drop(self, ontology_id: str) -> bool:
         """Evict one ontology's caches (called on delete); True when any lived."""

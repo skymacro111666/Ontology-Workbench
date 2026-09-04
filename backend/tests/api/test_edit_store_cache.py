@@ -153,6 +153,37 @@ def test_store_pool_lru_cap_is_two(client: TestClient, monkeypatch: pytest.Monke
     assert len(calls) == 4
 
 
+def _store_gauge(client: TestClient) -> float:
+    """ow_cached_stores off /metrics (Gauge: literal name, no _total suffix)."""
+    for line in client.get("/metrics").text.splitlines():
+        if line.startswith("ow_cached_stores "):
+            return float(line.rsplit(" ", 1)[1])
+    raise AssertionError("ow_cached_stores missing from /metrics")
+
+
+def test_store_pool_gauge_tracks_size(client: TestClient) -> None:
+    """ow_cached_stores mirrors the pool across a warm-up edit and a drop.
+
+    The Gauge is process-global while each test gets a fresh cache, so the
+    pre-mutation reading may be stale from an earlier test's app; from this
+    app's first pool mutation on, the gauge reflects its own pool exactly
+    (assertions are therefore absolute, not deltas).
+    """
+    oid, meta = _upload(client)
+    r = _create_class(client, oid, "Cat", meta["fileHash"])
+    assert r.status_code == 200
+    assert _store_gauge(client) == 1.0  # store_for warmed the pool
+
+    # A repeat edit reuses (moves) the entry — still exactly one Store.
+    h2 = _meta(client, oid)["fileHash"]
+    r = _create_class(client, oid, "Dog2", h2)
+    assert r.status_code == 200
+    assert _store_gauge(client) == 1.0
+
+    client.app.state.cache.drop(oid)  # routes through drop_store
+    assert _store_gauge(client) == 0.0
+
+
 def test_rejected_entity_update_never_lands_via_next_edit(client: TestClient) -> None:
     """C1 repro: a 422'd comment must not ride along with the next legal edit.
 
