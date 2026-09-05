@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
-from ontoworkbench.core.indexes import Indexes, build_indexes
+from ontoworkbench.core.indexes import DEPRECATED_BUCKET, Indexes, build_indexes
 from ontoworkbench.core.ir import build_ir_store
 from ontoworkbench.core.ir_cache import read_ir_cache, write_ir_cache
 from ontoworkbench.core.parsing import timed_parse_store
@@ -112,6 +112,22 @@ def tree(
     return respond(
         _camel([n.model_dump() for n in ix.tree(parent, include_deprecated=includeDeprecated)])
     )
+
+
+@router.get("/{ontology_id}/entities/{eid:path}/expand")
+def expand(
+    ontology_id: str,
+    eid: str,
+    request: Request,
+    includeDeprecated: bool = False,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Progressive-canvas drill-down: live children (with subtree sizes) or a bucket."""
+    _, ix = _owned(request, user, ontology_id, session)
+    if eid != DEPRECATED_BUCKET and not eid.startswith("__prefix__:"):
+        _entity_or_404(ix, eid)
+    return respond(_camel(ix.expand(eid, include_deprecated=includeDeprecated)))
 
 
 @router.get("/{ontology_id}/entities/{eid:path}/neighbors")

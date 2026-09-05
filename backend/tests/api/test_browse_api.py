@@ -454,3 +454,28 @@ def test_overview_view_param_and_progressive_shape(client: TestClient) -> None:
     assert prog["deprecatedCount"] == 0
     bad = client.get(f"/api/ontologies/{oid}/overview?view=banana")
     assert bad.status_code == 422
+
+
+def test_expand_endpoint_shapes_and_404(client: TestClient) -> None:
+    """Expand returns children with subtree sizes; buckets pass, unknown 404s."""
+    oid = _upload(client)
+    root = quote("http://example.org/Thing", safe="")
+    r = client.get(f"/api/ontologies/{oid}/entities/{root}/expand").json()["data"]
+    assert r["totalCount"] == 1
+    assert r["nodes"][0]["curie"] == "ex:Animal"
+    assert r["nodes"][0]["subtreeSize"] == 2  # Animal + Dog
+    assert r["edges"] == [
+        {
+            "source": "http://example.org/Animal",
+            "target": "http://example.org/Thing",
+            "kind": "subClassOf",
+        }
+    ]
+    assert r["truncated"] is False
+    # Deprecated bucket is a valid target even with zero deprecated classes.
+    bucket = client.get(f"/api/ontologies/{oid}/entities/__deprecated__/expand").json()["data"]
+    assert bucket["totalCount"] == 0 and bucket["nodes"] == []
+    # Unknown eid → uniform 404 envelope.
+    missing = client.get(f"/api/ontologies/{oid}/entities/http%3A%2F%2Fexample.org%2FGhost/expand")
+    assert missing.status_code == 404
+    assert missing.json()["code"] == "NOT_FOUND"
