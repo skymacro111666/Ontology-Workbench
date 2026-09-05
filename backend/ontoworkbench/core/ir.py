@@ -258,6 +258,16 @@ def _alive_kind(store: ox.Store, uri: str) -> str | None:
     return None if ptype == "Property" else ptype
 
 
+def _individuals_typed_at(store: ox.Store, cls: str) -> list[str]:
+    """Individual eids currently typed at cls, sorted (the build's bucket order)."""
+    return sorted(
+        s.value
+        for s in _ox_subjects(store, terms.RDF_TYPE, ox.NamedNode(cls))
+        if isinstance(s, ox.NamedNode)
+        and _ox_has(store, s.value, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL)
+    )
+
+
 def _ox_prop_ref(
     store: ox.Store, prefixes: PrefixMap, uri: str, cache: _OxCurieCache | None = None
 ) -> PropRef:
@@ -738,7 +748,11 @@ def recompute_descendants(ir: IRBundle, seeds: Iterable[str]) -> None:
         e = ir.entities.get(cur)
         if e:
             stack.extend(p.eid for p in e.parents)
-    for eid in upstream:
+    # Sorted entry, not set order: under a subClassOf cycle the guard fixes
+    # whichever node the DFS reaches first, so values must not vary with
+    # hash randomization. Sorted matches the build's own sorted class
+    # walk; DAG totals are entry-order independent anyway.
+    for eid in sorted(upstream):
         e = ir.entities.get(eid)
         if e:
             e.stats = Stats(direct_children=e.stats.direct_children, total_descendants=_total(eid))
@@ -749,19 +763,90 @@ def refresh_entities(
 ) -> None:
     """Re-extract the affected entities from store; drop the ones that vanished.
 
-    counts are the caller's to maintain (one owner: the mutation handler
-    bumps class/property deltas itself; axiom_count is re-counted when
-    persisting). Descendant totals are recomputed for the whole affected
-    ancestry so stats stay equal to a full rebuild.
+    The refresh cascades to the individuals referencing an affected
+    entity: a surviving class rebuilds its instances bucket from the
+    individuals currently typed at it, a dead class loses its bucket,
+    and every individual carrying an affected property's quads is
+    refreshed — so buckets, class lists and assertions stay equal to a
+    full rebuild. counts are the caller's to maintain (one owner: the
+    mutation handler bumps class/property deltas itself; axiom_count is
+    re-counted when persisting). Descendant totals are recomputed for
+    the whole affected ancestry.
     """
     cc: _OxCurieCache = {}
     ctx = _build_ctx(store)
+    # Individuals whose rows or pages reference an affected entity; they
+    # are refreshed after the entity pass so re-extraction sees final state.
+    touched: set[str] = set()
     for eid in sorted(affected):
-        if _alive_kind(store, eid) is not None:
+        kind = _alive_kind(store, eid)
+        if kind == "Class":
+            ir.entities[eid] = _entity_ir(store, prefixes, eid, cc, ctx)
+            typed = _individuals_typed_at(store, eid)
+            if typed:
+                ir.instances[eid] = [_ox_ref(store, prefixes, s, cc) for s in typed]
+            else:
+                ir.instances.pop(eid, None)
+            touched.update(typed)
+        elif kind is not None:
             ir.entities[eid] = _entity_ir(store, prefixes, eid, cc, ctx)
         else:
             ir.entities.pop(eid, None)
+            ir.instances.pop(eid, None)
+            # the entity is gone, but typing quads may still point at it
+            touched.update(_individuals_typed_at(store, eid))
+        if kind != "Class":
+            # assertion quads carrying this property: their subjects' pages
+            # gain/lose the assertion as the property appears or vanishes
+            for q in store.quads_for_pattern(None, ox.NamedNode(eid), None, ox.DefaultGraph()):
+                s = q.subject
+                if isinstance(s, ox.NamedNode) and _ox_has(
+                    store, s.value, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL
+                ):
+                    touched.add(s.value)
+    for ind in sorted(touched):
+        _regroup_individual(ir, store, prefixes, ind, ctx, cc)
     recompute_descendants(ir, affected)
+
+
+def _drop_instance_row(ir: IRBundle, cls: str, eid: str) -> None:
+    """Remove eid's row from the class bucket, dropping emptied buckets."""
+    rows = ir.instances.get(cls)
+    if rows is not None:
+        rows = [r for r in rows if r.eid != eid]
+        if rows:
+            ir.instances[cls] = rows
+        else:
+            del ir.instances[cls]
+
+
+def _regroup_individual(
+    ir: IRBundle,
+    store: ox.Store,
+    prefixes: PrefixMap,
+    eid: str,
+    ctx: _WalkCtx,
+    cc: _OxCurieCache,
+) -> None:
+    """refresh_individual core over a shared walk context (no per-call scans)."""
+    old = ir.individuals.get(eid)
+    old_classes = {r.eid for r in old.classes} if old else set()
+    if not _ox_has(store, eid, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL):
+        for c in old_classes:
+            _drop_instance_row(ir, c, eid)
+        ir.individuals.pop(eid, None)
+        return
+    ind, class_eids = _individual_ir(store, prefixes, eid, ctx, cc)
+    # Strip the current row from every bucket it could sit in — old classes
+    # plus the new ones (a bucket may have been rebuilt directly by
+    # refresh_entities) — then re-place: idempotent under any bucket state.
+    for c in old_classes | set(class_eids):
+        _drop_instance_row(ir, c, eid)
+    ir.individuals[eid] = ind
+    for c in class_eids:
+        rows = ir.instances.setdefault(c, [])
+        rows.append(Ref(eid=eid, curie=ind.curie, label=ind.label))
+        rows.sort(key=lambda r: r.eid)  # build order: one row per sorted individual
 
 
 def refresh_individual(ir: IRBundle, store: ox.Store, prefixes: PrefixMap, eid: str) -> None:
@@ -771,24 +856,4 @@ def refresh_individual(ir: IRBundle, store: ox.Store, prefixes: PrefixMap, eid: 
     subjects); counts stay with the caller, same contract as
     refresh_entities.
     """
-    cc: _OxCurieCache = {}
-    ctx = _build_ctx(store)
-    old = ir.individuals.get(eid)
-    old_classes = {r.eid for r in old.classes} if old else set()
-    for c in old_classes:
-        rows = ir.instances.get(c)
-        if rows is not None:
-            rows = [r for r in rows if r.eid != eid]
-            if rows:
-                ir.instances[c] = rows
-            else:
-                del ir.instances[c]
-    if not _ox_has(store, eid, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL):
-        ir.individuals.pop(eid, None)
-        return
-    ind, class_eids = _individual_ir(store, prefixes, eid, ctx, cc)
-    ir.individuals[eid] = ind
-    for c in class_eids:
-        rows = ir.instances.setdefault(c, [])
-        rows.append(Ref(eid=eid, curie=ind.curie, label=ind.label))
-        rows.sort(key=lambda r: r.eid)  # build order: one row per sorted individual
+    _regroup_individual(ir, store, prefixes, eid, _build_ctx(store), {})

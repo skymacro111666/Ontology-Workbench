@@ -417,6 +417,7 @@ def test_refresh_entities_removes_deleted() -> None:
     # parents lost the child row, the subClassOf backref, and subtree totals
     assert ir.entities[_X + "Root"] == fresh.entities[_X + "Root"]
     assert ir.entities[_X + "Mid"] == fresh.entities[_X + "Mid"]
+    assert ir.entities == fresh.entities  # nothing else drifts either
 
 
 def test_refresh_individual_regroups_instances() -> None:
@@ -472,18 +473,25 @@ def test_recompute_descendants_updates_ancestors() -> None:
 
 
 def test_recompute_descendants_cycle_safe() -> None:
-    """A subClassOf cycle terminates and matches the build's guard values."""
+    """A subClassOf cycle terminates and matches the build's guard values.
+
+    Determinism comes from entering the DFS in sorted order — the same
+    order the build's sorted class walk uses — so guarded cycle values
+    never depend on set iteration order (PYTHONHASHSEED). Seeding from
+    either side of the cycle must reproduce the build's numbers.
+    """
     ttl = """@prefix ex: <http://x/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 ex:A a owl:Class ; rdfs:subClassOf ex:B .
 ex:B a owl:Class ; rdfs:subClassOf ex:A .
 """
-    ir = _build(ttl)
-    fresh = _build(ttl)
-    recompute_descendants(ir, [_X + "A"])
-    assert ir.entities[_X + "A"].stats == fresh.entities[_X + "A"].stats
-    assert ir.entities[_X + "B"].stats == fresh.entities[_X + "B"].stats
+    ir_a, ir_b, fresh = _build(ttl), _build(ttl), _build(ttl)
+    recompute_descendants(ir_a, [_X + "A"])
+    recompute_descendants(ir_b, [_X + "B"])
+    for ir in (ir_a, ir_b):
+        assert ir.entities[_X + "A"].stats == fresh.entities[_X + "A"].stats
+        assert ir.entities[_X + "B"].stats == fresh.entities[_X + "B"].stats
 
 
 def test_affected_around_unions_old_ir_and_store() -> None:
@@ -502,3 +510,80 @@ def test_affected_around_unions_old_ir_and_store() -> None:
         )
     )
     assert _X + "New" in affected_around(ir, store, pm, _X + "Mid")
+
+
+# --- refresh cascades to individuals (class/property mutations ripple
+# into instances buckets and individual pages; parity with a full rebuild) ---
+
+
+def test_refresh_cascade_class_death_leaves_no_stale_bucket() -> None:
+    """A dead class's bucket goes even when typing quads survive it."""
+    store, pm, ir = _refresh_fixture()
+    mid = ox.NamedNode(_X + "Mid")
+    for q in list(store.quads_for_pattern(mid, None, None, ox.DefaultGraph())):
+        store.remove(q)  # kills the class; (rex, rdf:type, Mid) survives
+    affected = affected_around(ir, store, pm, _X + "Mid")
+    ir.counts.class_count -= 1
+    refresh_entities(ir, store, pm, affected)
+    fresh = build_ir_store(store, pm)
+    assert _X + "Mid" not in ir.entities
+    assert _X + "Mid" not in ir.instances  # residual typing must not keep it
+    assert ir.entities == fresh.entities
+    assert ir.instances == fresh.instances
+    assert ir.individuals == fresh.individuals  # rex's classes list drops Mid
+
+
+def test_refresh_cascade_class_birth_adopts_typed_individuals() -> None:
+    """Declaring a class adopts individuals already typed at it."""
+    store, pm, ir = _refresh_fixture()
+    rex = ox.NamedNode(_X + "rex")
+    store.add(ox.Quad(rex, terms.RDF_TYPE, ox.NamedNode(_X + "New"), ox.DefaultGraph()))
+    assert _X + "New" not in build_ir_store(store, pm).instances  # undeclared: invisible
+    store.add(ox.Quad(ox.NamedNode(_X + "New"), terms.RDF_TYPE, terms.OWL_CLASS, ox.DefaultGraph()))
+    affected = affected_around(ir, store, pm, _X + "New")
+    ir.counts.class_count += 1
+    refresh_entities(ir, store, pm, affected)
+    fresh = build_ir_store(store, pm)
+    assert _X + "New" in ir.instances  # bucket born, holding rex
+    assert ir.entities == fresh.entities
+    assert ir.instances == fresh.instances
+    assert ir.individuals == fresh.individuals  # rex's classes gained New
+    assert ir.counts.class_count == fresh.counts.class_count
+
+
+def test_refresh_cascade_property_death_clears_assertions() -> None:
+    """Undeclaring a property hides the assertions it carried."""
+    ttl = REFRESH_TTL + "ex:buddy a owl:NamedIndividual , ex:Root .\nex:rex ex:likes ex:buddy .\n"
+    store, pm = parse_store(ttl.encode(), "turtle")
+    ir = build_ir_store(store, pm)
+    assert [a.property.curie for a in ir.individuals[_X + "rex"].object_assertions] == ["ex:likes"]
+    likes = ox.NamedNode(_X + "likes")
+    for q in list(store.quads_for_pattern(likes, None, None, ox.DefaultGraph())):
+        store.remove(q)  # declaration gone; (rex, likes, buddy) survives
+    affected = affected_around(ir, store, pm, _X + "likes")
+    ir.counts.property_count -= 1
+    refresh_entities(ir, store, pm, affected)
+    fresh = build_ir_store(store, pm)
+    assert ir.individuals[_X + "rex"].object_assertions == []
+    assert ir.entities == fresh.entities
+    assert ir.instances == fresh.instances
+    assert ir.individuals == fresh.individuals
+    assert ir.counts.property_count == fresh.counts.property_count
+
+
+def test_refresh_cascade_property_birth_activates_assertions() -> None:
+    """A newly declared property turns existing quads into assertions."""
+    ttl = REFRESH_TTL + "ex:buddy a owl:NamedIndividual , ex:Root .\nex:rex ex:knows ex:buddy .\n"
+    store, pm = parse_store(ttl.encode(), "turtle")
+    ir = build_ir_store(store, pm)
+    assert ir.individuals[_X + "rex"].object_assertions == []  # knows invisible
+    knows = ox.NamedNode(_X + "knows")
+    store.add(ox.Quad(knows, terms.RDF_TYPE, terms.OWL_OBJECTPROPERTY, ox.DefaultGraph()))
+    affected = affected_around(ir, store, pm, _X + "knows")
+    ir.counts.property_count += 1
+    refresh_entities(ir, store, pm, affected)
+    fresh = build_ir_store(store, pm)
+    assert [a.object.curie for a in ir.individuals[_X + "rex"].object_assertions] == ["ex:buddy"]
+    assert ir.entities == fresh.entities
+    assert ir.instances == fresh.instances
+    assert ir.individuals == fresh.individuals
