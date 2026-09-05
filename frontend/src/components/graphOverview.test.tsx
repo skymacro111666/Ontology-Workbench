@@ -50,7 +50,7 @@ function stubFetch(
 ) {
   return vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
-    if (u.endsWith('/overview')) return env(overview)
+    if (u.includes('/overview')) return env(overview)
     if (u.endsWith('/layout') && init?.method === 'PUT') {
       savedBody = JSON.parse(String(init.body))
       return env(savedBody)
@@ -223,7 +223,7 @@ describe('GraphOverview assertion edges', () => {
   function assertionStub(opts: { truncated?: boolean } = {}) {
     return vi.fn(async (url: string | URL) => {
       const u = String(url)
-      if (u.endsWith('/overview'))
+      if (u.includes('/overview'))
         return env({
           nodes: [
             { id: 'a', curie: 'ex:A', label: {}, kind: 'class', instanceCount: 1 },
@@ -301,7 +301,7 @@ describe('GraphOverview assertion edges', () => {
     const shared = { id: 'shared', curie: 'ex:S', label: {}, kind: 'instance' as const }
     const stub = vi.fn(async (url: string | URL) => {
       const u = String(url)
-      if (u.endsWith('/overview'))
+      if (u.includes('/overview'))
         return env({
           nodes: [
             { id: 'a', curie: 'ex:A', label: {}, kind: 'class', instanceCount: 1 },
@@ -362,6 +362,37 @@ describe('GraphOverview assertion edges', () => {
     )
     await new Promise((r) => setTimeout(r, 100))
     expect(screen.getAllByText(/断言边过多/)).toHaveLength(1)
+  })
+})
+
+describe('GraphOverview deprecated visibility', () => {
+  it('fetches with includeDeprecated=false, refetches with true on toggle', async () => {
+    const fetchMock = stubFetch()
+    draw(fetchMock)
+    await waitForGraph()
+    expect(
+      fetchMock.mock.calls.some(([u]) => String(u).includes('/overview?includeDeprecated=false')),
+    ).toBe(true)
+    await userEvent.click(screen.getByRole('button', { name: '显示已废弃' }))
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([u]) => String(u).includes('/overview?includeDeprecated=true')),
+      ).toBe(true),
+    )
+  })
+
+  it('notes the hidden deprecated count until the toggle is on', async () => {
+    draw(stubFetch(null, { ...OVERVIEW, deprecatedCount: 2 }))
+    await waitForGraph()
+    expect(screen.getByText('已隐藏 2 个废弃条目')).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: '显示已废弃' }))
+    await waitFor(() => expect(screen.queryByText('已隐藏 2 个废弃条目')).toBeNull())
+  })
+
+  it('stays quiet when nothing is deprecated', async () => {
+    draw(stubFetch())
+    await waitForGraph()
+    expect(screen.queryByText(/废弃条目/)).toBeNull()
   })
 })
 

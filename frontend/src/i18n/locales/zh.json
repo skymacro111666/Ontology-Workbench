@@ -294,7 +294,9 @@
     "filterClasses": "类",
     "filterObjects": "对象",
     "filterData": "数据",
-    "legend": "图例"
+    "legend": "图例",
+    "showDeprecated": "显示已废弃",
+    "deprecatedHidden": "已隐藏 {{count}} 个废弃条目"
   },
   "pwd": {
     "lenRule": "新密码需为 8–128 个字符",

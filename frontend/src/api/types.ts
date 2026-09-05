@@ -175,6 +175,8 @@ export interface NodesEdges {
   edges: GEdge[]
   truncated?: boolean
   totalCount?: number
+  /** Entities hidden by the default deprecated filter (overview note bar). */
+  deprecatedCount?: number
 }
 
 /** List item from GET /api/ontologies. */

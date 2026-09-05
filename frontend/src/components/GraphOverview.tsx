@@ -14,6 +14,7 @@ import { useLint } from './LintPanel'
 import LintSettingsDialog from './LintSettingsDialog'
 import type { Pt } from './layoutPositions'
 import { Button } from '@/components/ui/button'
+import { Toggle } from '@/components/ui/toggle'
 
 /** Menu rows for a right-click report: blank area offers creation, a class
  *  node additionally offers subclass/instance/edit/delete, property nodes the
@@ -137,9 +138,13 @@ export default function GraphOverview({
     kind?: string
     curie?: string
   } | null>(null)
+  /** Session-level deprecated visibility (D0): off by default, never
+   *  persisted — the overview refetches through the includeDeprecated param. */
+  const [showDeprecated, setShowDeprecated] = useState(false)
   const { data, isError, error, refetch } = useQuery({
-    queryKey: ['overview', oid],
-    queryFn: () => api.get<NodesEdges>(`/api/ontologies/${oid}/overview`),
+    queryKey: ['overview', oid, showDeprecated],
+    queryFn: () =>
+      api.get<NodesEdges>(`/api/ontologies/${oid}/overview?includeDeprecated=${showDeprecated}`),
     retry: false,
   })
   /** A focus outside a TRUNCATED overview used to degrade silently (backlog
@@ -287,6 +292,15 @@ export default function GraphOverview({
           {t('canvas.truncatedNote', { total: data.totalCount })}
         </div>
       )}
+      {/* Hidden-deprecated count hint: only while the filter keeps them out. */}
+      {!showDeprecated && (data.deprecatedCount ?? 0) > 0 && (
+        <div
+          role="status"
+          className="border-primary-border bg-primary-soft text-ink-2 rounded-ctl shrink-0 border px-3 py-2 text-sm"
+        >
+          {t('canvas.deprecatedHidden', { count: data.deprecatedCount })}
+        </div>
+      )}
       <div className="relative min-h-0 flex-1">
         <GraphView
           key={layoutKey}
@@ -300,7 +314,20 @@ export default function GraphOverview({
           onLayoutChange={(positions) => saveLayout.mutate(positions)}
           onResetLayout={() => void resetLayout()}
           onContextMenu={(info) => setMenu(info)}
-          extraControls={lint.button}
+          extraControls={
+            <>
+              {lint.button}
+              <Toggle
+                variant="outline"
+                size="sm"
+                className="h-6 min-w-0 px-2 text-xs"
+                pressed={showDeprecated}
+                onPressedChange={setShowDeprecated}
+              >
+                {t('canvas.showDeprecated')}
+              </Toggle>
+            </>
+          }
         />
         {lint.drawer}
         <LintSettingsDialog oid={oid} open={settingsOpen} onOpenChange={setSettingsOpen} />

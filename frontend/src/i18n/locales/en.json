@@ -294,7 +294,9 @@
     "filterClasses": "Classes",
     "filterObjects": "Object",
     "filterData": "Data",
-    "legend": "Legend"
+    "legend": "Legend",
+    "showDeprecated": "Show deprecated",
+    "deprecatedHidden": "{{count}} deprecated entities hidden"
   },
   "pwd": {
     "lenRule": "The new password needs 8–128 characters",
