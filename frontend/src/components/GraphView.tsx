@@ -129,17 +129,17 @@ export function hitBadge(hit: HitShape | null | undefined, node: unknown): boole
 
 /** Card style (mockup): classes get a solid grey border, property nodes a
  *  dashed violet one (kind encoded in the border), and the highlighted
- *  entity a 2px primary border. Node labels show local names (prefix
- *  stripped); the inspector carries the full curie. Instances (on-demand
- *  badge reveal) render as small grey circles beside their class. */
+ *  entity a 2px primary border. Node labels prefer rdfs:label, falling
+ *  back to the curie's local name; the inspector carries the full curie.
+ *  Instances (on-demand badge reveal) render as small grey circles beside
+ *  their class. */
 export function toG6Nodes(nodes: GraphViewNode[], t: CanvasTokens): NodeData[] {
   return nodes.map((n) => {
     const isProperty = n.kind === 'property'
     const focused = !!n.highlighted
-    // Instances display their human name when labeled; everything else (and
-    // unlabeled instances) falls back to the curie's local name.
+    // 节点显示名 rdfs:label 优先,缺失回退 curie 局部名。
     const human = Object.values(n.label ?? {})[0]
-    const name = n.kind === 'instance' ? (human ?? localName(n.curie)) : localName(n.curie)
+    const name = human ?? localName(n.curie)
     if (n.kind === 'instance') {
       return {
         id: n.id,

@@ -441,6 +441,19 @@ describe('toG6Nodes', () => {
     expect(by('b').style.badges).toBeUndefined()
   })
 
+  it('class nodes prefer rdfs:label over curie local name', () => {
+    const labeled = toG6Nodes(
+      [{ id: 'a', curie: 'obo:GO_0005575', label: { en: 'cellular_component' }, kind: 'class' }],
+      TOKENS,
+    )
+    expect(labeled[0].style?.labelText).toBe('cellular_component')
+    const unlabeled = toG6Nodes(
+      [{ id: 'b', curie: 'obo:GO_0008150', label: {}, kind: 'class' }],
+      TOKENS,
+    )
+    expect(unlabeled[0].style?.labelText).toBe('GO_0008150')
+  })
+
   it('styles instances as small grey circles with a side label', () => {
     const mapped = toG6Nodes(NODES, TOKENS)
     const inst = mapped.find((n) => n.id === 'i1') as G6Datum
