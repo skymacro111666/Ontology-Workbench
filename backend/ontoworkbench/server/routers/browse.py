@@ -166,12 +166,15 @@ def overview(
     ontology_id: str,
     request: Request,
     includeDeprecated: bool = False,
+    view: str = "auto",
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Bounded whole-graph view; deprecated classes hidden unless opted in."""
+    """Tiered whole-graph view (auto|full|progressive); deprecated hidden unless opted in."""
     _, ix = _owned(request, user, ontology_id, session)
-    return respond(_camel(ix.overview(include_deprecated=includeDeprecated)))
+    if view not in ("auto", "full", "progressive"):
+        raise ApiError(ErrorCode.VALIDATION_ERROR, "view must be one of auto, full, progressive")
+    return respond(_camel(ix.overview(include_deprecated=includeDeprecated, view=view)))
 
 
 @router.get("/{ontology_id}/source")

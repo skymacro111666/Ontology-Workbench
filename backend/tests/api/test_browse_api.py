@@ -439,3 +439,18 @@ def test_tree_and_overview_filter_deprecated(client: TestClient) -> None:
     ).json()["data"]
     assert [k["curie"] for k in full] == ["ex:Animal", "ex:Dead"]
     assert next(k for k in full if k["curie"] == "ex:Dead")["deprecated"] is True
+
+
+def test_overview_view_param_and_progressive_shape(client: TestClient) -> None:
+    """view=progressive folds roots; view validation rejects junk (spec §3)."""
+    oid = _upload(client)
+    # Small graph: auto keeps the full walk, progressive folds it.
+    auto = client.get(f"/api/ontologies/{oid}/overview").json()["data"]
+    assert auto["mode"] == "full" and auto["liveCount"] == 3
+    prog = client.get(f"/api/ontologies/{oid}/overview?view=progressive").json()["data"]
+    assert prog["mode"] == "progressive"
+    assert prog["truncated"] is False and prog["edges"] == []
+    assert any(n.get("folded") for n in prog["nodes"])
+    assert prog["deprecatedCount"] == 0
+    bad = client.get(f"/api/ontologies/{oid}/overview?view=banana")
+    assert bad.status_code == 422

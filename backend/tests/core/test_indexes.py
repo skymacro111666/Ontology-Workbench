@@ -3,6 +3,7 @@
 from ontoworkbench.core.indexes import (
     DEPRECATED_BUCKET,
     DEPRECATED_EXPAND_CAP,
+    PROGRESSIVE_THRESHOLD,
     Indexes,
     build_indexes,
 )
@@ -576,3 +577,88 @@ def test_rebuild_children_of_recomputes_subtree_sizes() -> None:
     ix.rebuild_children_of(["http://x/C"])
     assert ix.subtree_size("http://x/Root") == 5
     assert ix.subtree_size("http://x/C") == 2
+
+
+# -- Task 13: tiered overview (auto/full/progressive) ------------------------
+
+
+def _wide_ttl(n: int, roots: int = 3) -> str:
+    """N classes under `roots` root classes (balanced enough for progressive)."""
+    ttl = (
+        "@prefix : <http://x/> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
+    )
+    ttl += "".join(f":Root{r} a owl:Class .\n" for r in range(roots))
+    ttl += "".join(
+        f":N{i:05d} a owl:Class ; rdfs:subClassOf :Root{i % roots} .\n" for i in range(n - roots)
+    )
+    return ttl
+
+
+def test_overview_auto_progressive_over_threshold() -> None:
+    """Live classes past PROGRESSIVE_THRESHOLD switch to the folded root view."""
+    ix = build_indexes(_ir(_wide_ttl(2500)))
+    payload = ix.overview()
+    assert payload["mode"] == "progressive"
+    assert payload["liveCount"] == 2500
+    assert payload["truncated"] is False
+    folded = {n["id"] for n in payload["nodes"] if n.get("folded")}
+    assert folded == {"http://x/Root0", "http://x/Root1", "http://x/Root2"}
+    assert all(n.get("subtreeSize", 0) > 0 for n in payload["nodes"])
+    assert payload["edges"] == []
+
+
+def test_overview_view_full_forces_full_under_budget_cap() -> None:
+    """view=full keeps the legacy walk even on huge graphs (then truncates)."""
+    ix = build_indexes(_ir(_wide_ttl(6000)))
+    payload = ix.overview(view="full")
+    assert payload["mode"] == "full"
+    assert payload["truncated"] is True  # >5000 nodes: budget caps the walk
+    assert payload["liveCount"] == 6000
+
+
+def test_overview_threshold_boundary_is_inclusive_full() -> None:
+    """At exactly PROGRESSIVE_THRESHOLD live classes the full view still serves."""
+    ix = build_indexes(_ir(_wide_ttl(PROGRESSIVE_THRESHOLD)))
+    assert ix.overview()["mode"] == "full"
+    assert ix.overview(view="progressive")["mode"] == "progressive"
+
+
+def test_overview_prefix_bucketing_many_roots() -> None:
+    """More isolated roots than PREFIX_BUCKET_ROOTS group by curie prefix."""
+    ttl = "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+    ttl += "".join(f"@prefix p{i}: <http://x{i}/> .\np{i}:Root a owl:Class .\n" for i in range(60))
+    ix = build_indexes(_ir(ttl))
+    payload = ix.overview(view="progressive")
+    kinds = {n["kind"] for n in payload["nodes"]}
+    assert "prefixBucket" in kinds
+    buckets = [n for n in payload["nodes"] if n["kind"] == "prefixBucket"]
+    assert len(buckets) == 60
+    assert all(n["curie"].endswith(":*") for n in buckets)
+
+
+def test_overview_progressive_includes_deprecated_bucket() -> None:
+    """The progressive payload appends one deprecated-bucket node when due."""
+    ttl = _wide_ttl(2500)
+    ttl += "".join(f":Dead{i:04d} a owl:Class ; owl:deprecated true .\n" for i in range(10))
+    ix = build_indexes(_ir(ttl))
+    payload = ix.overview()
+    assert payload["deprecatedCount"] == 10
+    bucket = [n for n in payload["nodes"] if n["kind"] == "deprecatedBucket"]
+    assert len(bucket) == 1
+    assert bucket[0]["id"] == DEPRECATED_BUCKET
+    assert bucket[0]["subtreeSize"] == 10
+
+
+def test_expand_prefix_bucket_lists_that_prefixes_roots() -> None:
+    """expand('__prefix__:p3') lists p3's roots, capped and truthfully totalled."""
+    ttl = "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+    ttl += "@prefix p3: <http://x3/> .\n"
+    ttl += "".join(f"p3:R{i:03d} a owl:Class .\n" for i in range(7))
+    ix = build_indexes(_ir(ttl))
+    payload = ix.expand("__prefix__:p3")
+    assert payload["totalCount"] == 7
+    assert {n["curie"] for n in payload["nodes"]} == {f"p3:R{i:03d}" for i in range(7)}
+    assert payload["truncated"] is False
+    capped = ix.expand("__prefix__:p3", cap=3)
+    assert len(capped["nodes"]) == 3 and capped["truncated"] is True

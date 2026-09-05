@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterable
 from typing import Any
 
@@ -23,6 +24,13 @@ PROPS_PARENT = "__props__"
 # owl:deprecated class in one flat list, capped per expand call.
 DEPRECATED_BUCKET = "__deprecated__"
 DEPRECATED_EXPAND_CAP = 500
+
+# Tiering (spec §3): ≤1000 live classes the full view serves as-is (doc-only
+# tier, no code branch); ≤2000 still full; past it overview auto-switches to
+# the folded root view. More isolated roots than PREFIX_BUCKET_ROOTS group by
+# curie prefix instead of flooding the canvas.
+PROGRESSIVE_THRESHOLD = 2000
+PREFIX_BUCKET_ROOTS = 50
 
 
 class TreeNode(BaseModel):
@@ -114,6 +122,31 @@ class Indexes:
         self, eid: str, include_deprecated: bool = False, cap: int = DEPRECATED_EXPAND_CAP
     ) -> dict[str, Any]:
         """下钻取数:某类的直接子类(带子树大小),或废弃桶/前缀桶的分页浏览。."""
+        if eid.startswith("__prefix__:"):
+            # A prefix bucket from the progressive overview: list that
+            # prefix's root classes (each still foldable via its own expand).
+            prefix = eid.split(":", 1)[1]
+            roots = [
+                r for r in self._roots(True) if (r.curie.split(":", 1)[0] or "(default)") == prefix
+            ]
+            nodes = [
+                {
+                    "id": r.eid,
+                    "curie": r.curie,
+                    "label": r.label,
+                    "kind": "class",
+                    "instanceCount": len(self._ir.instances.get(r.eid, [])),
+                    "subtreeSize": self.subtree_size(r.eid),
+                    "deprecated": r.deprecated,
+                }
+                for r in roots[:cap]
+            ]
+            return {
+                "nodes": nodes,
+                "edges": [],
+                "truncated": len(roots) > cap,
+                "totalCount": len(roots),
+            }
         if eid == DEPRECATED_BUCKET:
             deps = sorted(
                 (e for e in list(self._ir.entities.values()) if e.type == "Class" and e.deprecated),
@@ -343,15 +376,35 @@ class Indexes:
         }
 
     def overview(
-        self, max_nodes: int = MAX_OVERVIEW_NODES, include_deprecated: bool = False
+        self,
+        max_nodes: int = MAX_OVERVIEW_NODES,
+        include_deprecated: bool = False,
+        view: str = "auto",
     ) -> dict[str, Any]:
-        """Whole-graph view: full hierarchy within max_nodes, top-3 levels past it.
+        """Whole-graph view, tiered by live-class count (spec §3).
 
-        Past the budget (truncated) wide-but-shallow graphs still blow past
-        max_nodes inside 3 levels, so the budget caps rendered nodes as well.
+        auto: full walk within PROGRESSIVE_THRESHOLD live classes, folded
+        root view past it; view='full' forces the legacy walk (then the
+        max_nodes budget truncates), view='progressive' forces folding.
         Deprecated classes are excluded unless include_deprecated (spec §4);
         deprecatedCount reports how many are hidden this way.
         """
+        live = sum(1 for e in list(self._ir.entities.values()) if not e.deprecated)
+        progressive = view != "full" and (view == "progressive" or live > PROGRESSIVE_THRESHOLD)
+        base: dict[str, Any] = {
+            "mode": "progressive" if progressive else "full",
+            "liveCount": live,
+            "deprecatedCount": sum(
+                1 for e in list(self._ir.entities.values()) if e.type == "Class" and e.deprecated
+            ),
+        }
+        if progressive:
+            return {
+                **base,
+                **self._progressive_payload(include_deprecated),
+                "truncated": False,
+                "total_count": len(self._ir.entities),
+            }
         roots = self._roots(include_deprecated)
         nodes: list[dict[str, Any]] = []
         edges: list[dict[str, str]] = []
@@ -457,16 +510,64 @@ class Indexes:
         nodes.extend(prop_nodes.values())
 
         return {
+            **base,
             "nodes": nodes,
             "edges": edges,
             "truncated": depth_cap is not None,
             "total_count": len(self._ir.entities),
-            # Brief-pinned camelCase key (test contract); _camel passes it
-            # through unchanged, so core and HTTP payloads spell it alike.
-            "deprecatedCount": sum(
-                1 for e in list(self._ir.entities.values()) if e.type == "Class" and e.deprecated
-            ),
         }
+
+    def _progressive_payload(self, include_deprecated: bool) -> dict[str, Any]:
+        """Folded root view: one node per root (or prefix bucket), no edges.
+
+        Every node carries folded=True + subtreeSize so the canvas renders
+        fold badges; expanding fetches the live children via expand().
+        """
+        roots = self._roots(include_deprecated)
+        nodes: list[dict[str, Any]] = []
+        if len(roots) > PREFIX_BUCKET_ROOTS:
+            groups: dict[str, list[EntityIR]] = defaultdict(list)
+            for r in roots:
+                groups[r.curie.split(":", 1)[0] or "(default)"].append(r)
+            for prefix, members in sorted(groups.items()):
+                nodes.append(
+                    {
+                        "id": f"__prefix__:{prefix}",
+                        "curie": f"{prefix}:*",
+                        "label": {},
+                        "kind": "prefixBucket",
+                        "subtreeSize": len(members),
+                        "folded": True,
+                    }
+                )
+        else:
+            for r in roots:
+                nodes.append(
+                    {
+                        "id": r.eid,
+                        "curie": r.curie,
+                        "label": r.label,
+                        "kind": "class",
+                        "instanceCount": len(self._ir.instances.get(r.eid, [])),
+                        "subtreeSize": self.subtree_size(r.eid),
+                        "folded": True,
+                    }
+                )
+        dep_count = sum(
+            1 for e in list(self._ir.entities.values()) if e.type == "Class" and e.deprecated
+        )
+        if dep_count:
+            nodes.append(
+                {
+                    "id": DEPRECATED_BUCKET,
+                    "curie": DEPRECATED_BUCKET,
+                    "label": {},
+                    "kind": "deprecatedBucket",
+                    "subtreeSize": dep_count,
+                    "folded": True,
+                }
+            )
+        return {"nodes": nodes, "edges": []}
 
     # -- assertion schema / edges ----------------------------------------
     def assertion_schema(self, class_eids: list[str]) -> list[SchemaProp]:
