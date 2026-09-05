@@ -59,6 +59,7 @@ class OntologyMeta(CamelModel):
     file_size_bytes: int
     file_hash: str
     source: str = "upload"
+    revision: int = 0
     prefixes: dict[str, str] = Field(default_factory=dict)
     parse_ms: float | None = None
     created_at: str
@@ -160,6 +161,7 @@ def meta_of(row: Ontology) -> dict[str, Any]:
         file_size_bytes=row.file_size_bytes,
         file_hash=row.file_hash,
         source=row.source,
+        revision=row.revision,
         prefixes=prefixes,
         parse_ms=parse_ms,
         created_at=row.created_at.isoformat(),

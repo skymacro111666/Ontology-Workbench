@@ -117,6 +117,13 @@ def test_meta_endpoint(client: TestClient) -> None:
     assert "owl" in meta["prefixes"]
 
 
+def test_meta_exposes_revision(client: TestClient) -> None:
+    """GET /meta carries the edit-axis revision; fresh rows sit at 0 (Y lock baseline)."""
+    oid = _upload(client)
+    meta = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    assert meta["revision"] == 0
+
+
 MINI_INST = b"""@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
