@@ -12,6 +12,7 @@ ow_uploads_total = Counter("ow_uploads_total", "Uploaded ontologies", ["result"]
 ow_cached_ontologies = Gauge("ow_cached_ontologies", "Ontologies held in memory cache")
 ow_cached_stores = Gauge("ow_cached_stores", "Editable Stores held in memory cache")
 ow_ir_cache_reads_total = Counter("ow_ir_cache_reads_total", "Disk IR cache reads", ["result"])
+ow_autosave_total = Counter("ow_autosave_total", "Debounced autosave outcomes", ["result"])
 
 
 def configure_metrics(app: FastAPI) -> None:

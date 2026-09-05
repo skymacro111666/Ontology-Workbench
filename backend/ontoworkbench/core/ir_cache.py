@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import pickle
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, NamedTuple
 
@@ -72,11 +73,19 @@ def read_ir_cache(storage_path: Path, file_hash: str) -> IrCacheResult:
         return IrCacheResult(None, "corrupt")
 
 
-def write_ir_cache(storage_path: Path, ir: IRBundle, file_hash: str) -> bool:
+def write_ir_cache(
+    storage_path: Path,
+    ir: IRBundle,
+    file_hash: str,
+    guard: Callable[[], bool] | None = None,
+) -> bool:
     """Persist the IR atomically; any failure logs and returns False.
 
     Same tmp + os.replace discipline as LocalUserDirStore.save, so a crash
     midway never leaves a half-written cache a later read could trust.
+    The optional guard runs after the tmp write but before the swap-in;
+    a False return vetoes the write (phantom defense: the pkl content and
+    its hash key may have stopped pairing up mid-write).
     """
     path = ir_cache_path(storage_path)
     tmp = path.with_name(CACHE_FILENAME + ".tmp")
@@ -87,6 +96,9 @@ def write_ir_cache(storage_path: Path, ir: IRBundle, file_hash: str) -> bool:
     try:
         payload = pickle.dumps({"v": IR_SCHEMA_VERSION, "file_hash": file_hash, "ir": ir})
         tmp.write_bytes(payload)
+        if guard is not None and not guard():
+            tmp.unlink(missing_ok=True)  # 竞态弃写:内容与 hash 键可能已不配对
+            return False
         os.replace(tmp, path)
     except Exception as exc:
         _log.warning(

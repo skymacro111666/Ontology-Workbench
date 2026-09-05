@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # wipe-any-directory primitive). Opt back into arbitrary paths for
     # single-admin self-hosted use with OW_EXPORT_ALLOW_ANY_PATH=1.
     export_allow_any_path: bool = False
+    # Y-axis debounce: mutations land in memory, files flush after this many
+    # seconds of quiet (OW_AUTOSAVE_DEBOUNCE_S).
+    autosave_debounce_s: float = 3.0
 
     @classmethod
     def load(cls, cli: dict | None = None) -> Settings:

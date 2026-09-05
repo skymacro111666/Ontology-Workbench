@@ -53,6 +53,9 @@ class OntologyCache:
         self._store_max_size = store_max_size
         self._stores: OrderedDict[str, tuple[str, Store, PrefixMap]] = OrderedDict()
         self._locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
+        self._mutation_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
+        self._file_write_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
+        self._mutation_gen: dict[str, int] = defaultdict(int)
 
     def indexes_for(
         self,
@@ -140,3 +143,38 @@ class OntologyCache:
         if evicted:
             ow_cached_ontologies.set(len(self._entries))
         return evicted
+
+    def mutation_lock(self, ontology_id: str) -> threading.Lock:
+        """Serialize concurrent edits' [quad change + IR patch] section.
+
+        µs-ms critical sections; deliberately NOT held against serialize —
+        dump()'s repeatable-read freeze (verified empirically) already
+        guarantees output consistency.
+        """
+        return self._mutation_locks[ontology_id]
+
+    def file_write_lock(self, ontology_id: str) -> threading.Lock:
+        """Serialize autosave vs PUT /source file writes (rare, seconds-long)."""
+        return self._file_write_locks[ontology_id]
+
+    def bump_mutation_gen(self, ontology_id: str) -> None:
+        """Advance the mutation generation (stales in-flight IR cache writes)."""
+        self._mutation_gen[ontology_id] += 1
+
+    def mutation_gen(self, ontology_id: str) -> int:
+        """Current mutation generation for the phantom-write guard."""
+        return self._mutation_gen[ontology_id]
+
+    def install_indexes(self, ontology: Ontology, ix: Indexes) -> None:
+        """Place an already-built Indexes without validation (autosave read-view swap)."""
+        key = str(ontology.id)
+        try:
+            mtime = Path(ontology.storage_path).stat().st_mtime
+        except OSError:
+            mtime = -1.0
+        with self._locks[key]:
+            self._entries[key] = (ontology.file_hash, mtime, ix)
+            self._entries.move_to_end(key)
+            while len(self._entries) > self._max_size:
+                self._entries.popitem(last=False)
+            ow_cached_ontologies.set(len(self._entries))

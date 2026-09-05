@@ -100,6 +100,25 @@ def test_write_failure_returns_false(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert write_ir_cache(store, _ir(), HASH) is False
 
 
+def test_guard_veto_discards_tmp_and_skips_write(tmp_path: Path) -> None:
+    """A guard returning False drops the tmp file and writes nothing.
+
+    The phantom defense: the pkl content and its hash key may have stopped
+    pairing up mid-write (concurrent mutation), so the swap-in is abandoned.
+    """
+
+    def veto() -> bool:
+        return False
+
+    store = tmp_path / "mini.ttl"
+    store.write_bytes(TTL)
+
+    assert write_ir_cache(store, _ir(), HASH, guard=veto) is False
+
+    assert not ir_cache_path(store).exists()
+    assert not (tmp_path / "index.pkl.tmp").exists()
+
+
 def test_write_never_clobbers_a_source_named_like_the_cache(tmp_path: Path) -> None:
     """An ontology file named index.pkl (or index.pkl.tmp) must survive.
 

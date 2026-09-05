@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import structlog
@@ -22,6 +24,7 @@ from ontoworkbench.observability.middleware import (
     request_id_middleware,
     user_id_ctx,
 )
+from ontoworkbench.server.autosave import AutosaveManager
 from ontoworkbench.server.cache import OntologyCache
 from ontoworkbench.server.envelope import HTTP_OF, ApiError, ErrorCode, error_body, respond
 from ontoworkbench.server.routers import auth as auth_router
@@ -49,6 +52,13 @@ def default_spa_dist() -> Path:
     return Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Flush pending autosaves on shutdown (graceful exit, zero loss)."""
+    yield
+    app.state.autosave.flush_all()
+
+
 def _code_for_http_status(status: int) -> tuple[ErrorCode, int]:
     """Map a Starlette HTTPException status to (envelope code, response status).
 
@@ -71,10 +81,11 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     dynamically stay mount-free by default.
     """
     setup_logging(settings.log_dir, settings.log_level)
-    app = FastAPI(title="Ontology Workbench", docs_url="/api/docs")
+    app = FastAPI(title="Ontology Workbench", docs_url="/api/docs", lifespan=_lifespan)
     app.state.settings = settings
     app.state.store = LocalUserDirStore(settings.data_dir)
     app.state.cache = OntologyCache()
+    app.state.autosave = AutosaveManager(debounce_s=settings.autosave_debounce_s)
 
     # Register order matters: the LAST registered runs outermost. request-id
     # must be outermost so the access log (inner) inherits its contextvar.
