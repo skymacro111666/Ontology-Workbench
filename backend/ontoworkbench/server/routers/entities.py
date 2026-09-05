@@ -1,27 +1,33 @@
 """Store-side entity editing (A2): create classes/properties, edit, delete.
 
-Each write mutates the ontology's pooled pyoxigraph Store (parsed once
-per file version — see OntologyCache.store_for), then walks the A1
-persistence pipeline (serialize → atomic write → row/cache refresh).
-Optimistic lock via baseFileHash on every mutation, exactly like
-PUT /source (design spec 2026-08-26 §4). instances.py rides the same
-pipeline; lint.py reads the same pool without ever mutating it.
+Y-axis commit path (2026-09-05): each write mutates the pooled
+pyoxigraph Store, patches the cached IR IN PLACE under a per-oid
+mutation lock, bumps the revision and returns in milliseconds — the
+file lands later via the debounced AutosaveManager. Read endpoints
+serve the same patched Indexes, so they see the edit at once
+(read-your-writes) with no file round-trip.
+
+Optimistic lock via baseRevision on every mutation: the revision moves
+the moment an edit commits, unlike file_hash which only moves when the
+debounced save lands. instances.py still rides the legacy synchronous
+pipeline (_check_lock + _persist) until its own migration; PUT /source
+keeps its baseFileHash lock and its own write path; lint.py reads the
+same pool without ever mutating it.
 
 Pool discipline: mutations land in the SHARED cached Store, so the
 _edit_store checkout is a context manager that evicts the entry when a
-request dies between checkout and _persist (a 422 on a later field, an
+request dies between checkout and commit (a 422 on a later field, an
 unexpected error) — otherwise the refused edit would ride along with
-the next successful write. _persist keeps its own guard for its
-internal failures; handlers still validate before mutating where they
-can (keeps requests all-or-nothing in memory), but correctness never
-depends on that ordering.
+the next successful write. _commit_mutation carries the matching guard
+for failures inside the IR patch itself (the cached Indexes may carry a
+partial patch while the file never moved).
 """
 
 from __future__ import annotations
 
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from uuid import UUID
@@ -34,22 +40,28 @@ from pyoxigraph import Store
 from sqlalchemy.orm import Session
 
 from ontoworkbench.core import terms
-from ontoworkbench.core.indexes import build_indexes
-from ontoworkbench.core.ir import IRBundle, build_ir_store
+from ontoworkbench.core.indexes import Indexes, build_indexes
+from ontoworkbench.core.ir import (
+    IRBundle,
+    affected_around,
+    build_ir_store,
+    refresh_entities,
+    refresh_individual,
+)
 from ontoworkbench.core.ir_cache import write_ir_cache
 from ontoworkbench.core.parsing import serialize_store
 from ontoworkbench.core.prefixes import PrefixMap
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import OntologyRepository
-from ontoworkbench.db.session import get_session
+from ontoworkbench.db.session import get_session, sessionmaker_or_fail
 from ontoworkbench.observability.metrics import ow_build_seconds, ow_uploads_total
 from ontoworkbench.server.cache import OntologyCache, load_store
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 from ontoworkbench.server.routers.ontologies import (
     MAX_UPLOAD,
-    meta_of,
+    meta_with_state,
     title_of_store,
 )
 
@@ -79,7 +91,7 @@ class ClassCreate(CamelModel):
     label: LabelInput | None = None
     comment: str | None = None
     parents: list[str] = Field(default_factory=list)
-    base_file_hash: str
+    base_revision: int
 
 
 class PropertyCreate(CamelModel):
@@ -92,7 +104,7 @@ class PropertyCreate(CamelModel):
     comment: str | None = None
     domains: list[str] = Field(default_factory=list)
     ranges: list[str] = Field(default_factory=list)
-    base_file_hash: str
+    base_revision: int
 
 
 class EntityUpdate(CamelModel):
@@ -103,7 +115,7 @@ class EntityUpdate(CamelModel):
     parents: list[str] | None = None
     domains: list[str] | None = None
     ranges: list[str] | None = None
-    base_file_hash: str
+    base_revision: int
 
 
 def _owned_row(user: User, session: Session, ontology_id: str) -> Ontology:
@@ -119,11 +131,26 @@ def _owned_row(user: User, session: Session, ontology_id: str) -> Ontology:
 
 
 def _check_lock(body_hash: str, row: Ontology) -> None:
-    """Reject stale baseFileHash before touching anything."""
+    """Reject stale baseFileHash before touching anything (legacy path)."""
     if body_hash != row.file_hash:
         raise ApiError(
             ErrorCode.EDIT_CONFLICT,
             "The file changed since it was loaded",
+            "Reload the graph and retry the edit on the current version.",
+        )
+
+
+def _check_revision(base_revision: int, row: Ontology) -> None:
+    """Reject stale baseRevision before touching anything.
+
+    The revision moves on every committed edit — immediately, unlike
+    file_hash which only moves when the debounced save lands — so this is
+    the lock every Y-axis mutation checks.
+    """
+    if base_revision != row.revision:
+        raise ApiError(
+            ErrorCode.EDIT_CONFLICT,
+            "The ontology changed since it was loaded",
             "Reload the graph and retry the edit on the current version.",
         )
 
@@ -133,12 +160,13 @@ def _edit_store(request: Request, row: Ontology) -> Iterator[tuple[Store, Prefix
     """Check out the pooled editable Store; evict it if the request dies.
 
     Mutations land in the SHARED cached instance (parse-free on repeat
-    edits), so any exception between checkout and _persist — a 422 on a
+    edits), so any exception between checkout and commit — a 422 on a
     later field, an unexpected error — must drop the entry: the Store
     may already carry part of the refused edit while the file never
     changed. The next edit re-parses disk truth. _persist keeps its own
-    guard for failures inside the write pipeline; this one makes the
-    no-dirty-entry invariant structural for every write endpoint.
+    guard for failures inside the legacy write pipeline; _commit_mutation
+    carries the matching one for the IR patch; this checkout-level guard
+    makes the no-dirty-entry invariant structural for every write endpoint.
     """
     cache: OntologyCache = request.app.state.cache
     store, prefixes = cache.store_for(row, load_store)
@@ -258,9 +286,10 @@ def _persist(
 ) -> tuple[Ontology, IRBundle]:
     """Serialize → build from the mutated store → atomic write → row/cache refresh.
 
-    Any failure evicts the pooled Store entry: it already carries this
-    edit while the file never changed, so serving it again would silently
-    land the edit inside the next write.
+    The legacy synchronous pipeline: instances.py rides it until its own
+    Y-axis migration. Any failure evicts the pooled Store entry: it
+    already carries this edit while the file never changed, so serving
+    it again would silently land the edit inside the next write.
     """
     cache: OntologyCache = request.app.state.cache
     try:
@@ -309,6 +338,151 @@ def _persist(
     return row, ir
 
 
+def _axiom_count(store: Store) -> int:
+    """Default-graph triple count (same query as build_ir_store's count)."""
+    results = store.query("SELECT (COUNT(*) AS ?c) WHERE { ?s ?p ?o }")
+    assert isinstance(results, ox.QuerySolutions)
+    return int(next(iter(results))["c"].value)
+
+
+def _live_indexes(request: Request, row: Ontology, store: Store, prefixes: PrefixMap) -> Indexes:
+    """The cached (already-patched) Indexes; full build from the Store on a miss.
+
+    The miss is the first-edit cold path (or recovery after a source
+    replace): indexes_for validates by file_hash/mtime, so while edits
+    stay in memory every call hits the entry the previous mutation
+    patched in place.
+    """
+    cache: OntologyCache = request.app.state.cache
+    return cache.indexes_for(row, lambda r: build_indexes(build_ir_store(store, prefixes)))
+
+
+def _commit_mutation(
+    request: Request,
+    session: Session,
+    row: Ontology,
+    store: Store,
+    prefixes: PrefixMap,
+    eid: str,
+    *,
+    class_delta: int = 0,
+    prop_delta: int = 0,
+    instance_eid: str | None = None,
+) -> Ontology:
+    """Patch the live IR under the mutation lock, bump revision, debounce save.
+
+    The millisecond-scale critical section is [IR patch + children
+    rebuild + gen bump]; counts move with the caller's deltas (Task 5's
+    refresh never touches them) and the DB row + autosave schedule land
+    after the lock. instance_eid routes an individual's re-typing
+    through refresh_individual — refresh_entities' cascade only
+    discovers individuals from the current store, so handlers changing
+    an individual's class links must name it (used by instances.py).
+    """
+    cache: OntologyCache = request.app.state.cache
+    oid = str(row.id)
+    ir: IRBundle
+    try:
+        with cache.mutation_lock(oid):
+            ix = _live_indexes(request, row, store, prefixes)
+            ir = ix.ir
+            if class_delta:
+                ir.counts.class_count += class_delta
+            if prop_delta:
+                ir.counts.property_count += prop_delta
+            affected = affected_around(ir, store, prefixes, eid)
+            refresh_entities(ir, store, prefixes, affected)
+            if instance_eid is not None:
+                refresh_individual(ir, store, prefixes, instance_eid)
+            ix.rebuild_children_of(affected)
+            # Inside the lock, after the patch: a saver that already read the
+            # generation either sees this bump (its install is vetoed) or ran
+            # entirely before the patch — never a half-observed state.
+            cache.bump_mutation_gen(oid)
+    except Exception:
+        # The cached Indexes may carry a partial patch while the file never
+        # moved — evict both sides so every read falls back to disk truth.
+        cache.drop(oid)
+        raise
+    row = (
+        OntologyRepository(session).update(
+            row.id,
+            revision=row.revision + 1,
+            class_count=ir.counts.class_count,
+            property_count=ir.counts.property_count,
+            instance_count=ir.counts.individual_count,
+        )
+        or row
+    )
+    request.app.state.autosave.schedule(oid, _autosave_saver(request, row, store, prefixes))
+    return row
+
+
+def _autosave_saver(
+    request: Request, row: Ontology, store: Store, prefixes: PrefixMap
+) -> Callable[[], None]:
+    """Build the debounced save closure: serialize, write, refresh row + caches."""
+    cache: OntologyCache = request.app.state.cache
+    dir_store: LocalUserDirStore = request.app.state.store
+
+    def run() -> None:
+        oid = str(row.id)
+        ix = _live_indexes(request, row, store, prefixes)
+        ir = ix.ir
+        gen0 = cache.mutation_gen(oid)
+        # serialize stays lock-free: dump() freezes its view at the instant
+        # it starts (verified empirically) — edits landing mid-dump enter
+        # neither these bytes nor block on them; the edit path never waits.
+        data = serialize_store(store, prefixes, row.format)
+        if len(data) > MAX_UPLOAD:
+            ow_uploads_total.labels("too_large").inc()
+            raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
+        # Counted just after the dump: ±a few axioms of drift, self-heals next round.
+        axiom = _axiom_count(store)
+        with cache.file_write_lock(oid):  # exclusive vs PUT /source's file write (seconds, rare)
+            dir_store.save(row.owner_user_id, UUID(oid), row.filename, data)
+            new_hash = LocalUserDirStore.file_hash(data)
+            t0 = time.perf_counter()
+            with sessionmaker_or_fail()() as db:
+                row2 = (
+                    OntologyRepository(db).update(
+                        row.id,
+                        title=title_of_store(store, row.filename),
+                        class_count=ir.counts.class_count,
+                        property_count=ir.counts.property_count,
+                        axiom_count=axiom,
+                        instance_count=ir.counts.individual_count,
+                        stats_json={
+                            "prefixes": ir.prefixes,
+                            "parse_ms": (row.stats_json or {}).get("parse_ms"),
+                            "build_ms": round((time.perf_counter() - t0) * 1000.0, 1),
+                        },
+                        file_size_bytes=len(data),
+                        file_hash=new_hash,
+                    )
+                    or row
+                )
+        # Phantom guard: everything above ran lock-free, so install only
+        # when the generation still matches; an edit that slipped in aborts
+        # this install and its own debounced round carries the full state.
+        if cache.mutation_gen(oid) == gen0:
+            ix_new = build_indexes(ir)  # list()-snapshot iteration tolerates concurrent patches
+            write_ir_cache(
+                Path(row2.storage_path),
+                ir,
+                new_hash,
+                guard=lambda: cache.mutation_gen(oid) == gen0,  # re-check before the swap
+            )
+            with cache.mutation_lock(oid):  # µs-scale install window
+                if cache.mutation_gen(oid) == gen0:
+                    cache.install_indexes(row2, ix_new)
+        # Re-key the pool under the landed hash: the next edit reuses this
+        # Store (with every pending edit in it) instead of re-parsing.
+        cache.refresh_store(row2, store, prefixes)
+
+    return run
+
+
 def _declared(store: Store, eid: str) -> ox.NamedNode:
     """The entity IRI, verified declared (typed) in the store, else 404."""
     try:
@@ -338,9 +512,9 @@ def create_class(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Create a class (with optional parents → subclass) in the stored file."""
+    """Create a class (with optional parents → subclass); the file lands later."""
     row = _owned_row(user, session, ontology_id)
-    _check_lock(body.base_file_hash, row)
+    _check_revision(body.base_revision, row)
     with _edit_store(request, row) as (store, prefixes):
         iri = _iri_for(prefixes, body.prefix, body.name)
         _reject_duplicate(store, iri)
@@ -351,8 +525,13 @@ def create_class(
         _set_comment(store, ent, body.comment)
         for parent in parents:
             store.add(_quad(ent, terms.RDFS_SUBCLASSOF, parent))
-        row, _ = _persist(request, session, row, store, prefixes)
-        return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Class")})
+        row = _commit_mutation(request, session, row, store, prefixes, iri, class_delta=1)
+        return respond(
+            {
+                "meta": meta_with_state(request, row),
+                "entity": _entity_payload(prefixes, iri, "Class"),
+            }
+        )
 
 
 @router.post("/ontologies/{ontology_id}/properties")
@@ -363,13 +542,13 @@ def create_property(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Create an object or datatype property with domain/range wiring."""
+    """Create an object or datatype property; the file lands later."""
     if body.ptype not in ("ObjectProperty", "DatatypeProperty"):
         raise ApiError(
             ErrorCode.VALIDATION_ERROR, "ptype must be ObjectProperty or DatatypeProperty"
         )
     row = _owned_row(user, session, ontology_id)
-    _check_lock(body.base_file_hash, row)
+    _check_revision(body.base_revision, row)
     with _edit_store(request, row) as (store, prefixes):
         iri = _iri_for(prefixes, body.prefix, body.name)
         _reject_duplicate(store, iri)
@@ -388,8 +567,13 @@ def create_property(
             store.add(_quad(ent, terms.RDFS_DOMAIN, d))
         for r in ranges:
             store.add(_quad(ent, terms.RDFS_RANGE, r))
-        row, _ = _persist(request, session, row, store, prefixes)
-        return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Property")})
+        row = _commit_mutation(request, session, row, store, prefixes, iri, prop_delta=1)
+        return respond(
+            {
+                "meta": meta_with_state(request, row),
+                "entity": _entity_payload(prefixes, iri, "Property"),
+            }
+        )
 
 
 @router.put("/ontologies/{ontology_id}/entities/{eid:path}")
@@ -403,7 +587,7 @@ def update_entity(
 ) -> dict:
     """Edit label/comment/parents/domains/ranges; absent keys unchanged."""
     row = _owned_row(user, session, ontology_id)
-    _check_lock(body.base_file_hash, row)
+    _check_revision(body.base_revision, row)
     with _edit_store(request, row) as (store, prefixes):
         ent = _declared(store, eid)
         kind = _kind_of(store, ent)
@@ -418,15 +602,20 @@ def update_entity(
             _set_uriref_objects(store, ent, terms.RDFS_DOMAIN, body.domains)
         if "ranges" in touched and body.ranges is not None:
             _set_uriref_objects(store, ent, terms.RDFS_RANGE, body.ranges)
-        row, _ = _persist(request, session, row, store, prefixes)
-        return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, ent.value, kind)})
+        row = _commit_mutation(request, session, row, store, prefixes, ent.value)
+        return respond(
+            {
+                "meta": meta_with_state(request, row),
+                "entity": _entity_payload(prefixes, ent.value, kind),
+            }
+        )
 
 
 @router.delete("/ontologies/{ontology_id}/entities/{eid:path}")
 def delete_entity(
     ontology_id: str,
     eid: str,
-    baseFileHash: str,
+    baseRevision: int,
     request: Request,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
@@ -438,9 +627,22 @@ def delete_entity(
     instances' rdf:type → it (they lose the type and leave the canvas).
     """
     row = _owned_row(user, session, ontology_id)
-    _check_lock(baseFileHash, row)
+    _check_revision(baseRevision, row)
     with _edit_store(request, row) as (store, prefixes):
         iri = _declared(store, eid)
+
+        # Count deltas from the type quads themselves, taken before the
+        # removal: refresh_entities drops the IR rows, but class/property
+        # counts are this side's to keep (a dual-typed IRI counts in both
+        # buckets, exactly like the build pass's independent type sets).
+        def _typed(t: ox.NamedNode) -> bool:
+            return (
+                next(store.quads_for_pattern(iri, terms.RDF_TYPE, t, ox.DefaultGraph()), None)
+                is not None
+            )
+
+        is_class = _typed(terms.OWL_CLASS)
+        is_prop = _typed(terms.OWL_OBJECTPROPERTY) or _typed(terms.OWL_DATATYPEPROPERTY)
         removed = 0
         for q in list(store.quads_for_pattern(iri, None, None, ox.DefaultGraph())):
             store.remove(q)
@@ -451,5 +653,14 @@ def delete_entity(
                 for q in list(store.quads_for_pattern(None, pred, iri, ox.DefaultGraph())):
                     store.remove(q)
                     removed += 1
-        row, _ = _persist(request, session, row, store, prefixes)
-        return respond({"removed": removed, "meta": meta_of(row)})
+        row = _commit_mutation(
+            request,
+            session,
+            row,
+            store,
+            prefixes,
+            iri.value,
+            class_delta=-1 if is_class else 0,
+            prop_delta=-1 if is_prop else 0,
+        )
+        return respond({"removed": removed, "meta": meta_with_state(request, row)})

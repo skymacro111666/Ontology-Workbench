@@ -1,5 +1,7 @@
 """Lint config: per-ontology rule toggles + custom SPARQL rules (B3)."""
 
+import time
+
 from fastapi.testclient import TestClient
 
 from tests.api.test_browse_api import _upload
@@ -75,7 +77,9 @@ def test_run_lint_endpoint_assembles_builtin_and_custom(client: TestClient) -> N
     assert len(r.json()["data"]["results"]) == 1
 
 
-def test_run_lint_never_evicts_pooled_store(client: TestClient, monkeypatch) -> None:
+def test_run_lint_never_evicts_pooled_store(
+    client: TestClient, autosave_debounce_50ms, monkeypatch
+) -> None:
     """Lint warms the Store pool; a follow-up edit parses zero times (T12).
 
     Lint goes through store_for read-only — never mutating, never
@@ -94,16 +98,18 @@ def test_run_lint_never_evicts_pooled_store(client: TestClient, monkeypatch) -> 
         return real(data, fmt)
 
     monkeypatch.setattr(cache_mod, "parse_store", spy)
-    base = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
+    base = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["revision"]
     r = client.post(
         f"/api/ontologies/{oid}/classes",
-        json={"name": "Cat", "prefix": "ex", "parents": [], "baseFileHash": base},
+        json={"name": "Cat", "prefix": "ex", "parents": [], "baseRevision": base},
     )
     assert r.status_code == 200, r.text
     assert calls == []  # the lint-warmed Store carried the edit, parse-free
 
 
-def test_custom_update_rule_errors_and_nothing_lands(client: TestClient) -> None:
+def test_custom_update_rule_errors_and_nothing_lands(
+    client: TestClient, autosave_debounce_50ms
+) -> None:
     """A custom rule shaped as UPDATE is a per-rule error, never a mutation.
 
     Even against the shared pooled Store the query must not run: the
@@ -129,12 +135,17 @@ def test_custom_update_rule_errors_and_nothing_lands(client: TestClient) -> None
     assert (evil["error"] or "").startswith("SPARQL_ERROR")
 
     # The pooled Store survived intact: the next edit persists everything.
-    base = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
+    base = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["revision"]
     r = client.post(
         f"/api/ontologies/{oid}/classes",
-        json={"name": "Cat", "prefix": "ex", "parents": [], "baseFileHash": base},
+        json={"name": "Cat", "prefix": "ex", "parents": [], "baseRevision": base},
     )
     assert r.status_code == 200, r.text
+    manager = client.app.state.autosave
+    deadline = time.monotonic() + 2.0
+    while manager.state(oid) != "idle":
+        assert time.monotonic() < deadline, "autosave did not land"
+        time.sleep(0.02)
     after = client.get(f"/api/ontologies/{oid}/source").json()["data"]["content"]
     assert "ex:Cat" in after
     assert "ex:Animal" in after and "subClassOf" in after  # nothing was deleted

@@ -60,6 +60,7 @@ class OntologyMeta(CamelModel):
     file_hash: str
     source: str = "upload"
     revision: int = 0
+    save_state: str = "idle"  # autosave: idle|pending|saving|failed (Y-axis)
     prefixes: dict[str, str] = Field(default_factory=dict)
     parse_ms: float | None = None
     created_at: str
@@ -166,6 +167,16 @@ def meta_of(row: Ontology) -> dict[str, Any]:
         parse_ms=parse_ms,
         created_at=row.created_at.isoformat(),
     ).model_dump(by_alias=True)
+
+
+def meta_with_state(request: Request, row: Ontology) -> dict[str, Any]:
+    """meta_of plus the live autosave state.
+
+    meta_of stays app-agnostic (pure row → payload); endpoints that report
+    save progress — the polling GET /meta and every mutation response —
+    overlay the manager's current state for the oid.
+    """
+    return {**meta_of(row), "saveState": request.app.state.autosave.state(str(row.id))}
 
 
 def _summary(row: Ontology) -> dict[str, Any]:
@@ -333,6 +344,7 @@ def list_ontologies(
 @router.get("/ontologies/{ontology_id}/meta")
 def get_meta(
     ontology_id: str,
+    request: Request,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
@@ -344,7 +356,7 @@ def get_meta(
     row = OntologyRepository(session).get_owned(user.id, oid) if oid else None
     if not row:
         raise ApiError(ErrorCode.NOT_FOUND, "No such ontology")
-    return respond(meta_of(row))
+    return respond(meta_with_state(request, row))
 
 
 @router.put("/ontologies/{ontology_id}/source")

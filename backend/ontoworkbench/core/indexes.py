@@ -101,7 +101,7 @@ class Indexes:
         return sorted(
             (
                 e
-                for e in self._ir.entities.values()
+                for e in list(self._ir.entities.values())
                 if e.type == "Class"
                 and (include_deprecated or not e.deprecated)
                 and not any(p.eid in self._ir.entities for p in e.parents)
@@ -135,7 +135,7 @@ class Indexes:
             items: list[EntityIR] = self._roots(include_deprecated)
         elif parent_eid == PROPS_PARENT:
             items = sorted(
-                (e for e in self._ir.entities.values() if e.type != "Class"),
+                (e for e in list(self._ir.entities.values()) if e.type != "Class"),
                 key=lambda x: x.curie,
             )
         else:
@@ -179,7 +179,7 @@ class Indexes:
                 return "comment"
             return None
 
-        for e in sorted(self._ir.entities.values(), key=lambda x: x.curie):
+        for e in sorted(list(self._ir.entities.values()), key=lambda x: x.curie):
             if type_ and e.type != type_:
                 continue
             field = _match(e.curie, e.label, e.comment)
@@ -324,7 +324,7 @@ class Indexes:
         # without a usable far end, so they stay visible instead of vanishing.
         prop_nodes: dict[str, dict[str, Any]] = {}
         direct: set[tuple[str, str, str]] = set()
-        for e in self._ir.entities.values():
+        for e in list(self._ir.entities.values()):
             if budget <= 0:
                 break
             if e.type != "Class" or e.eid not in seen:
@@ -379,7 +379,7 @@ class Indexes:
             # Brief-pinned camelCase key (test contract); _camel passes it
             # through unchanged, so core and HTTP payloads spell it alike.
             "deprecatedCount": sum(
-                1 for e in self._ir.entities.values() if e.type == "Class" and e.deprecated
+                1 for e in list(self._ir.entities.values()) if e.type == "Class" and e.deprecated
             ),
         }
 
@@ -396,7 +396,7 @@ class Indexes:
             closure.add(eid)
             stack.extend(p.eid for p in self._ir.entities[eid].parents)
         out: dict[str, SchemaProp] = {}
-        for e in sorted(self._ir.entities.values(), key=lambda x: x.curie):
+        for e in sorted(list(self._ir.entities.values()), key=lambda x: x.curie):
             if e.type == "Class":
                 continue
             domains = [r for r in e.referenced_by if r.relation == "rdfs:domain"]
