@@ -19,6 +19,11 @@ MAX_ASSERTION_EDGES = 500
 # lists property entities (eids are full IRIs, so this cannot collide).
 PROPS_PARENT = "__props__"
 
+# Progressive canvas (spec §4/§5): the deprecated bucket browses every
+# owl:deprecated class in one flat list, capped per expand call.
+DEPRECATED_BUCKET = "__deprecated__"
+DEPRECATED_EXPAND_CAP = 500
+
 
 class TreeNode(BaseModel):
     """One node of the lazily-loaded class/property tree."""
@@ -78,6 +83,83 @@ class Indexes:
                 self._children.setdefault(p.eid, []).append(e)
         for kids in self._children.values():
             kids.sort(key=lambda x: x.curie)
+        self._subtree: dict[str, int] = {}
+        self._recount_subtree()
+
+    def _recount_subtree(self) -> None:
+        """Memoized subtree size per class (fold sizes live on the fold badges).
+
+        A full recount after every incremental patch stays cheap (52k classes
+        ~50ms) and can never disagree with the patched children map, so the
+        simple always-recompute beats surgical memo eviction.
+        """
+        self._subtree = {}
+
+        def _count(eid: str) -> int:
+            if eid in self._subtree:
+                return self._subtree[eid]
+            self._subtree[eid] = 1  # cycle guard: counts itself even in a loop
+            self._subtree[eid] = 1 + sum(_count(c.eid) for c in self._children.get(eid, []))
+            return self._subtree[eid]
+
+        for e in list(self._ir.entities.values()):
+            if e.type == "Class":
+                _count(e.eid)
+
+    def subtree_size(self, eid: str) -> int:
+        """子树大小(含自身);未知 eid 返回 1。."""
+        return self._subtree.get(eid, 1)
+
+    def expand(
+        self, eid: str, include_deprecated: bool = False, cap: int = DEPRECATED_EXPAND_CAP
+    ) -> dict[str, Any]:
+        """下钻取数:某类的直接子类(带子树大小),或废弃桶/前缀桶的分页浏览。."""
+        if eid == DEPRECATED_BUCKET:
+            deps = sorted(
+                (e for e in list(self._ir.entities.values()) if e.type == "Class" and e.deprecated),
+                key=lambda x: x.curie,
+            )
+            nodes = [
+                {
+                    "id": e.eid,
+                    "curie": e.curie,
+                    "label": e.label,
+                    "kind": "class",
+                    "instanceCount": len(self._ir.instances.get(e.eid, [])),
+                    "subtreeSize": 1,
+                    "deprecated": True,
+                }
+                for e in deps[:cap]
+            ]
+            return {
+                "nodes": nodes,
+                "edges": [],
+                "truncated": len(deps) > cap,
+                "totalCount": len(deps),
+            }
+        # Unknown eid → the route layer already _entity_or_404'd it; assert
+        # here so a registration gap cannot silently render an empty canvas.
+        assert self.entity(eid) is not None, f"expand on unknown eid {eid}"
+        kids = [c for c in self._children.get(eid, []) if include_deprecated or not c.deprecated]
+        nodes = [
+            {
+                "id": c.eid,
+                "curie": c.curie,
+                "label": c.label,
+                "kind": "class",
+                "instanceCount": len(self._ir.instances.get(c.eid, [])),
+                "subtreeSize": self.subtree_size(c.eid),
+                "deprecated": c.deprecated,
+            }
+            for c in kids[:cap]
+        ]
+        edges = [{"source": c.eid, "target": eid, "kind": "subClassOf"} for c in kids[:cap]]
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "truncated": len(kids) > cap,
+            "totalCount": len(kids),
+        }
 
     def rebuild_children_of(self, eids: Iterable[str]) -> None:
         """增量编辑后按 ir 实体当前 children 重建 _children 行(整列表原子替换)。."""
@@ -91,6 +173,9 @@ class Indexes:
                 self._children[parent] = sorted(kids, key=lambda x: x.curie)
             else:
                 self._children.pop(parent, None)
+        # Fold badges read subtree sizes; a patched children map invalidates
+        # them all, so recount (cheap and always right, see _recount_subtree).
+        self._recount_subtree()
 
     def _roots(self, include_deprecated: bool = False) -> list[EntityIR]:
         # A class whose parents are all external (undeclared) is its own root —

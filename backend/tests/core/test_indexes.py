@@ -1,6 +1,11 @@
 """Tree/search/neighbors/overview from IR."""
 
-from ontoworkbench.core.indexes import Indexes, build_indexes
+from ontoworkbench.core.indexes import (
+    DEPRECATED_BUCKET,
+    DEPRECATED_EXPAND_CAP,
+    Indexes,
+    build_indexes,
+)
 from ontoworkbench.core.ir import Ref, build_ir_store
 from ontoworkbench.core.parsing import parse_store
 
@@ -502,3 +507,72 @@ def test_rebuild_children_of_swaps_atomically() -> None:
     ix.rebuild_children_of(["http://x/Root", "http://x/Dead"])
     assert [c.eid for c in ix._children["http://x/Dead"]] == ["http://x/Live"]
     assert "http://x/Root" not in ix._children
+
+
+# -- Task 12: subtree sizes + expand (progressive canvas) --------------------
+
+TREE_IR = """@prefix : <http://x/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+:Root a owl:Class .
+:A a owl:Class ; rdfs:subClassOf :Root .
+:B a owl:Class ; rdfs:subClassOf :A .
+:C a owl:Class ; rdfs:subClassOf :Root .
+"""
+
+
+def test_subtree_size_counts_self_and_descendants() -> None:
+    """subtree_size includes the node itself; unknown eids read as 1."""
+    ix = build_indexes(_ir(TREE_IR))
+    assert ix.subtree_size("http://x/Root") == 4
+    assert ix.subtree_size("http://x/A") == 2
+    assert ix.subtree_size("http://x/B") == 1
+    assert ix.subtree_size("http://x/Nope") == 1
+
+
+def test_expand_children_with_sizes_and_cap() -> None:
+    """Expand returns a class's live children with subtreeSize + edges."""
+    ix = build_indexes(_ir(TREE_IR))
+    payload = ix.expand("http://x/Root")
+    assert payload["totalCount"] == 2
+    sizes = {n["id"]: n["subtreeSize"] for n in payload["nodes"]}
+    assert sizes["http://x/A"] == 2 and sizes["http://x/C"] == 1
+    assert all(e["kind"] == "subClassOf" for e in payload["edges"])
+    assert payload["truncated"] is False
+    # Cap: a parent with more children than cap truncates truthfully.
+    wide = TREE_IR + "".join(f":W{i} a owl:Class ; rdfs:subClassOf :B .\n" for i in range(5))
+    ix2 = build_indexes(_ir(wide))
+    payload = ix2.expand("http://x/B", cap=3)
+    assert len(payload["nodes"]) == 3 and payload["truncated"] is True
+    assert payload["totalCount"] == 5
+
+
+def test_expand_deprecated_bucket_caps() -> None:
+    """The deprecated bucket lists deprecated classes, capped at DEPRECATED_EXPAND_CAP."""
+    ttl = """@prefix : <http://x/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+:Keep a owl:Class .
+"""
+    ttl += "".join(f":D{i:04d} a owl:Class ; owl:deprecated true .\n" for i in range(600))
+    ix = build_indexes(_ir(ttl))
+    payload = ix.expand(DEPRECATED_BUCKET)
+    assert len(payload["nodes"]) == DEPRECATED_EXPAND_CAP
+    assert payload["truncated"] is True
+    assert payload["totalCount"] == 600
+    assert payload["edges"] == []
+    assert all(n["deprecated"] is True for n in payload["nodes"])
+
+
+def test_rebuild_children_of_recomputes_subtree_sizes() -> None:
+    """An incremental patch invalidates subtree memoization: sizes stay true."""
+    ir = _ir(TREE_IR)
+    ix = build_indexes(ir)
+    assert ix.subtree_size("http://x/Root") == 4
+    # Simulate a refresh: C gains a child (Root's subtree grows to 5).
+    ir.entities["http://x/C"].children = [Ref(eid="http://x/New", curie=":New")]
+    ir.entities["http://x/New"] = ir.entities["http://x/B"].model_copy(
+        update={"eid": "http://x/New", "curie": ":New", "children": [], "parents": []}
+    )
+    ix.rebuild_children_of(["http://x/C"])
+    assert ix.subtree_size("http://x/Root") == 5
+    assert ix.subtree_size("http://x/C") == 2
