@@ -1,7 +1,7 @@
 """Tree/search/neighbors/overview from IR."""
 
 from ontoworkbench.core.indexes import Indexes, build_indexes
-from ontoworkbench.core.ir import build_ir_store
+from ontoworkbench.core.ir import Ref, build_ir_store
 from ontoworkbench.core.parsing import parse_store
 
 
@@ -488,3 +488,17 @@ def test_overview_default_leaves_no_dangling_deprecated_edge() -> None:
     ov = ix.overview()
     ids = {n["id"] for n in ov["nodes"]}
     assert all(e["source"] in ids and e["target"] in ids for e in ov["edges"])
+
+
+def test_rebuild_children_of_swaps_atomically() -> None:
+    """rebuild_children_of re-derives _children rows from the patched ir."""
+    ir = _ir(MINI_DEPREC)  # Root → Live, Root → Dead
+    ix = build_indexes(ir)
+    # 模拟 refresh 后 ir 变化:Live 换父到 Dead
+    live = ir.entities["http://x/Live"]
+    live.parents = [Ref(eid="http://x/Dead", curie=":Dead")]
+    ir.entities["http://x/Root"].children = []
+    ir.entities["http://x/Dead"].children = [Ref(eid="http://x/Live", curie=":Live")]
+    ix.rebuild_children_of(["http://x/Root", "http://x/Dead"])
+    assert [c.eid for c in ix._children["http://x/Dead"]] == ["http://x/Live"]
+    assert "http://x/Root" not in ix._children

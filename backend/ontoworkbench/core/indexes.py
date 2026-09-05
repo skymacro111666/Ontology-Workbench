@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
 from pydantic import BaseModel
@@ -69,11 +70,27 @@ class Indexes:
         """Index the bundle: parent-eid → children map built once."""
         self._ir = ir
         self._children: dict[str, list[EntityIR]] = {}
-        for e in ir.entities.values():
+        # list(...) snapshots before iterating: refresh_entities may patch the
+        # shared bundle mid-build (GIL makes list() atomic), so a concurrent
+        # refresh cannot raise "dictionary changed size during iteration".
+        for e in list(ir.entities.values()):
             for p in e.parents:
                 self._children.setdefault(p.eid, []).append(e)
         for kids in self._children.values():
             kids.sort(key=lambda x: x.curie)
+
+    def rebuild_children_of(self, eids: Iterable[str]) -> None:
+        """增量编辑后按 ir 实体当前 children 重建 _children 行(整列表原子替换)。."""
+        for parent in eids:
+            e = self._ir.entities.get(parent)
+            if e is None:
+                self._children.pop(parent, None)
+                continue
+            kids = [self._ir.entities[c.eid] for c in e.children if c.eid in self._ir.entities]
+            if kids:
+                self._children[parent] = sorted(kids, key=lambda x: x.curie)
+            else:
+                self._children.pop(parent, None)
 
     def _roots(self, include_deprecated: bool = False) -> list[EntityIR]:
         # A class whose parents are all external (undeclared) is its own root —
