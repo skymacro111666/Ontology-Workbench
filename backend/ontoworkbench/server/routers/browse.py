@@ -100,12 +100,18 @@ def tree(
     ontology_id: str,
     request: Request,
     parent: str | None = None,
+    includeDeprecated: bool = False,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Direct children of parent (roots when omitted)."""
+    """Direct children of parent (roots when omitted).
+
+    Deprecated classes are hidden unless includeDeprecated (spec §4).
+    """
     _, ix = _owned(request, user, ontology_id, session)
-    return respond(_camel([n.model_dump() for n in ix.tree(parent)]))
+    return respond(
+        _camel([n.model_dump() for n in ix.tree(parent, include_deprecated=includeDeprecated)])
+    )
 
 
 @router.get("/{ontology_id}/entities/{eid:path}/neighbors")
@@ -159,12 +165,13 @@ def entity(
 def overview(
     ontology_id: str,
     request: Request,
+    includeDeprecated: bool = False,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Bounded whole-graph view."""
+    """Bounded whole-graph view; deprecated classes hidden unless opted in."""
     _, ix = _owned(request, user, ontology_id, session)
-    return respond(_camel(ix.overview()))
+    return respond(_camel(ix.overview(include_deprecated=includeDeprecated)))
 
 
 @router.get("/{ontology_id}/source")

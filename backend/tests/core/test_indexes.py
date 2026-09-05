@@ -430,3 +430,61 @@ def test_overview_object_property_without_range_keeps_node() -> None:
     assert any(n["curie"] == "ex:worksIn" for n in ov["nodes"])
     assert any(e["kind"] == "property" for e in ov["edges"])
     assert not any(e["kind"] == "objectProperty" for e in ov["edges"])
+
+
+MINI_DEPREC = """@prefix : <http://x/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+:Root a owl:Class .
+:Live a owl:Class ; rdfs:subClassOf :Root .
+:Dead a owl:Class ; owl:deprecated true ; rdfs:subClassOf :Root .
+"""
+
+
+def make_deprecated():
+    """Indexes over MINI_DEPREC (one deprecated child under a live root)."""
+    return build_indexes(_ir(MINI_DEPREC))
+
+
+def test_tree_filters_deprecated_by_default() -> None:
+    """Default tree hides deprecated classes; include_deprecated restores them."""
+    ix = make_deprecated()
+    roots = ix.tree(None)
+    assert [n.curie for n in roots] == [":Root"]
+    kids = ix.tree(roots[0].eid)
+    assert [n.curie for n in kids] == [":Live"]
+    assert ix.tree(None, include_deprecated=True)[0].deprecated is False
+    assert [n.curie for n in ix.tree(roots[0].eid, include_deprecated=True)] == [":Dead", ":Live"]
+
+
+def test_overview_filters_deprecated_and_counts() -> None:
+    """Default overview drops deprecated nodes; deprecatedCount stays truthful."""
+    ix = make_deprecated()
+    payload = ix.overview()
+    curies = {n["curie"] for n in payload["nodes"]}
+    assert ":Dead" not in curies and ":Root" in curies
+    assert payload["deprecatedCount"] == 1
+    full = ix.overview(include_deprecated=True)
+    assert {n["curie"] for n in full["nodes"]} >= {":Root", ":Live", ":Dead"}
+    assert full["deprecatedCount"] == 1
+
+
+def test_tree_hides_parentless_deprecated_roots() -> None:
+    """go.owl-style deprecated roots (no parents) vanish from tree and overview."""
+    ttl = MINI_DEPREC + ":Zombie a owl:Class ; owl:deprecated true .\n"
+    ix = build_indexes(_ir(ttl))
+    assert [r.curie for r in ix.tree(None)] == [":Root"]
+    ov = ix.overview()
+    assert not any(n["curie"] == ":Zombie" for n in ov["nodes"])
+    assert ov["deprecatedCount"] == 2
+    roots = ix.tree(None, include_deprecated=True)
+    assert {r.curie for r in roots} == {":Root", ":Zombie"}
+    assert next(r for r in roots if r.curie == ":Zombie").deprecated is True
+
+
+def test_overview_default_leaves_no_dangling_deprecated_edge() -> None:
+    """A hidden deprecated child must not leave a dangling subClassOf edge."""
+    ix = make_deprecated()
+    ov = ix.overview()
+    ids = {n["id"] for n in ov["nodes"]}
+    assert all(e["source"] in ids and e["target"] in ids for e in ov["edges"])

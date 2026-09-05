@@ -72,7 +72,9 @@ def _sidebar_tree(indexes: Indexes) -> list[dict]:
         }
 
     roots: list[dict] = []
-    for tn in indexes.tree(None):
+    # The export is a full archive: deprecated classes stay listed even
+    # though the browse tree/canvas hide them by default (spec §4).
+    for tn in indexes.tree(None, include_deprecated=True):
         ent = indexes.entity(tn.eid)
         if ent is not None:
             roots.append(node_of(ent, frozenset()))

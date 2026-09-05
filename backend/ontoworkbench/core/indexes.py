@@ -28,6 +28,7 @@ class TreeNode(BaseModel):
     type: str = "Class"
     children_count: int = 0
     instance_count: int = 0
+    deprecated: bool = False
 
 
 class SearchHit(BaseModel):
@@ -74,14 +75,19 @@ class Indexes:
         for kids in self._children.values():
             kids.sort(key=lambda x: x.curie)
 
-    def _roots(self) -> list[EntityIR]:
+    def _roots(self, include_deprecated: bool = False) -> list[EntityIR]:
         # A class whose parents are all external (undeclared) is its own root —
         # otherwise it would hang off a parent no walk ever visits.
+        # Deprecated classes sit at root level by OBO convention (deprecation
+        # unlinks them from the hierarchy), so they starve the node budget
+        # unless explicitly asked for (spec §4).
         return sorted(
             (
                 e
                 for e in self._ir.entities.values()
-                if e.type == "Class" and not any(p.eid in self._ir.entities for p in e.parents)
+                if e.type == "Class"
+                and (include_deprecated or not e.deprecated)
+                and not any(p.eid in self._ir.entities for p in e.parents)
             ),
             key=lambda x: x.curie,
         )
@@ -101,21 +107,29 @@ class Indexes:
         return self._ir.individuals.get(eid)
 
     # -- tree -----------------------------------------------------------
-    def tree(self, parent_eid: str | None) -> list[TreeNode]:
+    def tree(self, parent_eid: str | None, include_deprecated: bool = False) -> list[TreeNode]:
         """Direct children of parent (or roots when None).
 
         PROPS_PARENT is the sentinel for the sidebar's property tab:
         it lists property entities with the same lazy-loading semantics.
+        Deprecated classes are hidden unless include_deprecated (spec §4).
         """
         if parent_eid is None:
-            items: list[EntityIR] = self._roots()
+            items: list[EntityIR] = self._roots(include_deprecated)
         elif parent_eid == PROPS_PARENT:
             items = sorted(
                 (e for e in self._ir.entities.values() if e.type != "Class"),
                 key=lambda x: x.curie,
             )
         else:
-            items = self._children.get(parent_eid, [])
+            items = sorted(
+                (
+                    e
+                    for e in self._children.get(parent_eid, [])
+                    if include_deprecated or not e.deprecated
+                ),
+                key=lambda x: x.curie,
+            )
         return [
             TreeNode(
                 eid=e.eid,
@@ -124,6 +138,7 @@ class Indexes:
                 type=e.type,
                 children_count=len(self._children.get(e.eid, [])),
                 instance_count=len(self._ir.instances.get(e.eid, [])),
+                deprecated=e.deprecated,
             )
             for e in items
         ]
@@ -225,13 +240,17 @@ class Indexes:
             "edges": [{"source": i.eid, "target": eid, "kind": "instance"} for i in insts],
         }
 
-    def overview(self, max_nodes: int = MAX_OVERVIEW_NODES) -> dict[str, Any]:
+    def overview(
+        self, max_nodes: int = MAX_OVERVIEW_NODES, include_deprecated: bool = False
+    ) -> dict[str, Any]:
         """Whole-graph view: full hierarchy within max_nodes, top-3 levels past it.
 
         Past the budget (truncated) wide-but-shallow graphs still blow past
         max_nodes inside 3 levels, so the budget caps rendered nodes as well.
+        Deprecated classes are excluded unless include_deprecated (spec §4);
+        deprecatedCount reports how many are hidden this way.
         """
-        roots = self._roots()
+        roots = self._roots(include_deprecated)
         nodes: list[dict[str, Any]] = []
         edges: list[dict[str, str]] = []
         budget = max_nodes
@@ -245,6 +264,8 @@ class Indexes:
 
         def walk(e: EntityIR, depth: int) -> int:
             nonlocal budget
+            if not include_deprecated and e.deprecated:
+                return 0
             if budget <= 0 or e.eid in seen:
                 return 0
             seen.add(e.eid)
@@ -263,6 +284,10 @@ class Indexes:
                 for c in self._children.get(e.eid, []):
                     if budget <= 0:
                         break
+                    # Filter before the edge: a subClassOf edge whose child
+                    # never renders would dangle and crash the id-keyed canvas.
+                    if not include_deprecated and c.deprecated:
+                        continue
                     edges.append({"source": c.eid, "target": e.eid, "kind": "subClassOf"})
                     count += walk(c, depth + 1)
             return count
@@ -334,6 +359,11 @@ class Indexes:
             "edges": edges,
             "truncated": depth_cap is not None,
             "total_count": len(self._ir.entities),
+            # Brief-pinned camelCase key (test contract); _camel passes it
+            # through unchanged, so core and HTTP payloads spell it alike.
+            "deprecatedCount": sum(
+                1 for e in self._ir.entities.values() if e.type == "Class" and e.deprecated
+            ),
         }
 
     # -- assertion schema / edges ----------------------------------------

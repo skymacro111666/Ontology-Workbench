@@ -149,6 +149,25 @@ def test_export_survives_subclassof_cycle(tmp_path: Path) -> None:
     assert result.page_count == 4  # index + Root + A + B
 
 
+# Spec §4 (2026-09-05): browse tree/canvas hide deprecated classes by default,
+# but the export is a full archive — deprecated classes must stay listed.
+DEPRECATED = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:A a owl:Class .
+ex:Dead a owl:Class ; owl:deprecated true .
+"""
+
+
+def test_export_keeps_deprecated_classes(tmp_path: Path) -> None:
+    """A deprecated root stays in the exported class listing (spec §4)."""
+    ir = _ir(DEPRECATED)
+    result = export_site(ir, build_indexes(ir), tmp_path, title="Dep")
+    html = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "ex:A" in html and "ex:Dead" in html
+    assert result.page_count == 3  # index + A + Dead
+
+
 def test_label_markup_escaped_in_pages_raw_in_data(tmp_path: Path) -> None:
     """Label markup never reaches a rendered page raw; data/index.json stays raw."""
     ir = _ir(XSS)

@@ -396,3 +396,39 @@ def test_browse_records_build_metric(client: TestClient) -> None:
     client.app.state.cache.drop(oid)
     assert client.get(f"/api/ontologies/{oid}/tree").status_code == 200
     assert "ow_build_seconds" in client.get("/metrics").text
+
+
+MINI_DEPREC = (
+    MINI
+    + b"""ex:Dead a owl:Class ; owl:deprecated true ; rdfs:subClassOf ex:Thing .
+"""
+)
+
+
+def _upload_deprec(client: TestClient) -> str:
+    r = client.post(
+        "/api/ontologies",
+        files={"file": ("mini-deprec.ttl", io.BytesIO(MINI_DEPREC), "text/turtle")},
+    )
+    return r.json()["data"]["id"]
+
+
+def test_tree_and_overview_filter_deprecated(client: TestClient) -> None:
+    """Deprecated classes vanish by default; ?includeDeprecated=true restores."""
+    oid = _upload_deprec(client)
+
+    kids = client.get(
+        f"/api/ontologies/{oid}/tree", params={"parent": "http://example.org/Thing"}
+    ).json()["data"]
+    assert [k["curie"] for k in kids] == ["ex:Animal"]
+
+    ov = client.get(f"/api/ontologies/{oid}/overview").json()["data"]
+    assert "ex:Dead" not in {n["curie"] for n in ov["nodes"]}
+    assert ov["deprecatedCount"] == 1
+
+    full = client.get(
+        f"/api/ontologies/{oid}/tree",
+        params={"parent": "http://example.org/Thing", "includeDeprecated": "true"},
+    ).json()["data"]
+    assert [k["curie"] for k in full] == ["ex:Animal", "ex:Dead"]
+    assert next(k for k in full if k["curie"] == "ex:Dead")["deprecated"] is True
