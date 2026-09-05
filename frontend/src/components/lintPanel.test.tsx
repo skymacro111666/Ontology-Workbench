@@ -24,7 +24,7 @@ const META = {
   axiomCount: 3,
   instanceCount: 0,
   fileSizeBytes: 100,
-  fileHash: 'h1',
+  fileHash: 'h1', revision: 0,
   prefixes: { lib: 'http://example.org/library#' },
   createdAt: '2026-08-26T00:00:00',
 } satisfies OntologyMeta

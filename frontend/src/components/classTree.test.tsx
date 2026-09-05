@@ -37,7 +37,7 @@ const META: OntologyMeta = {
   instanceCount: 0,
   fileSizeBytes: 1024,
   createdAt: '2026-01-01T00:00:00Z',
-  fileHash: 'h',
+  fileHash: 'h', revision: 0,
   prefixes: { owl: 'http://www.w3.org/2002/07/owl#', ex: 'http://example.org/' },
 }
 

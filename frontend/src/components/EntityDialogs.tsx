@@ -21,7 +21,7 @@ import {
 /** The A2 dialog family behind the canvas context menu: create class /
  *  subclass / object / datatype property, edit, delete. One component, the
  *  uiStore's entityDialog picks the mode; shared queries (ontology meta for
- *  baseFileHash + prefixes, overview for the class picker, entity for edit
+ *  baseRevision + prefixes, overview for the class picker, entity for edit
  *  initial values) ride the callers' existing cache entries.
  *
  *  Design spec 2026-08-26 §4 (frontend): every submit invalidates the whole
@@ -178,7 +178,7 @@ export default function EntityDialogs({ oid }: { oid: string }) {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const fileHash = meta?.fileHash ?? ''
+      const revision = meta?.revision ?? 0
       // No label UI (2026-08-27 user call): creates auto-label with the
       // entity name as a plain literal; edits never touch existing labels.
       const label = { value: name.trim(), lang: null }
@@ -190,7 +190,7 @@ export default function EntityDialogs({ oid }: { oid: string }) {
           label,
           comment: cleanComment,
           parents: picked,
-          baseFileHash: fileHash,
+          baseRevision: revision,
         })
       }
       if (mode === 'objectProperty' || mode === 'dataProperty') {
@@ -202,11 +202,11 @@ export default function EntityDialogs({ oid }: { oid: string }) {
           comment: cleanComment,
           domains: picked,
           ranges: range,
-          baseFileHash: fileHash,
+          baseRevision: revision,
         })
       }
       if (mode === 'editClass' || mode === 'editProperty') {
-        const body: Record<string, unknown> = { baseFileHash: fileHash }
+        const body: Record<string, unknown> = { baseRevision: revision }
         body.comment = cleanComment
         if (mode === 'editClass') body.parents = picked
         else {
@@ -218,7 +218,7 @@ export default function EntityDialogs({ oid }: { oid: string }) {
       // delete
       return api.del(
         `/api/ontologies/${oid}/entities/${encodeURIComponent(dialog?.eid ?? '')}` +
-          `?baseFileHash=${fileHash}&prune=true`,
+          `?baseRevision=${revision}&prune=true`,
       )
     },
     onSuccess: (r) => {

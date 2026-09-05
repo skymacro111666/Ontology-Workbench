@@ -294,7 +294,7 @@ export default function InstanceDetail({ oid, eid, inst }: { oid: string; eid: s
             value: r.value,
             ...(r.kind === 'data' ? { datatype: r.datatype ?? XSD_TYPES[0][0] } : {}),
           })),
-        baseFileHash: meta?.fileHash ?? '',
+        baseRevision: meta?.revision ?? 0,
       }),
     onSuccess: () => {
       toast.success(t('common.saved'))

@@ -9,7 +9,7 @@ import { ThemeProvider } from '../theme/ThemeProvider'
 import EntityDialogs from './EntityDialogs'
 
 /* The A2 dialog family: mode-driven form, POST/PUT/DELETE bodies carrying
-   the meta query's baseFileHash, invalidate on success, inline duplicate
+   the meta query's baseRevision, invalidate on success, inline duplicate
    error. */
 
 const OID = 'oid-1'
@@ -27,6 +27,7 @@ const META = {
   instanceCount: 0,
   fileSizeBytes: 100,
   fileHash: 'hash-1',
+  revision: 3,
   prefixes: { ex: 'http://example.org/' },
   createdAt: '2026-08-26T00:00:00',
 }
@@ -120,7 +121,7 @@ afterEach(() => {
 })
 
 describe('EntityDialogs', () => {
-  it('creates a class: form → POST body carries name/prefix/parents/baseFileHash', async () => {
+  it('creates a class: form → POST body carries name/prefix/parents/baseRevision', async () => {
     const fetchMock = stubFetch()
     draw(fetchMock)
     useUiStore.getState().setEntityDialog({ mode: 'class' })
@@ -138,7 +139,7 @@ describe('EntityDialogs', () => {
       prefix: 'ex',
       label: { value: 'Cat', lang: null },
       parents: [DOG],
-      baseFileHash: 'hash-1',
+      baseRevision: 3,
     })
     // Success closes the dialog.
     await waitFor(() => expect(useUiStore.getState().entityDialog).toBeNull())
@@ -177,7 +178,7 @@ describe('EntityDialogs', () => {
     expect(calls.put[0].url).toBe(
       `/api/ontologies/${OID}/entities/${encodeURIComponent(DOG)}`,
     )
-    expect(calls.put[0].body).toMatchObject({ baseFileHash: 'hash-1', comment: 'Good dog.' })
+    expect(calls.put[0].body).toMatchObject({ baseRevision: 3, comment: 'Good dog.' })
     // No label row: the request must not carry a label key at all.
     expect(calls.put[0].body).not.toHaveProperty('label')
     expect(screen.queryByLabelText(/标签/)).toBeNull()
@@ -191,7 +192,7 @@ describe('EntityDialogs', () => {
     await userEvent.click(screen.getByRole('button', { name: '删除' }))
     await waitFor(() => expect(calls.del).toHaveLength(1))
     expect(calls.del[0]).toContain(`/api/ontologies/${OID}/entities/${encodeURIComponent(DOG)}`)
-    expect(calls.del[0]).toContain('baseFileHash=hash-1')
+    expect(calls.del[0]).toContain('baseRevision=3')
     expect(calls.del[0]).toContain('prune=true')
     await waitFor(() => expect(useUiStore.getState().entityDialog).toBeNull())
   })

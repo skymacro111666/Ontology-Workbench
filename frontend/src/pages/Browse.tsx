@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useRef } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import ClassTree from '../components/ClassTree'
@@ -95,7 +96,23 @@ export default function Browse() {
     queryKey: ['ontology', oid],
     queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
     retry: false,
+    // Autosave in flight: poll until it lands (idle/absent stops the timer).
+    refetchInterval: (query) =>
+      query.state.data?.saveState && query.state.data.saveState !== 'idle' ? 5000 : false,
   })
+
+  // One toast per failed streak — the next successful edit re-arms it by
+  // flipping saveState off 'failed' before it can fail again.
+  const warnedSaveRef = useRef(false)
+  const saveState = meta?.saveState
+  useEffect(() => {
+    if (saveState === 'failed' && !warnedSaveRef.current) {
+      warnedSaveRef.current = true
+      toast.error(t('canvas.saveFailed'))
+    } else if (saveState !== 'failed') {
+      warnedSaveRef.current = false
+    }
+  }, [saveState, t])
 
   if (isError) {
     const missing = error instanceof ApiErr && error.code === 'NOT_FOUND'

@@ -9,7 +9,7 @@ import { ThemeProvider } from '../theme/ThemeProvider'
 import InstanceDialogs from './InstanceDialogs'
 
 /* The B2 instance dialog family: minimal create (POST body carries
-   name/prefix/classes/baseFileHash, then reveal + just-created flag) and
+   name/prefix/classes/baseRevision, then reveal + just-created flag) and
    delete confirm (DELETE with the lock, then selection cleared). */
 
 const OID = 'oid-1'
@@ -27,6 +27,7 @@ const META = {
   instanceCount: 0,
   fileSizeBytes: 100,
   fileHash: 'hash-3',
+  revision: 5,
   prefixes: { lib: 'http://example.org/library#' },
   createdAt: '2026-08-26T00:00:00',
 }
@@ -116,7 +117,7 @@ describe('InstanceDialogs', () => {
       prefix: 'lib',
       classes: [SF],
       comment: null,
-      baseFileHash: 'hash-3',
+      baseRevision: 5,
     })
     // Success reveals the fresh instance, flags it for the detail's
     // land-in-edit effect, and closes the dialog.
@@ -148,7 +149,7 @@ describe('InstanceDialogs', () => {
 
     await waitFor(() => expect(calls.del).toHaveLength(1))
     expect(calls.del[0]).toContain(`/api/ontologies/${OID}/instances/${encodeURIComponent(TB2)}`)
-    expect(calls.del[0]).toContain('baseFileHash=hash-3')
+    expect(calls.del[0]).toContain('baseRevision=5')
     await waitFor(() => expect(useUiStore.getState().instanceDialog).toBeNull())
     expect(useBrowseStore.getState().selectedEid).toBeNull()
   })

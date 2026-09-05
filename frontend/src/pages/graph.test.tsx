@@ -68,7 +68,7 @@ function meta(): OntologyMeta {
     instanceCount: 0,
     fileSizeBytes: 100,
     createdAt: '2026-08-21T00:00:00',
-    fileHash: 'h',
+    fileHash: 'h', revision: 0,
     prefixes: {},
   }
 }

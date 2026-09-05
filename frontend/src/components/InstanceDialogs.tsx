@@ -72,19 +72,19 @@ export default function InstanceDialogs({ oid }: { oid: string }) {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const fileHash = meta?.fileHash ?? ''
+      const revision = meta?.revision ?? 0
       if (dialog?.mode === 'create') {
         return api.post<{ entity: { eid: string } }>(`/api/ontologies/${oid}/instances`, {
           name: name.trim(),
           prefix,
           comment: comment.trim() === '' ? null : comment.trim(),
           classes: picked,
-          baseFileHash: fileHash,
+          baseRevision: revision,
         })
       }
       return api.del(
         `/api/ontologies/${oid}/instances/${encodeURIComponent(dialog?.eid ?? '')}` +
-          `?baseFileHash=${fileHash}`,
+          `?baseRevision=${revision}`,
       )
     },
     onSuccess: (r) => {

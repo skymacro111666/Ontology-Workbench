@@ -141,7 +141,7 @@ describe('InstanceDetail edit mode', () => {
       if (u.includes('/assertion-schema')) return env(SCHEMA)
       if (u.includes('/search')) return env(SEARCH_HITS)
       if (u.includes('/entities/')) return env(inst)
-      if (u.endsWith('/meta')) return env({ fileHash: 'hash-2' })
+      if (u.endsWith('/meta')) return env({ fileHash: 'hash-2', revision: 7 })
       if (u.includes('/overview')) return env({ nodes: [{ id: SF, curie: 'lib:ScienceFiction', label: {}, kind: 'class' }], edges: [] })
       return env({})
     })
@@ -154,7 +154,7 @@ describe('InstanceDetail edit mode', () => {
     )
   }
 
-  /** Save stays disabled until meta (baseFileHash) resolves — the tests wait
+  /** Save stays disabled until meta (baseRevision) resolves — the tests wait
    *  for it just like a user would. */
   async function awaitSaveEnabled() {
     await waitFor(() =>
@@ -176,7 +176,7 @@ describe('InstanceDetail edit mode', () => {
     await userEvent.click(screen.getByRole('button', { name: /保存/ }))
     await waitFor(() => expect(put).toHaveLength(1))
     expect(put[0].url).toContain(`/instances/`)
-    expect(put[0].body.baseFileHash).toBe('hash-2')
+    expect(put[0].body.baseRevision).toBe(7)
     // 全量替换:未动的 publicationYear 原行 + 新加的 hasCreator 行
     expect(put[0].body.assertions).toEqual([
       expect.objectContaining({ property: 'http://example.org/library#publicationYear', kind: 'data', value: '2008', datatype: 'http://www.w3.org/2001/XMLSchema#integer' }),
@@ -239,7 +239,7 @@ describe('InstanceDetail edit mode', () => {
       if (u.includes('/search')) return env(SEARCH_HITS)
       if (u.includes(encodeURIComponent(OB))) return env(B_INSTANCE)
       if (u.includes('/entities/')) return env(INSTANCE)
-      if (u.endsWith('/meta')) return env({ fileHash: 'hash-2' })
+      if (u.endsWith('/meta')) return env({ fileHash: 'hash-2', revision: 7 })
       if (u.includes('/overview')) return env({ nodes: [{ id: SF, curie: 'lib:ScienceFiction', label: {}, kind: 'class' }], edges: [] })
       return env({})
     })

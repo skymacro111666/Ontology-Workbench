@@ -2,10 +2,12 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { toast } from 'sonner'
 import Browse from './Browse'
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
 import { ThemeProvider } from '../theme/ThemeProvider'
+import { Toaster } from '../components/ui/sonner'
 import { lastG6, resetG6 } from '../test/g6Mock'
 import type { Envelope, EntityIR, NodesEdges, OntologyMeta } from '../api/types'
 
@@ -39,6 +41,7 @@ function meta(): OntologyMeta {
     fileHash: 'h',
     prefixes: { pizza: 'http://example.org/' },
     parseMs: 1200,
+    revision: 0,
   }
 }
 
@@ -116,6 +119,8 @@ function renderBrowse(
               <Route path="/browse/:oid" element={<Browse />} />
             </Routes>
           </MemoryRouter>
+          {/* After the router: keeps Browse's grid as container.firstElementChild. */}
+          <Toaster />
         </ThemeProvider>
       </QueryClientProvider>,
     ),
@@ -131,6 +136,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  // Sonner keeps toasts in a module-global store that outlives unmounting.
+  toast.dismiss()
 })
 
 describe('Browse workspace (overview-only)', () => {
@@ -242,5 +249,32 @@ describe('Browse workspace (overview-only)', () => {
     expect(screen.getByRole('button', { name: '展开类树' })).toBeTruthy()
     // No inspector column in text mode — no rail for it either.
     expect(screen.queryByRole('button', { name: '展开检查器' })).toBeNull()
+  })
+
+  it('a failed autosave surfaces one error toast (saveState polling)', async () => {
+    const failed = { ...meta(), saveState: 'failed' as const }
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const u = String(url)
+      let data: unknown = failed
+      if (u.includes('/overview')) data = overview()
+      else if (u.includes('/tree')) data = []
+      else if (u.includes('/entities/')) data = dog()
+      return new Response(
+        JSON.stringify({
+          code: 'OK',
+          message: 'ok',
+          data,
+          hint: null,
+          request_id: 'r',
+        } satisfies Envelope<unknown>),
+        { headers: { 'Content-Type': 'application/json' } },
+      )
+    })
+    renderBrowse(fetchMock)
+    expect(await screen.findByText('pizza.ttl')).toBeTruthy()
+    expect(await screen.findByText(/自动保存失败/)).toBeTruthy()
+    // One toast per failed streak: refetches keep returning failed, but the
+    // warn-once ref stays armed until saveState leaves 'failed'.
+    expect(screen.getAllByText(/自动保存失败/).length).toBe(1)
   })
 })

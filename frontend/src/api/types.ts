@@ -201,6 +201,10 @@ export interface OntologyMeta extends OntologySummary {
   prefixes: Record<string, string>
   /** Parse wall-clock duration in ms (absent for records imported before this field). */
   parseMs?: number | null
+  /** Y-axis edit lock token: bumps the moment an edit commits (not when it lands). */
+  revision: number
+  /** Debounced autosave state (absent on older payloads → treat as idle). */
+  saveState?: 'idle' | 'pending' | 'saving' | 'failed'
 }
 
 /** Docs-site export result (POST /api/ontologies/{id}/export/site). */
