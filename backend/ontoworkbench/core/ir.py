@@ -235,6 +235,29 @@ def _ox_ptype_of(store: ox.Store, uri: str) -> str:
     return "Property"
 
 
+def _has_any_type(store: ox.Store, uri: str) -> bool:
+    """Whether uri carries any rdf:type quad in the default graph."""
+    pattern = store.quads_for_pattern(ox.NamedNode(uri), terms.RDF_TYPE, None, ox.DefaultGraph())
+    return next(pattern, None) is not None
+
+
+def _alive_kind(store: ox.Store, uri: str) -> str | None:
+    """Liveness/kind of an entity for refresh: Class, property ptype, or None.
+
+    Mirrors how build collects entities (classes plus explicitly typed
+    Object/Datatype properties — the props set): a Class is alive, a
+    property only with explicit ObjectProperty/DatatypeProperty typing,
+    anything else (no rdf:type quad at all, or residual typing such as a
+    bare owl:Property) is gone.
+    """
+    if _ox_is_class(store, uri):
+        return "Class"
+    if not _has_any_type(store, uri):
+        return None
+    ptype = _ox_ptype_of(store, uri)
+    return None if ptype == "Property" else ptype
+
+
 def _ox_prop_ref(
     store: ox.Store, prefixes: PrefixMap, uri: str, cache: _OxCurieCache | None = None
 ) -> PropRef:
@@ -658,3 +681,114 @@ def build_ir_store(store: ox.Store, prefixes: PrefixMap) -> IRBundle:
         instances=instances,
         individuals=individuals_out,
     )
+
+
+def affected_around(ir: IRBundle, store: ox.Store, prefixes: PrefixMap, eid: str) -> set[str]:
+    """Closed neighborhood of eid across the old IR and the mutated store.
+
+    One union, two directions: the IR's own links (parents, children,
+    referenced_by, property domain/range peers) catch entities whose
+    pages mention eid, while fresh subClassOf/domain/range edges from the
+    store catch counterparts the pre-mutation IR has never seen. Refresh
+    over this set keeps the incremental bundle equal to a full rebuild.
+    """
+    out = {eid}
+    e = ir.entities.get(eid)
+    if e:
+        out.update(r.eid for r in e.parents)
+        out.update(r.eid for r in e.children)
+        out.update(r.eid for r in e.referenced_by)
+        for p in e.properties:
+            out.update(r.eid for r in p.domain)
+            out.update(r.eid for r in p.range)
+    for pred in (terms.RDFS_SUBCLASSOF, terms.RDFS_DOMAIN, terms.RDFS_RANGE):
+        for o in _ox_objects(store, eid, pred):
+            if isinstance(o, ox.NamedNode):
+                out.add(o.value)
+        for s in _ox_subjects(store, pred, ox.NamedNode(eid)):
+            if isinstance(s, ox.NamedNode):
+                out.add(s.value)
+    return out
+
+
+def recompute_descendants(ir: IRBundle, seeds: Iterable[str]) -> None:
+    """Redo total_descendants for seeds and every ancestor above them.
+
+    direct_children is authoritative on each entity (refresh already
+    re-extracted it); totals are a memoized DFS over the children lists,
+    cycle-guarded the same way as the build pass.
+    """
+    memo: dict[str, int] = {}
+
+    def _total(eid: str) -> int:
+        if eid in memo:
+            return memo[eid]
+        memo[eid] = 0  # cycle guard
+        e = ir.entities.get(eid)
+        memo[eid] = sum(1 + _total(c.eid) for c in e.children) if e else 0
+        return memo[eid]
+
+    upstream: set[str] = set()
+    stack = list(seeds)
+    while stack:
+        cur = stack.pop()
+        if cur in upstream:
+            continue
+        upstream.add(cur)
+        e = ir.entities.get(cur)
+        if e:
+            stack.extend(p.eid for p in e.parents)
+    for eid in upstream:
+        e = ir.entities.get(eid)
+        if e:
+            e.stats = Stats(direct_children=e.stats.direct_children, total_descendants=_total(eid))
+
+
+def refresh_entities(
+    ir: IRBundle, store: ox.Store, prefixes: PrefixMap, affected: set[str]
+) -> None:
+    """Re-extract the affected entities from store; drop the ones that vanished.
+
+    counts are the caller's to maintain (one owner: the mutation handler
+    bumps class/property deltas itself; axiom_count is re-counted when
+    persisting). Descendant totals are recomputed for the whole affected
+    ancestry so stats stay equal to a full rebuild.
+    """
+    cc: _OxCurieCache = {}
+    ctx = _build_ctx(store)
+    for eid in sorted(affected):
+        if _alive_kind(store, eid) is not None:
+            ir.entities[eid] = _entity_ir(store, prefixes, eid, cc, ctx)
+        else:
+            ir.entities.pop(eid, None)
+    recompute_descendants(ir, affected)
+
+
+def refresh_individual(ir: IRBundle, store: ox.Store, prefixes: PrefixMap, eid: str) -> None:
+    """Rebuild one IndividualIR and regroup its class → instances rows.
+
+    Liveness follows the build's collection rule (owl:NamedIndividual
+    subjects); counts stay with the caller, same contract as
+    refresh_entities.
+    """
+    cc: _OxCurieCache = {}
+    ctx = _build_ctx(store)
+    old = ir.individuals.get(eid)
+    old_classes = {r.eid for r in old.classes} if old else set()
+    for c in old_classes:
+        rows = ir.instances.get(c)
+        if rows is not None:
+            rows = [r for r in rows if r.eid != eid]
+            if rows:
+                ir.instances[c] = rows
+            else:
+                del ir.instances[c]
+    if not _ox_has(store, eid, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL):
+        ir.individuals.pop(eid, None)
+        return
+    ind, class_eids = _individual_ir(store, prefixes, eid, ctx, cc)
+    ir.individuals[eid] = ind
+    for c in class_eids:
+        rows = ir.instances.setdefault(c, [])
+        rows.append(Ref(eid=eid, curie=ind.curie, label=ind.label))
+        rows.sort(key=lambda r: r.eid)  # build order: one row per sorted individual

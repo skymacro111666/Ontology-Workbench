@@ -1,11 +1,24 @@
-"""IR assembly from a small Turtle store (build_ir_store contract)."""
+"""IR assembly from a small Turtle store (build_ir_store + refresh contract)."""
 
 from pathlib import Path
 
 import pyoxigraph as ox
 
-from ontoworkbench.core.ir import _ox_curie, _ox_curie_for, _ox_turtle_block, build_ir_store
+from ontoworkbench.core import terms
+from ontoworkbench.core.ir import (
+    IRBundle,
+    Stats,
+    _ox_curie,
+    _ox_curie_for,
+    _ox_turtle_block,
+    affected_around,
+    build_ir_store,
+    recompute_descendants,
+    refresh_entities,
+    refresh_individual,
+)
 from ontoworkbench.core.parsing import parse_store
+from ontoworkbench.core.prefixes import PrefixMap
 
 MINI = """@prefix ex: <http://example.org/> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
@@ -340,3 +353,152 @@ def test_build_ir_with_memo_changes_nothing() -> None:
     assert dog.curie == "ex:Dog"
     assert any("rdfs:label" in a.turtle for a in dog.axioms)
     assert "ex" in ir.prefixes
+
+
+# --- incremental refresh (patch the IR in place, persist later) ---
+
+REFRESH_TTL = """@prefix ex: <http://x/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+ex:Root a owl:Class .
+ex:Mid a owl:Class ; rdfs:subClassOf ex:Root .
+ex:Leaf a owl:Class ; rdfs:subClassOf ex:Mid , ex:Root .
+ex:likes a owl:ObjectProperty ; rdfs:domain ex:Mid ; rdfs:range ex:Root .
+ex:barks a owl:DatatypeProperty ; rdfs:domain ex:Mid ; rdfs:range xsd:string .
+ex:rex a owl:NamedIndividual , ex:Mid ; rdfs:label "Rex"@en .
+"""
+
+_X = "http://x/"
+
+
+def _refresh_fixture() -> tuple[ox.Store, PrefixMap, IRBundle]:
+    """Parse REFRESH_TTL and build the starting IR bundle."""
+    store, pm = parse_store(REFRESH_TTL.encode(), "turtle")
+    return store, pm, build_ir_store(store, pm)
+
+
+def test_refresh_entities_matches_full_rebuild() -> None:
+    """An added multi-parent class lands exactly as a full rebuild would."""
+    store, pm, ir = _refresh_fixture()
+    new = ox.NamedNode(_X + "New")
+    store.add(ox.Quad(new, terms.RDF_TYPE, terms.OWL_CLASS, ox.DefaultGraph()))
+    store.add(ox.Quad(new, terms.RDFS_SUBCLASSOF, ox.NamedNode(_X + "Root"), ox.DefaultGraph()))
+    store.add(ox.Quad(new, terms.RDFS_SUBCLASSOF, ox.NamedNode(_X + "Mid"), ox.DefaultGraph()))
+    affected = affected_around(ir, store, pm, _X + "Root")
+    ir.counts.class_count += 1  # counts are the caller's to bump (mutation handler)
+    refresh_entities(ir, store, pm, affected)
+    fresh = build_ir_store(store, pm)
+    # the new class itself, field for field
+    assert ir.entities[_X + "New"] == fresh.entities[_X + "New"]
+    # and the neighborhood the mutation ripples into
+    root, fresh_root = ir.entities[_X + "Root"], fresh.entities[_X + "Root"]
+    assert [c.curie for c in root.children] == [c.curie for c in fresh_root.children]
+    assert root.stats.total_descendants == fresh_root.stats.total_descendants
+    # nothing outside the neighborhood drifts either
+    assert ir.entities == fresh.entities
+    assert ir.instances == fresh.instances
+    assert ir.individuals == fresh.individuals
+    assert ir.counts.class_count == fresh.counts.class_count
+
+
+def test_refresh_entities_removes_deleted() -> None:
+    """A class whose quads are all gone drops out of ir.entities."""
+    store, pm, ir = _refresh_fixture()
+    leaf = ox.NamedNode(_X + "Leaf")
+    for q in list(store.quads_for_pattern(leaf, None, None, ox.DefaultGraph())):
+        store.remove(q)
+    affected = affected_around(ir, store, pm, _X + "Leaf")
+    ir.counts.class_count -= 1
+    refresh_entities(ir, store, pm, affected)
+    fresh = build_ir_store(store, pm)
+    assert _X + "Leaf" not in ir.entities
+    assert ir.counts.class_count == fresh.counts.class_count
+    # parents lost the child row, the subClassOf backref, and subtree totals
+    assert ir.entities[_X + "Root"] == fresh.entities[_X + "Root"]
+    assert ir.entities[_X + "Mid"] == fresh.entities[_X + "Mid"]
+
+
+def test_refresh_individual_regroups_instances() -> None:
+    """A retyped individual moves between class rows like a rebuild would."""
+    store, pm, ir = _refresh_fixture()
+    rex = ox.NamedNode(_X + "rex")
+    store.remove(ox.Quad(rex, terms.RDF_TYPE, ox.NamedNode(_X + "Mid"), ox.DefaultGraph()))
+    store.add(ox.Quad(rex, terms.RDF_TYPE, ox.NamedNode(_X + "Root"), ox.DefaultGraph()))
+    refresh_individual(ir, store, pm, _X + "rex")
+    fresh = build_ir_store(store, pm)
+    assert ir.individuals[_X + "rex"] == fresh.individuals[_X + "rex"]
+    assert [c.curie for c in ir.individuals[_X + "rex"].classes] == ["ex:Root"]
+    assert any(r.eid == _X + "rex" for r in ir.instances[_X + "Root"])
+    assert _X + "rex" not in {r.eid for r in ir.instances.get(_X + "Mid", [])}
+    assert _X + "Mid" not in ir.instances  # emptied row removed
+    assert ir.instances == fresh.instances
+
+
+def test_refresh_individual_removes_dead_individual() -> None:
+    """No quads left — or no owl:NamedIndividual typing — means removal.
+
+    Both follow the build's collection rule (individuals are the
+    owl:NamedIndividual subjects), keeping refresh == full rebuild.
+    """
+    store, pm, ir = _refresh_fixture()
+    rex = ox.NamedNode(_X + "rex")
+    for q in list(store.quads_for_pattern(rex, None, None, ox.DefaultGraph())):
+        store.remove(q)
+    refresh_individual(ir, store, pm, _X + "rex")
+    assert _X + "rex" not in ir.individuals
+    assert ir.instances == {}
+
+    # class typing alone (NamedIndividual quad stripped) is not life
+    store.add(ox.Quad(rex, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL, ox.DefaultGraph()))
+    store.add(ox.Quad(rex, terms.RDF_TYPE, ox.NamedNode(_X + "Mid"), ox.DefaultGraph()))
+    ir2 = build_ir_store(store, pm)
+    assert _X + "rex" in ir2.individuals
+    store.remove(ox.Quad(rex, terms.RDF_TYPE, terms.OWL_NAMEDINDIVIDUAL, ox.DefaultGraph()))
+    refresh_individual(ir2, store, pm, _X + "rex")
+    assert _X + "rex" not in ir2.individuals
+    assert ir2.instances == build_ir_store(store, pm).instances
+
+
+def test_recompute_descendants_updates_ancestors() -> None:
+    """Seeding a descendant recomputes every ancestor's total."""
+    ir = _build(REFRESH_TTL)
+    root = ir.entities[_X + "Root"]
+    root.stats = Stats(direct_children=root.stats.direct_children, total_descendants=0)
+    recompute_descendants(ir, [_X + "Leaf"])
+    fresh = _build(REFRESH_TTL)
+    assert ir.entities[_X + "Root"].stats == fresh.entities[_X + "Root"].stats
+    assert ir.entities[_X + "Mid"].stats == fresh.entities[_X + "Mid"].stats
+
+
+def test_recompute_descendants_cycle_safe() -> None:
+    """A subClassOf cycle terminates and matches the build's guard values."""
+    ttl = """@prefix ex: <http://x/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:A a owl:Class ; rdfs:subClassOf ex:B .
+ex:B a owl:Class ; rdfs:subClassOf ex:A .
+"""
+    ir = _build(ttl)
+    fresh = _build(ttl)
+    recompute_descendants(ir, [_X + "A"])
+    assert ir.entities[_X + "A"].stats == fresh.entities[_X + "A"].stats
+    assert ir.entities[_X + "B"].stats == fresh.entities[_X + "B"].stats
+
+
+def test_affected_around_unions_old_ir_and_store() -> None:
+    """The closure spans the old IR's links and the store's current edges."""
+    store, pm, ir = _refresh_fixture()
+    affected = affected_around(ir, store, pm, _X + "Mid")
+    # old-IR side: parents, children, referenced_by (props pointing at Mid)
+    assert {_X + "Root", _X + "Leaf", _X + "likes", _X + "barks"} <= affected
+    # store side: a brand-new subclass edge the IR has never seen
+    store.add(
+        ox.Quad(
+            ox.NamedNode(_X + "New"),
+            terms.RDFS_SUBCLASSOF,
+            ox.NamedNode(_X + "Mid"),
+            ox.DefaultGraph(),
+        )
+    )
+    assert _X + "New" in affected_around(ir, store, pm, _X + "Mid")
