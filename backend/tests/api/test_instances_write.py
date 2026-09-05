@@ -1,11 +1,20 @@
-"""Instance CRUD (B2): create/delete via the A2 write pipeline."""
+"""Instance CRUD (B2): create/delete via the Y-axis incremental pipeline.
+
+Every mutation rides _commit_mutation (baseRevision lock, IR patch,
+debounced autosave) exactly like entities.py; tests that read the file
+wait for the autosave to land first.
+"""
 
 import io
 from typing import Any
 
 from fastapi.testclient import TestClient
 
+from tests.api.test_entities_write import _wait_landed
+
 TB = "http://example.org/ThreeBody"
+NOVEL = "http://example.org/Novel"
+FANFIC = "http://example.org/FanFic"
 
 # 最小本体:两个类、一个对象属性、两个实例、三条断言
 # ThreeBody: 自引用 inspiredBy + 被 FanSequel 引用(对象端)
@@ -45,7 +54,11 @@ def _source(client: TestClient, oid: str) -> str:
     return client.get(f"/api/ontologies/{oid}/source").json()["data"]["content"]
 
 
-def test_create_instance_lands_types_and_label(client: TestClient) -> None:
+def _revision(client: TestClient, oid: str) -> int:
+    return client.get(f"/api/ontologies/{oid}/meta").json()["data"]["revision"]
+
+
+def test_create_instance_lands_types_and_label(client: TestClient, autosave_debounce_50ms) -> None:
     """Create instance with types and label, verify persistence."""
     oid, meta = _upload(client)
     r = client.post(
@@ -55,25 +68,28 @@ def test_create_instance_lands_types_and_label(client: TestClient) -> None:
             "prefix": "ex",
             "classes": ["http://example.org/Novel"],
             "comment": "fan fic",
-            "baseFileHash": meta["fileHash"],
+            "baseRevision": meta["revision"],
         },
     )
     assert r.status_code == 200
     d = r.json()["data"]
     assert d["entity"]["curie"] == "ex:BallLightning"
     assert d["meta"]["instanceCount"] == meta["instanceCount"] + 1
-    # 落盘:NamedIndividual + 类型 + label(=name 纯字面量)
-    src = _source(client, oid)
-    assert "ex:BallLightning" in src
+    assert d["meta"]["revision"] == 1
+    # 读路径立即可见(补丁后的 IR,字节尚未落盘)
     got = client.get(
         f"/api/ontologies/{oid}/entities/http%3A%2F%2Fexample.org%2FBallLightning"
     ).json()["data"]
     assert got["kind"] == "instance"
     assert got["label"] == {"en": "BallLightning"}
     assert [c["curie"] for c in got["classes"]] == ["ex:Novel"]
+    # 落盘:NamedIndividual + 类型 + label(=name 纯字面量)
+    _wait_landed(client, oid)
+    src = _source(client, oid)
+    assert "ex:BallLightning" in src
 
 
-def test_create_instance_guards(client: TestClient) -> None:
+def test_create_instance_guards(client: TestClient, autosave_debounce_50ms) -> None:
     """Create instance guards: undeclared class and duplicate IRI."""
     oid, meta = _upload(client)
     # 未声明类 → 422
@@ -83,7 +99,7 @@ def test_create_instance_guards(client: TestClient) -> None:
             "name": "X",
             "prefix": "ex",
             "classes": ["http://example.org/Nope"],
-            "baseFileHash": meta["fileHash"],
+            "baseRevision": meta["revision"],
         },
     )
     assert r.status_code == 422
@@ -94,21 +110,27 @@ def test_create_instance_guards(client: TestClient) -> None:
             "name": "ThreeBody",
             "prefix": "ex",
             "classes": ["http://example.org/Novel"],
-            "baseFileHash": meta["fileHash"],
+            "baseRevision": meta["revision"],
         },
     )
     assert r.status_code == 409
 
 
-def test_delete_instance_removes_assertions_both_ends(client: TestClient) -> None:
+def test_delete_instance_removes_assertions_both_ends(
+    client: TestClient, autosave_debounce_50ms
+) -> None:
     """Delete instance removes subject and object property assertions."""
     oid, meta = _upload(client)
     # ThreeBody: 自引用(subject) + 被 FanSequel 引用(object)
     # 删除后: FanSequel ex:inspiredBy ex:ThreeBody 应被删除,但 ex:knows(非声明属性)应保留
     r = client.delete(
-        f"/api/ontologies/{oid}/instances/{TB}", params={"baseFileHash": meta["fileHash"]}
+        f"/api/ontologies/{oid}/instances/{TB}", params={"baseRevision": meta["revision"]}
     )
     assert r.status_code == 200
+    assert r.json()["data"]["meta"]["revision"] == 1
+    # 读路径立即 404(实例从 IR 摘除)
+    assert client.get(f"/api/ontologies/{oid}/entities/{TB}").status_code == 404
+    _wait_landed(client, oid)
     # 移除数: ThreeBody 的 type×2 + label + inspiredBy 自引用 + FanSequel 的 inspiredBy(object端)
     assert r.json()["data"]["removed"] >= 5
     src = _source(client, oid)
@@ -121,7 +143,6 @@ def test_delete_instance_removes_assertions_both_ends(client: TestClient) -> Non
     assert "ex:ThreeBody a owl:NamedIndividual" not in src
     assert "ex:ThreeBody a ex:Novel" not in src
     assert "ex:ThreeBody rdfs:label" not in src
-    assert client.get(f"/api/ontologies/{oid}/entities/{TB}").status_code == 404
 
 
 def _put(client: TestClient, oid: str, eid: str, body: dict) -> dict:
@@ -131,10 +152,9 @@ def _put(client: TestClient, oid: str, eid: str, body: dict) -> dict:
     return r  # type: ignore[return-value]
 
 
-def test_update_instance_replaces_assertions(client: TestClient) -> None:
+def test_update_instance_replaces_assertions(client: TestClient, autosave_debounce_50ms) -> None:
     """Update instance comment, classes, and assertions with full replacement."""
     oid, meta = _upload(client)
-    new_hash = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
     # Replace the self-loop (ThreeBody → ThreeBody) with ThreeBody → FanSequel
     r = _put(
         client,
@@ -150,7 +170,7 @@ def test_update_instance_replaces_assertions(client: TestClient) -> None:
                     "value": "http://example.org/FanSequel",  # DIFFERENT from fixture's self-loop
                 },
             ],
-            "baseFileHash": new_hash,
+            "baseRevision": meta["revision"],
         },
     )
     assert r.status_code == 200
@@ -158,6 +178,7 @@ def test_update_instance_replaces_assertions(client: TestClient) -> None:
     assert got["comment"] == "updated"
     assert [c["curie"] for c in got["classes"]] == ["ex:FanFic"]
     assert len(got["objectAssertions"]) == 1
+    _wait_landed(client, oid)
     # Old self-loop must be GONE (this fails if sweep loop is deleted)
     src = _source(client, oid)
     assert "ex:ThreeBody ex:inspiredBy ex:ThreeBody" not in src
@@ -165,16 +186,17 @@ def test_update_instance_replaces_assertions(client: TestClient) -> None:
     assert "ex:inspiredBy ex:FanSequel" in src
 
 
-def test_update_instance_data_assertion_string_roundtrip(client: TestClient) -> None:
+def test_update_instance_data_assertion_string_roundtrip(
+    client: TestClient, autosave_debounce_50ms
+) -> None:
     """Default-datatype (xsd:string) data assertions read back from the IR.
 
     The IR build historically dropped bare-string literals (RDF 1.1: they
-    report datatype xsd:string), so a PUT that landed 200 vanished from the
-    instance payload — and the UI's next full-replace PUT deleted them from
+    report datatype xsd:string), so a PUT that landed 200 vanished from
+    the instance payload — and the UI's next full-replace PUT deleted them from
     the file. Write with no explicit datatype, then read back.
     """
     oid, _ = _upload(client, MINI_DATA)
-    h = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
     r = _put(
         client,
         oid,
@@ -183,7 +205,7 @@ def test_update_instance_data_assertion_string_roundtrip(client: TestClient) -> 
             "assertions": [
                 {"property": "http://example.org/rating", "kind": "data", "value": "5 stars"},
             ],
-            "baseFileHash": h,
+            "baseRevision": _revision(client, oid),
         },
     )
     assert r.status_code == 200
@@ -192,7 +214,6 @@ def test_update_instance_data_assertion_string_roundtrip(client: TestClient) -> 
         ("ex:rating", "5 stars", "http://www.w3.org/2001/XMLSchema#string")
     ]
     # UI 契约:全量替换 PUT 原样回传页面所见(含完整 datatype IRI)→ 不丢
-    h2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
     r = _put(
         client,
         oid,
@@ -206,23 +227,24 @@ def test_update_instance_data_assertion_string_roundtrip(client: TestClient) -> 
                     "datatype": "http://www.w3.org/2001/XMLSchema#string",
                 },
             ],
-            "baseFileHash": h2,
+            "baseRevision": _revision(client, oid),
         },
     )
     assert r.status_code == 200
+    _wait_landed(client, oid)
     assert '"5 stars"' in _source(client, oid)
 
 
-def test_update_instance_clears_all_assertions(client: TestClient) -> None:
+def test_update_instance_clears_all_assertions(client: TestClient, autosave_debounce_50ms) -> None:
     """Empty assertions list clears all declared assertions; undeclared references survive."""
     oid, meta = _upload(client)
-    new_hash = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
-    r = _put(client, oid, TB, {"assertions": [], "baseFileHash": new_hash})
+    r = _put(client, oid, TB, {"assertions": [], "baseRevision": meta["revision"]})
     assert r.status_code == 200
     got = client.get(f"/api/ontologies/{oid}/entities/{TB}").json()["data"]
     # All declared assertions cleared
     assert got["objectAssertions"] == []
     assert got["dataAssertions"] == []
+    _wait_landed(client, oid)
     # Verify old assertion is gone from source
     src = _source(client, oid)
     assert "ex:ThreeBody ex:inspiredBy ex:ThreeBody" not in src
@@ -231,13 +253,13 @@ def test_update_instance_clears_all_assertions(client: TestClient) -> None:
     assert "ex:knows ex:ThreeBody" in src
 
 
-def test_update_instance_validation(client: TestClient) -> None:
+def test_update_instance_validation(client: TestClient, autosave_debounce_50ms) -> None:
     """Validate assertion updates.
 
     Undeclared property, non-instance object value, kind mismatch, bad kind value.
     """
     oid, _ = _upload(client)
-    h = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["fileHash"]
+    h = _revision(client, oid)
     # 属性未声明
     r = _put(
         client,
@@ -251,7 +273,7 @@ def test_update_instance_validation(client: TestClient) -> None:
                     "value": "http://example.org/ThreeBody",
                 }
             ],
-            "baseFileHash": h,
+            "baseRevision": h,
         },
     )
     assert r.status_code == 422
@@ -268,7 +290,7 @@ def test_update_instance_validation(client: TestClient) -> None:
                     "value": "http://example.org/Novel",
                 }
             ],
-            "baseFileHash": h,
+            "baseRevision": h,
         },
     )
     assert r.status_code == 422
@@ -286,7 +308,7 @@ def test_update_instance_validation(client: TestClient) -> None:
                     "datatype": "http://www.w3.org/2001/XMLSchema#string",
                 }
             ],
-            "baseFileHash": h,
+            "baseRevision": h,
         },
     )
     assert r.status_code == 422
@@ -303,18 +325,75 @@ def test_update_instance_validation(client: TestClient) -> None:
                     "value": "http://example.org/ThreeBody",
                 }
             ],
-            "baseFileHash": h,
+            "baseRevision": h,
         },
     )
     assert r.status_code == 422
 
 
-def test_update_instance_untouched_keys_stay(client: TestClient) -> None:
-    """Absent keys unchanged;stale hash → 409(照抄 A2 语义)。."""
+def test_update_instance_untouched_keys_stay(client: TestClient, autosave_debounce_50ms) -> None:
+    """Absent keys unchanged;stale revision → 409(照抄 A2 语义)。."""
     oid, meta = _upload(client)
-    r = _put(client, oid, TB, {"baseFileHash": meta["fileHash"]})
+    r = _put(client, oid, TB, {"baseRevision": meta["revision"]})
     assert r.status_code == 200
     got = client.get(f"/api/ontologies/{oid}/entities/{TB}").json()["data"]
     assert got["label"] == {"en": "ThreeBody"}  # label 永不动
-    r = _put(client, oid, TB, {"comment": "x", "baseFileHash": "stale"})
+    r = _put(client, oid, TB, {"comment": "x", "baseRevision": meta["revision"] + 7})
     assert r.status_code == 409
+
+
+def test_instance_create_visible_immediately_and_regroups_on_retype(
+    client: TestClient, autosave_debounce_50ms
+) -> None:
+    """Y 轴核心契约:实例创建毫秒级可见、retype 即时换桶(不落盘也成立).
+
+    - POST 返回即带新 revision,saveState=pending
+    - 实例 GET 立即可见;类 badge(instances 端点)即时 +1
+    - 改 rdf:type 后:新类含它、旧类不含,individuals 归组与全量重建一致
+    """
+    from urllib.parse import quote
+
+    oid, meta = _upload(client)
+    assert meta["revision"] == 0
+    r = client.post(
+        f"/api/ontologies/{oid}/instances",
+        json={
+            "name": "james",
+            "prefix": "ex",
+            "classes": [FANFIC],
+            "baseRevision": meta["revision"],
+        },
+    )
+    assert r.status_code == 200
+    d = r.json()["data"]
+    assert d["meta"]["revision"] == 1
+    assert d["meta"]["saveState"] == "pending"
+    james = "http://example.org/james"
+
+    # 读路径立即可见:实例页 + 类 badge 归组(FanFic 1 个、Novel 仍只有 ThreeBody)
+    inst = client.get(f"/api/ontologies/{oid}/entities/{quote(james, safe='')}").json()["data"]
+    assert inst["kind"] == "instance"
+    assert [c["eid"] for c in inst["classes"]] == [FANFIC]
+    fanfic = client.get(f"/api/ontologies/{oid}/entities/{FANFIC}/instances").json()["data"]
+    assert [n["id"] for n in fanfic["nodes"]] == ["http://example.org/FanSequel", james]
+    novel = client.get(f"/api/ontologies/{oid}/entities/{NOVEL}/instances").json()["data"]
+    assert [n["id"] for n in novel["nodes"]] == [TB]
+
+    # retype:james 换到 Novel → 新类含它、旧类不含(个体行归位)
+    r = _put(
+        client,
+        oid,
+        james,
+        {"classes": [NOVEL], "baseRevision": _revision(client, oid)},
+    )
+    assert r.status_code == 200
+    inst = client.get(f"/api/ontologies/{oid}/entities/{quote(james, safe='')}").json()["data"]
+    assert [c["eid"] for c in inst["classes"]] == [NOVEL]
+    novel = client.get(f"/api/ontologies/{oid}/entities/{NOVEL}/instances").json()["data"]
+    assert {n["id"] for n in novel["nodes"]} == {TB, james}
+    fanfic = client.get(f"/api/ontologies/{oid}/entities/{FANFIC}/instances").json()["data"]
+    assert [n["id"] for n in fanfic["nodes"]] == ["http://example.org/FanSequel"]
+    # 实例总数不动(retype 不产生/消灭个体;创建时已 +1)
+    meta2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    assert meta2["instanceCount"] == meta["instanceCount"] + 1
+    assert meta2["revision"] == 2

@@ -1,9 +1,11 @@
 """Instance editing (B2): create/delete named individuals with assertions.
 
-Rides the exact A2 pipeline from entities.py (spec 2026-08-30 §3): load the
-stored file, mutate the Store, revalidate+persist through _persist with the
-baseFileHash optimistic lock. Separate module — EntityDialogs' class/property
-concerns stay out of instance concerns.
+Rides the exact Y-axis commit path from entities.py (spec 2026-09-05):
+mutate the pooled Store, patch the cached IR under _commit_mutation with
+the baseRevision optimistic lock (instance_eid + individual_delta carry
+the individual's regrouping), return in milliseconds — the file lands
+via the debounced autosave. Separate module — EntityDialogs'
+class/property concerns stay out of instance concerns.
 """
 
 from __future__ import annotations
@@ -22,17 +24,17 @@ from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 from ontoworkbench.server.routers.entities import (
     CamelModel,
-    _check_lock,
+    _check_revision,
+    _commit_mutation,
     _edit_store,
     _entity_payload,
     _iri_for,
     _owned_row,
-    _persist,
     _quad,
     _reject_duplicate,
     _remove_all,
 )
-from ontoworkbench.server.routers.ontologies import meta_of
+from ontoworkbench.server.routers.ontologies import meta_with_state
 
 router = APIRouter(prefix="/api", tags=["instances"])
 
@@ -44,7 +46,7 @@ class InstanceCreate(CamelModel):
     prefix: str
     classes: list[str] = Field(default_factory=list)
     comment: str | None = None
-    base_file_hash: str
+    base_revision: int
 
 
 def _individual(store: Store, eid: str) -> ox.NamedNode:
@@ -108,7 +110,7 @@ class InstanceUpdate(CamelModel):
     comment: str | None = None
     classes: list[str] | None = None
     assertions: list[AssertionInput] | None = None
-    base_file_hash: str
+    base_revision: int
 
 
 def _prop_of_kind(store: Store, eid: str, kind: str) -> ox.NamedNode:
@@ -125,12 +127,14 @@ def _prop_of_kind(store: Store, eid: str, kind: str) -> ox.NamedNode:
     return iri
 
 
-def _replace_assertions(store: Store, iri: ox.NamedNode, rows: list[AssertionInput]) -> None:
-    """Drop every declared-property assertion on iri, add the given rows.
+def _assertion_plan(
+    store: Store, rows: list[AssertionInput]
+) -> list[tuple[ox.NamedNode, ox.NamedNode | ox.Literal]]:
+    """Validate every assertion row into a (property, value) plan.
 
-    Every row validates before the first mutation: a mid-list failure
-    must leave the pooled Store untouched (same doctrine as
-    _set_uriref_objects in entities.py).
+    Pure read: a mid-list failure must leave the pooled Store untouched
+    (validate-then-mutate — the pending autosave serializes this very
+    object, so any half-applied edit would land on disk).
     """
     plan: list[tuple[ox.NamedNode, ox.NamedNode | ox.Literal]] = []
     for row in rows:
@@ -169,6 +173,13 @@ def _replace_assertions(store: Store, iri: ox.NamedNode, rows: list[AssertionInp
                     f"'{row.value}' is not a valid {datatype.rsplit('#', 1)[-1]}",
                 )
             plan.append((p, ox.Literal(row.value, datatype=ox.NamedNode(datatype))))
+    return plan
+
+
+def _apply_assertions(
+    store: Store, iri: ox.NamedNode, plan: list[tuple[ox.NamedNode, ox.NamedNode | ox.Literal]]
+) -> None:
+    """Drop every declared-property assertion on iri, add the validated plan."""
     props = {
         q.subject.value
         for q in store.quads_for_pattern(
@@ -199,7 +210,7 @@ def create_instance(
 ) -> dict:
     """Create a named individual with types + auto label (= name)."""
     row = _owned_row(user, session, ontology_id)
-    _check_lock(body.base_file_hash, row)
+    _check_revision(body.base_revision, row)
     with _edit_store(request, row) as (store, prefixes):
         iri = _iri_for(prefixes, body.prefix, body.name)
         _reject_duplicate(store, iri)
@@ -211,15 +222,29 @@ def create_instance(
         store.add(_quad(ent, terms.RDFS_LABEL, ox.Literal(body.name)))
         if body.comment:
             store.add(_quad(ent, terms.RDFS_COMMENT, ox.Literal(body.comment)))
-        row, _ = _persist(request, session, row, store, prefixes)
-        return respond({"meta": meta_of(row), "entity": _entity_payload(prefixes, iri, "Instance")})
+        row = _commit_mutation(
+            request,
+            session,
+            row,
+            store,
+            prefixes,
+            iri,
+            instance_eid=iri,
+            individual_delta=1,
+        )
+        return respond(
+            {
+                "meta": meta_with_state(request, row),
+                "entity": _entity_payload(prefixes, iri, "Instance"),
+            }
+        )
 
 
 @router.delete("/ontologies/{ontology_id}/instances/{eid:path}")
 def delete_instance(
     ontology_id: str,
     eid: str,
-    baseFileHash: str,
+    baseRevision: int,
     request: Request,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
@@ -230,7 +255,7 @@ def delete_instance(
     prune (spec §3).
     """
     row = _owned_row(user, session, ontology_id)
-    _check_lock(baseFileHash, row)
+    _check_revision(baseRevision, row)
     with _edit_store(request, row) as (store, prefixes):
         iri = _individual(store, eid)
         removed = 0
@@ -248,8 +273,17 @@ def delete_instance(
             for q in list(store.quads_for_pattern(None, ox.NamedNode(p), iri, ox.DefaultGraph())):
                 store.remove(q)
                 removed += 1
-        row, _ = _persist(request, session, row, store, prefixes)
-        return respond({"removed": removed, "meta": meta_of(row)})
+        row = _commit_mutation(
+            request,
+            session,
+            row,
+            store,
+            prefixes,
+            iri.value,
+            individual_delta=-1,
+            instance_eid=iri.value,
+        )
+        return respond({"removed": removed, "meta": meta_with_state(request, row)})
 
 
 @router.put("/ontologies/{ontology_id}/instances/{eid:path}")
@@ -263,19 +297,29 @@ def update_instance(
 ) -> dict:
     """Edit comment/classes/assertions; absent keys stay untouched."""
     row = _owned_row(user, session, ontology_id)
-    _check_lock(body.base_file_hash, row)
+    _check_revision(body.base_revision, row)
     with _edit_store(request, row) as (store, prefixes):
         iri = _individual(store, eid)
         touched = body.model_fields_set
+        # Validate everything before the first mutation: a late 422 must
+        # leave the pooled Store untouched — the pending autosave serializes
+        # this very object, so any half-applied edit would land on disk.
+        nodes = (
+            [_declared_class(store, c) for c in body.classes]
+            if "classes" in touched and body.classes is not None
+            else None
+        )
+        plan = (
+            _assertion_plan(store, body.assertions)
+            if "assertions" in touched and body.assertions is not None
+            else None
+        )
         # null = no-op (only comment clears via null); frontend sends [] to clear
         if "comment" in touched:
             _remove_all(store, iri, terms.RDFS_COMMENT)
             if body.comment:
                 store.add(_quad(iri, terms.RDFS_COMMENT, ox.Literal(body.comment)))
-        if "classes" in touched and body.classes is not None:
-            # Resolve every class before the first removal: a bad name must
-            # leave the pooled Store untouched.
-            nodes = [_declared_class(store, c) for c in body.classes]
+        if nodes is not None:
             for q in list(store.quads_for_pattern(iri, terms.RDF_TYPE, None, ox.DefaultGraph())):
                 c = q.object
                 if (
@@ -291,8 +335,10 @@ def update_instance(
                     store.remove(q)
             for cls_iri in nodes:
                 store.add(_quad(iri, terms.RDF_TYPE, cls_iri))
-        if "assertions" in touched and body.assertions is not None:
-            _replace_assertions(store, iri, body.assertions)
-        row, _ = _persist(request, session, row, store, prefixes)
+        if plan is not None:
+            _apply_assertions(store, iri, plan)
+        row = _commit_mutation(
+            request, session, row, store, prefixes, iri.value, instance_eid=iri.value
+        )
         payload = _entity_payload(prefixes, iri.value, "Instance")
-        return respond({"meta": meta_of(row), "entity": payload})
+        return respond({"meta": meta_with_state(request, row), "entity": payload})

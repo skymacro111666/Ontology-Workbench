@@ -90,6 +90,22 @@ class AutosaveManager:
         """One of idle|pending|saving|failed; unknown oids read as idle."""
         return self._states.get(oid, "idle")
 
+    def cancel(self, oid: str) -> None:
+        """Drop a pending saver without running it (poisoned-Store eviction).
+
+        A failed mutation may leave the pooled Store half-applied while a
+        saver still holds that very object; letting it fire would persist
+        the half-edit. The next successful edit schedules a fresh saver
+        over the re-parsed clean file. No-op when nothing is pending.
+        """
+        with self._guard:
+            timer = self._timers.pop(oid, None)
+            self._savers.pop(oid, None)
+            if self._states.get(oid) == "pending":
+                self._states[oid] = "idle"
+        if timer is not None:
+            timer.cancel()
+
     def flush_all(self) -> None:
         """Shutdown hook: run every unflushed saver now (graceful exit, zero loss)."""
         with self._guard:

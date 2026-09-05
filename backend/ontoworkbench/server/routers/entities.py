@@ -9,10 +9,10 @@ serve the same patched Indexes, so they see the edit at once
 
 Optimistic lock via baseRevision on every mutation: the revision moves
 the moment an edit commits, unlike file_hash which only moves when the
-debounced save lands. instances.py still rides the legacy synchronous
-pipeline (_check_lock + _persist) until its own migration; PUT /source
-keeps its baseFileHash lock and its own write path; lint.py reads the
-same pool without ever mutating it.
+debounced save lands. instances.py rides the same _commit_mutation path
+(instance_eid + individual_delta); PUT /source keeps its baseFileHash
+lock and its own write path; lint.py reads the same pool without ever
+mutating it.
 
 Pool discipline: mutations land in the SHARED cached Store, so the
 _edit_store checkout is a context manager that evicts the entry when a
@@ -55,7 +55,7 @@ from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import OntologyRepository
 from ontoworkbench.db.session import get_session, sessionmaker_or_fail
-from ontoworkbench.observability.metrics import ow_build_seconds, ow_uploads_total
+from ontoworkbench.observability.metrics import ow_uploads_total
 from ontoworkbench.server.cache import OntologyCache, load_store
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
@@ -130,16 +130,6 @@ def _owned_row(user: User, session: Session, ontology_id: str) -> Ontology:
     return row
 
 
-def _check_lock(body_hash: str, row: Ontology) -> None:
-    """Reject stale baseFileHash before touching anything (legacy path)."""
-    if body_hash != row.file_hash:
-        raise ApiError(
-            ErrorCode.EDIT_CONFLICT,
-            "The file changed since it was loaded",
-            "Reload the graph and retry the edit on the current version.",
-        )
-
-
 def _check_revision(base_revision: int, row: Ontology) -> None:
     """Reject stale baseRevision before touching anything.
 
@@ -157,21 +147,23 @@ def _check_revision(base_revision: int, row: Ontology) -> None:
 
 @contextmanager
 def _edit_store(request: Request, row: Ontology) -> Iterator[tuple[Store, PrefixMap]]:
-    """Check out the pooled editable Store; evict it if the request dies.
+    """Check out the pooled editable Store; evict it only on unexpected errors.
 
     Mutations land in the SHARED cached instance (parse-free on repeat
-    edits), so any exception between checkout and commit — a 422 on a
-    later field, an unexpected error — must drop the entry: the Store
-    may already carry part of the refused edit while the file never
-    changed. The next edit re-parses disk truth. _persist keeps its own
-    guard for failures inside the legacy write pipeline; _commit_mutation
-    carries the matching one for the IR patch; this checkout-level guard
-    makes the no-dirty-entry invariant structural for every write endpoint.
+    edits). Validation refusals (ApiError) fire before the first mutation
+    (validate-then-mutate, enforced per handler), so the Store stays
+    clean and MUST stay pooled: dropping it would make the next edit
+    re-parse the stale disk file and silently lose the still-pending
+    autosave edits. Anything else escaping mid-mutation leaves an
+    unknown half-applied state the pending autosave would serialize —
+    drop the entry so the next edit re-parses disk truth.
     """
     cache: OntologyCache = request.app.state.cache
     store, prefixes = cache.store_for(row, load_store)
     try:
         yield store, prefixes
+    except ApiError:
+        raise  # refused before any mutation — the pooled Store is clean
     except Exception:
         cache.drop_store(str(row.id))
         raise
@@ -281,63 +273,6 @@ def _entity_payload(ns: PrefixMap, iri: str, kind: str) -> dict[str, str]:
     return {"eid": str(iri), "curie": curie, "type": kind}
 
 
-def _persist(
-    request: Request, session: Session, row: Ontology, store: Store, prefixes: PrefixMap
-) -> tuple[Ontology, IRBundle]:
-    """Serialize → build from the mutated store → atomic write → row/cache refresh.
-
-    The legacy synchronous pipeline: instances.py rides it until its own
-    Y-axis migration. Any failure evicts the pooled Store entry: it
-    already carries this edit while the file never changed, so serving
-    it again would silently land the edit inside the next write.
-    """
-    cache: OntologyCache = request.app.state.cache
-    try:
-        data = serialize_store(store, prefixes, row.format)
-        if len(data) > MAX_UPLOAD:
-            ow_uploads_total.labels("too_large").inc()
-            raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
-        # The mutated in-memory store IS the data just serialized — building the
-        # IR from it directly drops the old re-parse-for-validation (a full
-        # second parse per edit, ~3min on a 130MB ontology).
-        old_parse_ms = (row.stats_json or {}).get("parse_ms")
-        t0 = time.perf_counter()
-        with ow_build_seconds.time():
-            ir = build_ir_store(store, prefixes)
-        build_ms = (time.perf_counter() - t0) * 1000.0
-
-        dir_store: LocalUserDirStore = request.app.state.store
-        dir_store.save(row.owner_user_id, UUID(str(row.id)), row.filename, data)
-        repos = OntologyRepository(session)
-        row = (
-            repos.update(
-                row.id,
-                title=title_of_store(store, row.filename),
-                class_count=ir.counts.class_count,
-                property_count=ir.counts.property_count,
-                axiom_count=ir.counts.axiom_count,
-                instance_count=ir.counts.individual_count,
-                stats_json={
-                    "prefixes": ir.prefixes,
-                    "parse_ms": old_parse_ms,
-                    "build_ms": round(build_ms, 1),
-                },
-                file_size_bytes=len(data),
-                file_hash=LocalUserDirStore.file_hash(data),
-            )
-            or row
-        )
-        # The disk cache must move with the file: the next cold start would
-        # otherwise re-pay the full parse for this ontology.
-        write_ir_cache(Path(row.storage_path), ir, row.file_hash)
-        cache.indexes_for(row, lambda r: build_indexes(ir))
-    except Exception:
-        cache.drop_store(str(row.id))
-        raise
-    cache.refresh_store(row, store, prefixes)
-    return row, ir
-
-
 def _axiom_count(store: Store) -> int:
     """Default-graph triple count (same query as build_ir_store's count)."""
     results = store.query("SELECT (COUNT(*) AS ?c) WHERE { ?s ?p ?o }")
@@ -367,6 +302,7 @@ def _commit_mutation(
     *,
     class_delta: int = 0,
     prop_delta: int = 0,
+    individual_delta: int = 0,
     instance_eid: str | None = None,
 ) -> Ontology:
     """Patch the live IR under the mutation lock, bump revision, debounce save.
@@ -390,6 +326,8 @@ def _commit_mutation(
                 ir.counts.class_count += class_delta
             if prop_delta:
                 ir.counts.property_count += prop_delta
+            if individual_delta:
+                ir.counts.individual_count += individual_delta
             affected = affected_around(ir, store, prefixes, eid)
             refresh_entities(ir, store, prefixes, affected)
             if instance_eid is not None:
@@ -401,8 +339,11 @@ def _commit_mutation(
             cache.bump_mutation_gen(oid)
     except Exception:
         # The cached Indexes may carry a partial patch while the file never
-        # moved — evict both sides so every read falls back to disk truth.
+        # moved — evict both sides so every read falls back to disk truth,
+        # and cancel any pending saver still holding this (maybe half-patched)
+        # Store object so the next save starts from the re-parsed clean file.
         cache.drop(oid)
+        request.app.state.autosave.cancel(oid)
         raise
     row = (
         OntologyRepository(session).update(
@@ -592,6 +533,18 @@ def update_entity(
         ent = _declared(store, eid)
         kind = _kind_of(store, ent)
         touched = body.model_fields_set
+        # Validate every IRI ref before the first mutation: a late 422 must
+        # leave the pooled Store untouched — the pending autosave serializes
+        # this very object, so any half-applied edit would land on disk.
+        if body.parents is not None:
+            for v in body.parents:
+                _iri_or_422(v)
+        if body.domains is not None:
+            for v in body.domains:
+                _iri_or_422(v)
+        if body.ranges is not None:
+            for v in body.ranges:
+                _iri_or_422(v)
         if "label" in touched:
             _set_label(store, ent, body.label)
         if "comment" in touched:

@@ -239,12 +239,46 @@ def test_rejected_entity_update_never_lands_via_next_edit(
     assert "ex:Dog" in src and "subClassOf ex:Thing" in src  # positive control
 
 
-def test_rejected_instance_update_never_lands_via_next_edit(client: TestClient) -> None:
+def test_rejected_update_after_pending_edit_neither_leaks_nor_loses(
+    client: TestClient, autosave_debounce_50ms
+) -> None:
+    """A 422 between a pending edit and its save must neither leak nor lose.
+
+    The pending saver serializes the very Store object the refused edit
+    partly mutated under the old ordering, and drop_store makes the next
+    edit re-parse the stale disk file — so validation must run before
+    the first mutation (validate-then-mutate) and the clean Store stays
+    pooled for the next edit.
+    """
+    oid, meta = _upload(client)
+    r1 = _create_class(client, oid, "Cat", meta["revision"])  # pending, un-landed
+    assert r1.status_code == 200
+    r = client.put(
+        f"/api/ontologies/{oid}/entities/{DOG}",
+        json={
+            "comment": "leak-marker",
+            "parents": ["not an iri"],  # 422 while the Cat save is still pending
+            "baseRevision": _meta(client, oid)["revision"],
+        },
+    )
+    assert r.status_code == 422
+
+    rev = _meta(client, oid)["revision"]  # refusals bump nothing
+    r2 = _create_class(client, oid, "Dog2", rev)
+    assert r2.status_code == 200
+    _wait_landed(client, oid)
+    src = _source(client, oid)
+    assert "leak-marker" not in src  # refused fields never land
+    assert "ex:Cat" in src and "ex:Dog2" in src  # both committed edits survive
+
+
+def test_rejected_instance_update_never_lands_via_next_edit(
+    client: TestClient, autosave_debounce_50ms
+) -> None:
     """C1 repro (instances): same shape — 422'd comment vs. later classes.
 
-    instances.py still rides the legacy synchronous pipeline (baseFileHash
-    lock + immediate persist) until its own Y-axis migration, so this test
-    keeps the old lock field and needs no autosave waits.
+    instances.py rides the same incremental pipeline (baseRevision lock +
+    debounced autosave) as entities.py now.
     """
     oid, meta = _upload(client)
     r = client.post(
@@ -253,28 +287,29 @@ def test_rejected_instance_update_never_lands_via_next_edit(client: TestClient) 
             "name": "ThreeBody",
             "prefix": "ex",
             "classes": [f"{EX}Animal"],
-            "baseFileHash": meta["fileHash"],
+            "baseRevision": meta["revision"],
         },
     )
     assert r.status_code == 200
-    h2 = _meta(client, oid)["fileHash"]
+    rev = _meta(client, oid)["revision"]
 
     r = client.put(
         f"/api/ontologies/{oid}/instances/{EX}ThreeBody",
         json={
             "comment": "instance-leak-marker",
             "classes": [f"{EX}Nope"],  # undeclared → 422 after the comment applied
-            "baseFileHash": h2,
+            "baseRevision": rev,
         },
     )
     assert r.status_code == 422
 
-    h3 = _meta(client, oid)["fileHash"]
+    rev2 = _meta(client, oid)["revision"]  # refusals bump nothing
     r2 = client.put(
         f"/api/ontologies/{oid}/instances/{EX}ThreeBody",
-        json={"classes": [f"{EX}Thing"], "baseFileHash": h3},  # legal, leaves comment alone
+        json={"classes": [f"{EX}Thing"], "baseRevision": rev2},  # legal, leaves comment alone
     )
     assert r2.status_code == 200
+    _wait_landed(client, oid)
     src = _source(client, oid)
     assert "instance-leak-marker" not in src
     assert "ex:ThreeBody" in src and "ex:Thing" in src  # positive control
