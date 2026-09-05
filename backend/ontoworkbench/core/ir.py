@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 
 import pyoxigraph as ox
 from pydantic import BaseModel
@@ -334,12 +335,27 @@ def _ox_turtle_block(
     return f"{header}\n{text}" if header else text
 
 
-def build_ir_store(store: ox.Store, prefixes: PrefixMap) -> IRBundle:
-    """Walk the store's default graph once and assemble page-shaped entities.
+@dataclass
+class _WalkCtx:
+    """Per-walk indexes shared by build_ir_store and the refresh API.
 
-    Built straight from the pyoxigraph Store + PrefixMap (parse_store
-    output) — there is no intermediate graph model.
+    Built once per pass (_build_ctx): the declared class/property
+    membership sets and the domain/range link tables, so per-entity
+    extraction (_entity_ir/_individual_ir) rescans nothing.
     """
+
+    classes: set[str]
+    object_props: set[str]
+    datatype_props: set[str]
+    # Declared entities (own classes and properties): the far ends the UI
+    # may link into; everything else is external vocabulary.
+    declared: set[str]
+    props_by_class: dict[str, list[str]]
+    classes_by_prop: dict[str, list[tuple[str, str]]]
+
+
+def _build_ctx(store: ox.Store) -> _WalkCtx:
+    """Scan declared classes/properties and their domain/range links once."""
     classes = sorted(
         s.value
         for s in _ox_subjects(store, terms.RDF_TYPE, terms.OWL_CLASS)
@@ -355,11 +371,6 @@ def build_ir_store(store: ox.Store, prefixes: PrefixMap) -> IRBundle:
             datatype_props.add(s.value)
     props = sorted(object_props | datatype_props)
 
-    entities: dict[str, EntityIR] = {}
-    # One curie memo for the whole walk: entity curies, refs and axiom
-    # blocks re-resolve the same URIs constantly.
-    cc: _OxCurieCache = {}
-
     # Domain/range links walked once: props by class and classes by prop.
     props_by_class: dict[str, list[str]] = {}
     classes_by_prop: dict[str, list[tuple[str, str]]] = {}
@@ -373,100 +384,195 @@ def build_ir_store(store: ox.Store, prefixes: PrefixMap) -> IRBundle:
                     props_by_class.setdefault(c.value, []).append(p)
                     classes_by_prop.setdefault(p, []).append((c.value, relation))
 
-    # Declared entities (own classes and properties): the far ends the UI
-    # may link into; everything else is external vocabulary.
-    declared_uris = set(classes) | set(props)
+    return _WalkCtx(
+        classes=set(classes),
+        object_props=object_props,
+        datatype_props=datatype_props,
+        declared=set(classes) | set(props),
+        props_by_class=props_by_class,
+        classes_by_prop=classes_by_prop,
+    )
 
-    def _referenced(uri: str, is_class: bool, children: list[Ref]) -> list[ReferencedRef]:
-        """Entities whose axioms mention uri: subclassers and domain/range peers."""
 
-        def _counterpart(prop: str, relation: str) -> CounterpartRef | None:
-            """The axiom's far end: range of prop for a domain ref, vice versa."""
-            other = terms.RDFS_RANGE if relation == "rdfs:domain" else terms.RDFS_DOMAIN
-            far = next(
-                (o.value for o in _ox_objects(store, prop, other) if isinstance(o, ox.NamedNode)),
-                None,
-            )
-            if far is None:
-                return None
-            return CounterpartRef(
-                **_ox_ref(store, prefixes, far, cc).model_dump(), declared=far in declared_uris
-            )
+def _referenced(
+    store: ox.Store,
+    prefixes: PrefixMap,
+    uri: str,
+    is_class: bool,
+    children: list[Ref],
+    ctx: _WalkCtx,
+    cc: _OxCurieCache,
+) -> list[ReferencedRef]:
+    """Entities whose axioms mention uri: subclassers and domain/range peers."""
 
-        refs = {
-            r.eid: ReferencedRef(eid=r.eid, curie=r.curie, label=r.label, relation="subClassOf")
-            for r in children
-        }
-        if is_class:
-            for p in props_by_class.get(uri, []):
-                base = _ox_ref(store, prefixes, p, cc)
-                relation = (
-                    "rdfs:domain"
-                    if _ox_has(store, p, terms.RDFS_DOMAIN, ox.NamedNode(uri))
-                    else "rdfs:range"
-                )
-                refs[base.eid] = ReferencedRef(
-                    eid=base.eid,
-                    curie=base.curie,
-                    label=base.label,
-                    relation=relation,
-                    counterpart=_counterpart(p, relation),
-                )
-        else:
-            for c, relation in classes_by_prop.get(uri, []):
-                base = _ox_ref(store, prefixes, c, cc)
-                refs[base.eid] = ReferencedRef(
-                    eid=base.eid,
-                    curie=base.curie,
-                    label=base.label,
-                    relation=relation,
-                    counterpart=_counterpart(uri, relation),
-                )
-        return sorted(refs.values(), key=lambda r: r.curie)
-
-    for uri in [*classes, *props]:
-        is_class = _ox_is_class(store, uri)
-        etype = "Class" if is_class else _ox_ptype_of(store, uri)
-
-        parents = _ox_uri_refs(store, prefixes, _ox_objects(store, uri, terms.RDFS_SUBCLASSOF), cc)
-        children = (
-            _ox_uri_refs(
-                store,
-                prefixes,
-                _ox_subjects(store, terms.RDFS_SUBCLASSOF, ox.NamedNode(uri)),
-                cc,
-            )
-            if is_class
-            else []
-        )
-
-        properties: list[PropRef] = []
-        if is_class:
-            for p in props_by_class.get(uri, []):
-                properties.append(_ox_prop_ref(store, prefixes, p, cc))
-
-        comment = next(
-            (
-                c.value
-                for c in _ox_objects(store, uri, terms.RDFS_COMMENT)
-                if isinstance(c, ox.Literal)
-            ),
+    def _counterpart(prop: str, relation: str) -> CounterpartRef | None:
+        """The axiom's far end: range of prop for a domain ref, vice versa."""
+        other = terms.RDFS_RANGE if relation == "rdfs:domain" else terms.RDFS_DOMAIN
+        far = next(
+            (o.value for o in _ox_objects(store, prop, other) if isinstance(o, ox.NamedNode)),
             None,
         )
-        entities[uri] = EntityIR(
-            eid=uri,
-            curie=_ox_curie(prefixes, uri, cc),
-            type=etype,
-            label=_ox_labels(store, uri),
-            comment=comment,
-            deprecated=_ox_has(store, uri, terms.OWL_DEPRECATED, _OX_TRUE),
-            parents=parents,
-            children=children,
-            properties=properties,
-            referenced_by=_referenced(uri, is_class, children),
-            axioms=[Axiom(turtle=_ox_turtle_block(store, prefixes, uri, cc))],
-            stats=Stats(direct_children=len(children)),
+        if far is None:
+            return None
+        return CounterpartRef(
+            **_ox_ref(store, prefixes, far, cc).model_dump(), declared=far in ctx.declared
         )
+
+    refs = {
+        r.eid: ReferencedRef(eid=r.eid, curie=r.curie, label=r.label, relation="subClassOf")
+        for r in children
+    }
+    if is_class:
+        for p in ctx.props_by_class.get(uri, []):
+            base = _ox_ref(store, prefixes, p, cc)
+            relation = (
+                "rdfs:domain"
+                if _ox_has(store, p, terms.RDFS_DOMAIN, ox.NamedNode(uri))
+                else "rdfs:range"
+            )
+            refs[base.eid] = ReferencedRef(
+                eid=base.eid,
+                curie=base.curie,
+                label=base.label,
+                relation=relation,
+                counterpart=_counterpart(p, relation),
+            )
+    else:
+        for c, relation in ctx.classes_by_prop.get(uri, []):
+            base = _ox_ref(store, prefixes, c, cc)
+            refs[base.eid] = ReferencedRef(
+                eid=base.eid,
+                curie=base.curie,
+                label=base.label,
+                relation=relation,
+                counterpart=_counterpart(uri, relation),
+            )
+    return sorted(refs.values(), key=lambda r: r.curie)
+
+
+def _entity_ir(
+    store: ox.Store, prefixes: PrefixMap, uri: str, cc: _OxCurieCache, ctx: _WalkCtx
+) -> EntityIR:
+    """One entity's page-shaped extraction (shared by full build and refresh)."""
+    is_class = _ox_is_class(store, uri)
+    etype = "Class" if is_class else _ox_ptype_of(store, uri)
+
+    parents = _ox_uri_refs(store, prefixes, _ox_objects(store, uri, terms.RDFS_SUBCLASSOF), cc)
+    children = (
+        _ox_uri_refs(
+            store,
+            prefixes,
+            _ox_subjects(store, terms.RDFS_SUBCLASSOF, ox.NamedNode(uri)),
+            cc,
+        )
+        if is_class
+        else []
+    )
+
+    properties: list[PropRef] = []
+    if is_class:
+        for p in ctx.props_by_class.get(uri, []):
+            properties.append(_ox_prop_ref(store, prefixes, p, cc))
+
+    comment = next(
+        (c.value for c in _ox_objects(store, uri, terms.RDFS_COMMENT) if isinstance(c, ox.Literal)),
+        None,
+    )
+    return EntityIR(
+        eid=uri,
+        curie=_ox_curie(prefixes, uri, cc),
+        type=etype,
+        label=_ox_labels(store, uri),
+        comment=comment,
+        deprecated=_ox_has(store, uri, terms.OWL_DEPRECATED, _OX_TRUE),
+        parents=parents,
+        children=children,
+        properties=properties,
+        referenced_by=_referenced(store, prefixes, uri, is_class, children, ctx, cc),
+        axioms=[Axiom(turtle=_ox_turtle_block(store, prefixes, uri, cc))],
+        stats=Stats(direct_children=len(children)),
+    )
+
+
+def _individual_ir(
+    store: ox.Store, prefixes: PrefixMap, ind: str, ctx: _WalkCtx, cc: _OxCurieCache
+) -> tuple[IndividualIR, list[str]]:
+    """One individual's extraction plus its direct class eids.
+
+    The class → instances rows are placed by the caller (build walks all
+    individuals in sorted order; refresh regroups a single one).
+    """
+    comment = next(
+        (c.value for c in _ox_objects(store, ind, terms.RDFS_COMMENT) if isinstance(c, ox.Literal)),
+        None,
+    )
+    cls: list[Ref] = []
+    obj_asserts: list[ObjectAssertion] = []
+    data_asserts: list[DataAssertion] = []
+    for q in store.quads_for_pattern(ox.NamedNode(ind), None, None, ox.DefaultGraph()):
+        pred = q.predicate
+        obj = q.object
+        if pred == terms.RDF_TYPE:
+            if isinstance(obj, ox.NamedNode) and obj.value in ctx.classes:
+                cls.append(_ox_ref(store, prefixes, obj.value, cc))
+        elif (
+            isinstance(pred, ox.NamedNode)
+            and pred.value in ctx.object_props
+            and isinstance(obj, ox.NamedNode)
+        ):
+            obj_asserts.append(
+                ObjectAssertion(
+                    property=_ox_prop_ref(store, prefixes, pred.value, cc),
+                    object=_ox_ref(store, prefixes, obj.value, cc),
+                )
+            )
+        elif (
+            isinstance(pred, ox.NamedNode)
+            and pred.value in ctx.datatype_props
+            and isinstance(obj, ox.Literal)
+            # RDF 1.1: a bare literal IS xsd:string, so string assertions
+            # count too (the instance editor's default datatype), with
+            # the full datatype IRI; only language-tagged literals stay out.
+            and obj.language is None
+        ):
+            data_asserts.append(
+                DataAssertion(
+                    property=_ox_prop_ref(store, prefixes, pred.value, cc),
+                    value=obj.value,
+                    datatype=obj.datatype.value,
+                )
+            )
+    classes_sorted = sorted(cls, key=lambda r: r.curie)
+    return (
+        IndividualIR(
+            eid=ind,
+            curie=_ox_curie(prefixes, ind, cc),
+            label=_ox_labels(store, ind),
+            comment=comment,
+            classes=classes_sorted,
+            object_assertions=sorted(obj_asserts, key=lambda a: a.property.curie),
+            data_assertions=sorted(data_asserts, key=lambda a: a.property.curie),
+        ),
+        [c.eid for c in classes_sorted],
+    )
+
+
+def build_ir_store(store: ox.Store, prefixes: PrefixMap) -> IRBundle:
+    """Walk the store's default graph once and assemble page-shaped entities.
+
+    Built straight from the pyoxigraph Store + PrefixMap (parse_store
+    output) — there is no intermediate graph model.
+    """
+    ctx = _build_ctx(store)
+    classes = sorted(ctx.classes)
+    props = sorted(ctx.object_props | ctx.datatype_props)
+
+    entities: dict[str, EntityIR] = {}
+    # One curie memo for the whole walk: entity curies, refs and axiom
+    # blocks re-resolve the same URIs constantly.
+    cc: _OxCurieCache = {}
+    for uri in [*classes, *props]:
+        entities[uri] = _entity_ir(store, prefixes, uri, cc, ctx)
 
     # Total descendants per class (memoized DFS over the assembled children).
     child_eids: dict[str, list[str]] = {}
@@ -520,7 +626,6 @@ def build_ir_store(store: ox.Store, prefixes: PrefixMap) -> IRBundle:
 
     # Named individuals group under their declared rdf:type classes (direct
     # typing only — no subclass inference, matching the badge's direct count).
-    class_set = set(classes)
     instances: dict[str, list[Ref]] = {}
     individuals_out: dict[str, IndividualIR] = {}
     individuals: set[str] = set()
@@ -530,60 +635,12 @@ def build_ir_store(store: ox.Store, prefixes: PrefixMap) -> IRBundle:
         if isinstance(s, ox.NamedNode)
     ):
         individuals.add(ind)
-        comment = next(
-            (
-                c.value
-                for c in _ox_objects(store, ind, terms.RDFS_COMMENT)
-                if isinstance(c, ox.Literal)
-            ),
-            None,
-        )
-        cls: list[Ref] = []
-        obj_asserts: list[ObjectAssertion] = []
-        data_asserts: list[DataAssertion] = []
-        for q in store.quads_for_pattern(ox.NamedNode(ind), None, None, ox.DefaultGraph()):
-            pred = q.predicate
-            obj = q.object
-            if pred == terms.RDF_TYPE:
-                if isinstance(obj, ox.NamedNode) and obj.value in class_set:
-                    instances.setdefault(obj.value, []).append(_ox_ref(store, prefixes, ind, cc))
-                    cls.append(_ox_ref(store, prefixes, obj.value, cc))
-            elif (
-                isinstance(pred, ox.NamedNode)
-                and pred.value in object_props
-                and isinstance(obj, ox.NamedNode)
-            ):
-                obj_asserts.append(
-                    ObjectAssertion(
-                        property=_ox_prop_ref(store, prefixes, pred.value, cc),
-                        object=_ox_ref(store, prefixes, obj.value, cc),
-                    )
-                )
-            elif (
-                isinstance(pred, ox.NamedNode)
-                and pred.value in datatype_props
-                and isinstance(obj, ox.Literal)
-                # RDF 1.1: a bare literal IS xsd:string, so string assertions
-                # count too (the instance editor's default datatype), with
-                # the full datatype IRI; only language-tagged literals stay out.
-                and obj.language is None
-            ):
-                data_asserts.append(
-                    DataAssertion(
-                        property=_ox_prop_ref(store, prefixes, pred.value, cc),
-                        value=obj.value,
-                        datatype=obj.datatype.value,
-                    )
-                )
-        individuals_out[ind] = IndividualIR(
-            eid=ind,
-            curie=_ox_curie(prefixes, ind, cc),
-            label=_ox_labels(store, ind),
-            comment=comment,
-            classes=sorted(cls, key=lambda r: r.curie),
-            object_assertions=sorted(obj_asserts, key=lambda a: a.property.curie),
-            data_assertions=sorted(data_asserts, key=lambda a: a.property.curie),
-        )
+        ind_ir, class_eids = _individual_ir(store, prefixes, ind, ctx, cc)
+        individuals_out[ind] = ind_ir
+        for c in class_eids:
+            instances.setdefault(c, []).append(
+                Ref(eid=ind_ir.eid, curie=ind_ir.curie, label=ind_ir.label)
+            )
 
     counts.individual_count = len(individuals)
 
