@@ -366,33 +366,31 @@ describe('GraphOverview assertion edges', () => {
 })
 
 describe('GraphOverview deprecated visibility', () => {
-  it('fetches with includeDeprecated=false, refetches with true on toggle', async () => {
+  it('fetches with includeDeprecated=false; the toggle is gone for good', async () => {
     const fetchMock = stubFetch()
     draw(fetchMock)
     await waitForGraph()
     expect(
       fetchMock.mock.calls.some(([u]) => String(u).includes('/overview?includeDeprecated=false')),
     ).toBe(true)
-    await userEvent.click(screen.getByRole('button', { name: '显示已废弃' }))
-    await waitFor(() =>
-      expect(
-        fetchMock.mock.calls.some(([u]) => String(u).includes('/overview?includeDeprecated=true')),
-      ).toBe(true),
+    // F5 (user call 2026-09-06, round 2): deprecated classes live in the
+    // sidebar — no canvas toggle may re-enable them.
+    expect(screen.queryByRole('button', { name: '显示已废弃' })).toBeNull()
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('includeDeprecated=true'))).toBe(
+      false,
     )
   })
 
-  it('notes the hidden deprecated count until the toggle is on', async () => {
+  it('notes the hidden deprecated count permanently (no toggle-off)', async () => {
     draw(stubFetch(null, { ...OVERVIEW, deprecatedCount: 2 }))
     await waitForGraph()
-    expect(screen.getByText('2 个已废弃节点已归入左侧「已废弃」页签')).toBeTruthy()
-    await userEvent.click(screen.getByRole('button', { name: '显示已废弃' }))
-    await waitFor(() => expect(screen.queryByText('2 个已废弃节点已归入左侧「已废弃」页签')).toBeNull())
+    expect(screen.getByText('2 个已废弃节点在左侧类树的「已废弃」分组')).toBeTruthy()
   })
 
   it('stays quiet when nothing is deprecated', async () => {
     draw(stubFetch())
     await waitForGraph()
-    expect(screen.queryByText(/废弃条目/)).toBeNull()
+    expect(screen.queryByText(/已废弃节点/)).toBeNull()
   })
 })
 

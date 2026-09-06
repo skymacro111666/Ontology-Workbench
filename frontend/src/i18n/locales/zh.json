@@ -112,7 +112,7 @@
     "tabClasses": "类",
     "tabProps": "属性",
     "tabPrefixes": "命名空间",
-    "tabDeprecated": "已废弃",
+    "deprecatedGroup": "已废弃",
     "searchPlaceholder": "搜索类 / 属性 / 注释…",
     "classTree": "类树",
     "propList": "属性列表"
@@ -296,8 +296,7 @@
     "filterObjects": "对象",
     "filterData": "数据",
     "legend": "图例",
-    "showDeprecated": "显示已废弃",
-    "deprecatedSidebar": "{{count}} 个已废弃节点已归入左侧「已废弃」页签",
+    "deprecatedSidebar": "{{count}} 个已废弃节点在左侧类树的「已废弃」分组",
     "saveFailed": "自动保存失败,最近的编辑可能尚未写入文件;继续编辑或重试保存",
     "deprecatedBucket": "已废弃", "prefixBucket": "前缀分组",
     "viewProgressive": "渐进"

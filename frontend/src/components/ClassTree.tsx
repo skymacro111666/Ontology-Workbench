@@ -11,7 +11,12 @@ import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
 type ChildMap = Record<string, TreeNode[]>
-type Tab = 'classes' | 'props' | 'prefixes' | 'deprecated'
+type Tab = 'classes' | 'props' | 'prefixes'
+
+/** Sentinel row closing the class tab: one expandable 已废弃 group under the
+ *  live roots (user call 2026-09-06, round 2 — no fourth tab). Matches the
+ *  backend Indexes tree sentinel; eids are full IRIs so it cannot collide. */
+const DEPRECATED_GROUP = '__deprecated__'
 
 /** react-arborist row: a TreeNode plus children (absent = leaf, [] = not loaded). */
 type TreeRow = TreeNode & { children?: TreeRow[] }
@@ -100,8 +105,13 @@ function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
           node.data.deprecated && 'text-ink-3 line-through',
         )}
       >
-        {localName(node.data.curie)}
+        {node.data.eid === DEPRECATED_GROUP ? t('tree.deprecatedGroup') : localName(node.data.curie)}
       </span>
+      {node.data.eid === DEPRECATED_GROUP && (
+        <span className="bg-panel-2 border-line text-ink-3 shrink-0 rounded-full border px-1.5 text-[10px] leading-4 font-semibold">
+          DEL
+        </span>
+      )}
       <KindPill type={node.data.type} />
       {(node.data.instanceCount ?? 0) > 0 && (
         <span
@@ -147,13 +157,6 @@ export default function ClassTree({ oid }: { oid: string }) {
     queryKey: ['tree', oid, '__props__'],
     queryFn: () => api.get<TreeNode[]>(`/api/ontologies/${oid}/tree?parent=__props__`),
     enabled: tab === 'props',
-  })
-  // F4 (user call 2026-09-06): deprecated classes live here, off the canvas.
-  // A flat virtualized list handles GO-scale counts (13k+) fine.
-  const { data: deprecatedNodes } = useQuery({
-    queryKey: ['tree', oid, '__deprecated__'],
-    queryFn: () => api.get<TreeNode[]>(`/api/ontologies/${oid}/tree?parent=__deprecated__`),
-    enabled: tab === 'deprecated',
   })
   const { data: meta } = useQuery({
     queryKey: ['ontology', oid],
@@ -237,9 +240,25 @@ export default function ClassTree({ oid }: { oid: string }) {
     }
   }, [revealEid, oid, queryClient, loadChildren, setSelected, clearReveal])
 
-  const classRows = useMemo(() => toRows(roots ?? [], childMap), [roots, childMap])
+  const classRows = useMemo(() => {
+    const rows = toRows(roots ?? [], childMap)
+    // F6 (user call 2026-09-06, round 2): the 已废弃 group closes the class
+    // list — one expandable sentinel row under the live roots, lazily
+    // loading the flat deprecated classes through the same loadChildren
+    // path. Once loaded empty it drops out (nothing archived here).
+    const loaded = childMap[DEPRECATED_GROUP]
+    if (loaded && loaded.length === 0) return rows
+    rows.push({
+      eid: DEPRECATED_GROUP,
+      curie: DEPRECATED_GROUP,
+      label: {},
+      type: 'Class',
+      childrenCount: 1,
+      children: loaded ?? [],
+    })
+    return rows
+  }, [roots, childMap])
   const propRows = useMemo(() => toRows(propNodes ?? [], {}), [propNodes])
-  const deprecatedRows = useMemo(() => toRows(deprecatedNodes ?? [], {}), [deprecatedNodes])
 
   // The selection prop applies once per change; re-assert when rows arrive so
   // late loads (deep link, lazy expand) still show the highlight. Guarded by
@@ -265,7 +284,11 @@ export default function ClassTree({ oid }: { oid: string }) {
     disableMultiSelection: true,
     disableDeselectOnClick: true,
     selection: selectedEid ?? undefined,
-    onActivate: (n: NodeApi<TreeRow>) => setSelected(n.id),
+    onActivate: (n: NodeApi<TreeRow>) => {
+      // The sentinel group is a folder, not an entity — never selectable.
+      if (n.id === DEPRECATED_GROUP) return
+      setSelected(n.id)
+    },
     searchTerm: filter,
     searchMatch: (n: NodeApi<TreeRow>, term: string) => matchesTerm(n.data, term),
   }
@@ -274,7 +297,6 @@ export default function ClassTree({ oid }: { oid: string }) {
     ['classes', t('tree.tabClasses')],
     ['props', t('tree.tabProps')],
     ['prefixes', t('tree.tabPrefixes')],
-    ['deprecated', t('tree.tabDeprecated')],
   ]
 
   return (
@@ -331,11 +353,6 @@ export default function ClassTree({ oid }: { oid: string }) {
         </div>
         {tab === 'props' && (
           <Tree ref={propTreeRef} data={propRows} aria-label={t('tree.propList')} {...shared}>
-            {ClassRow}
-          </Tree>
-        )}
-        {tab === 'deprecated' && (
-          <Tree data={deprecatedRows} aria-label={t('tree.tabDeprecated')} {...shared}>
             {ClassRow}
           </Tree>
         )}

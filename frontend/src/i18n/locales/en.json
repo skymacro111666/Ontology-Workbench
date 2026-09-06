@@ -112,7 +112,7 @@
     "tabClasses": "Classes",
     "tabProps": "Properties",
     "tabPrefixes": "Namespaces",
-    "tabDeprecated": "Deprecated",
+    "deprecatedGroup": "Deprecated",
     "searchPlaceholder": "Search classes / properties / comments…",
     "classTree": "Class tree",
     "propList": "Property list"
@@ -296,8 +296,7 @@
     "filterObjects": "Object",
     "filterData": "Data",
     "legend": "Legend",
-    "showDeprecated": "Show deprecated",
-    "deprecatedSidebar": "{{count}} deprecated nodes live in the left sidebar’s Deprecated tab",
+    "deprecatedSidebar": "{{count}} deprecated nodes sit in the class tree’s 已废弃 group",
     "saveFailed": "Autosave failed — recent edits may not be on disk; keep editing or retry the save",
     "deprecatedBucket": "Deprecated", "prefixBucket": "Prefix group",
     "viewProgressive": "Progressive"

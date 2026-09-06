@@ -158,20 +158,19 @@ export default function GraphOverview({
     kind?: string
     curie?: string
   } | null>(null)
-  /** Session-level deprecated visibility (D0): off by default, never
-   *  persisted — the overview refetches through the includeDeprecated param. */
-  const [showDeprecated, setShowDeprecated] = useState(false)
+  /** Deprecated visibility: permanently filtered on canvas (user call
+   *  2026-09-06, second round): deprecated classes live in the sidebar's
+   *  已废弃 group, so the includeDeprecated toggle lost its job.
+   *  includeDeprecated stays an API capability. */
   /** Session-level tiering override (spec §3): 'auto' follows liveCount,
    *  the toggle forces the folded view (the legacy full walk stays an API
    *  capability — user call 2026-09-06: its truncated 5000-node canvas
    *  read worse than the folded one, so the button is gone). */
   const [viewOverride, setViewOverride] = useState<'auto' | 'progressive'>('auto')
   const { data, isError, error, refetch } = useQuery({
-    queryKey: ['overview', oid, showDeprecated, viewOverride],
+    queryKey: ['overview', oid, viewOverride],
     queryFn: () =>
-      api.get<NodesEdges>(
-        `/api/ontologies/${oid}/overview?includeDeprecated=${showDeprecated}&view=${viewOverride}`,
-      ),
+      api.get<NodesEdges>(`/api/ontologies/${oid}/overview?includeDeprecated=false&view=${viewOverride}`),
     retry: false,
   })
   /** A focus outside a TRUNCATED overview used to degrade silently (backlog
@@ -447,9 +446,9 @@ export default function GraphOverview({
           {t('canvas.truncatedNote', { total: data.totalCount })}
         </div>
       )}
-      {/* Hidden-deprecated hint: points at the sidebar's 已废弃 tab (F4),
-       *  only while the canvas filter keeps them out of the hierarchy. */}
-      {!showDeprecated && (data.deprecatedCount ?? 0) > 0 && (
+      {/* Hidden-deprecated hint: points at the sidebar's 已废弃 group (F4);
+       *  permanent now that the canvas filter has no toggle (F5). */}
+      {(data.deprecatedCount ?? 0) > 0 && (
         <div
           role="status"
           className="border-primary-border bg-primary-soft text-ink-2 rounded-ctl shrink-0 border px-3 py-2 text-sm"
@@ -485,15 +484,6 @@ export default function GraphOverview({
                 onPressedChange={(v) => setViewOverride(v ? 'progressive' : 'auto')}
               >
                 {t('canvas.viewProgressive')}
-              </Toggle>
-              <Toggle
-                variant="outline"
-                size="sm"
-                className="h-6 min-w-0 px-2 text-xs"
-                pressed={showDeprecated}
-                onPressedChange={setShowDeprecated}
-              >
-                {t('canvas.showDeprecated')}
               </Toggle>
             </>
           }

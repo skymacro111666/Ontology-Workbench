@@ -119,7 +119,8 @@ describe('ClassTree', () => {
     renderTree(fetchMock)
     expect(await screen.findByText('Thing')).toBeTruthy()
 
-    await userEvent.click(screen.getByRole('button', { name: '展开' }))
+    // [0] = the first tree row's chevron (the 已废弃 sentinel adds another).
+    await userEvent.click(screen.getAllByRole('button', { name: '展开' })[0])
 
     expect(await screen.findByText('Animal')).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith(
@@ -146,7 +147,8 @@ describe('ClassTree', () => {
     renderTree(fetchMock)
     expect(await screen.findByText('Thing')).toBeTruthy()
 
-    await userEvent.click(screen.getByRole('button', { name: '展开' }))
+    // [0] = the first tree row's chevron (the 已废弃 sentinel adds another).
+    await userEvent.click(screen.getAllByRole('button', { name: '展开' })[0])
     // Let the rejection land; the roots stay interactive afterwards.
     await new Promise((r) => setTimeout(r, 50))
     expect(screen.getByText('Thing')).toBeTruthy()
@@ -228,7 +230,7 @@ describe('ClassTree', () => {
     )
   })
 
-  it('lists deprecated classes on the 已废弃 tab, struck through', async () => {
+  it('closes the class tab with an expandable 已废弃 group, rows struck through', async () => {
     const mock = vi.fn(async (url: string | URL) => {
       const u = String(url)
       if (u.endsWith('/meta')) return ok(META)
@@ -242,12 +244,19 @@ describe('ClassTree', () => {
       throw new Error(`unmocked url: ${u}`)
     })
     renderTree(mock)
-    await screen.findByText('Thing')
-    await userEvent.click(screen.getByRole('button', { name: '已废弃' }))
-    expect(mock.mock.calls.some(([u]) => String(u).includes('parent=__deprecated__'))).toBe(true)
+    // The group sits under the live roots on the classes tab itself; the
+    // separate tab is gone (F6, user call 2026-09-06 round 2).
+    expect(screen.queryByRole('button', { name: '已废弃' })).toBeNull()
+    const group = await screen.findByText('已废弃')
+    expect(screen.getByText('DEL')).toBeTruthy()
+    // Expand: lazy-loads parent=__deprecated__, rows render struck through.
+    await userEvent.click(group.closest('div')!.querySelector('button')!)
     const dead = await screen.findByText('Dead')
+    expect(mock.mock.calls.some(([u]) => String(u).includes('parent=__deprecated__'))).toBe(true)
     expect(dead.className).toContain('line-through')
     expect(dead.className).toContain('text-ink-3')
+    // Live classes keep their normal style.
+    expect(screen.getByText('Thing').className).not.toContain('line-through')
   })
 
   it('renders the prefix table from ontology meta', async () => {
