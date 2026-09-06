@@ -545,3 +545,89 @@ describe('GraphOverview insertion layout on expand', () => {
     expect(kid.style?.y).toBe(90)
   })
 })
+
+/* Task 17: session-level view override (auto|full|progressive) rides the
+   overview URL; in progressive mode revealing an off-canvas entity resets
+   the canvas to that entity plus its foldable children. */
+
+describe('GraphOverview view override and reveal anchor', () => {
+  const PROG: NodesEdges = {
+    nodes: [{ id: 'root', curie: 'ex:Root', label: {}, kind: 'class', folded: true, subtreeSize: 3 }],
+    edges: [],
+    truncated: false,
+    totalCount: 4,
+    mode: 'progressive',
+    liveCount: 4,
+  }
+  const ENTITY = {
+    eid: 'http://x/Far',
+    curie: 'ex:Far',
+    type: 'Class',
+    label: { en: 'Far' },
+    comment: null,
+    deprecated: false,
+    parents: [],
+    children: [],
+    properties: [],
+    referencedBy: [],
+    axioms: [],
+    stats: { directChildren: 0, totalDescendants: 0 },
+  }
+  const FAR = 'http://x/Far'
+  const EXPAND: NodesEdges = {
+    nodes: [{ id: 'kid', curie: 'ex:Kid', label: {}, kind: 'class', folded: true, subtreeSize: 1 }],
+    edges: [{ source: 'kid', target: FAR, kind: 'subClassOf' }],
+    truncated: false,
+    totalCount: 1,
+  }
+
+  function drawOverride() {
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/overview')) return env(PROG)
+      if (u.endsWith(`/entities/${encodeURIComponent(FAR)}/expand`)) return env(EXPAND)
+      if (u.endsWith(`/entities/${encodeURIComponent(FAR)}`)) return env(ENTITY)
+      if (u.endsWith('/layout') && init?.method === 'PUT') {
+        savedBody = JSON.parse(String(init.body))
+        return env(savedBody)
+      }
+      return env({ positions: {} })
+    })
+    draw(fetchMock)
+    return fetchMock
+  }
+
+  it('renders 全图/渐进 toggles; 全图 refetches with view=full', async () => {
+    const fetchMock = drawOverride()
+    await waitForGraph()
+    await userEvent.click(screen.getByRole('button', { name: '全图' }))
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.some(([u]) => String(u).includes('view=full'))).toBe(true)
+    })
+    await userEvent.click(screen.getByRole('button', { name: '渐进' }))
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.some(([u]) => String(u).includes('view=progressive'))).toBe(true)
+    })
+  })
+
+  it('progressive reveal of an off-canvas entity anchors the canvas there', async () => {
+    const fetchMock = drawOverride()
+    await waitForGraph()
+    useBrowseStore.getState().reveal(FAR)
+    await vi.waitFor(() => {
+      const latest = [...g6Instances()].at(-1)!
+      const ids = (latest.options.data as { nodes: { id: string }[] }).nodes.map((n) => n.id)
+      expect(ids).toEqual([FAR, 'kid'])
+    })
+    expect(
+      fetchMock.mock.calls.some(([u]) =>
+        String(u).endsWith(`/entities/${encodeURIComponent(FAR)}/expand`),
+      ),
+    ).toBe(true)
+    expect(
+      fetchMock.mock.calls.some(([u]) =>
+        String(u).endsWith(`/entities/${encodeURIComponent(FAR)}`),
+      ),
+    ).toBe(true)
+  })
+})

@@ -4,7 +4,7 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
-import type { AssertionEdgePayload, NodesEdges } from '../api/types'
+import type { AssertionEdgePayload, EntityIR, NodesEdges } from '../api/types'
 import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
@@ -161,10 +161,15 @@ export default function GraphOverview({
   /** Session-level deprecated visibility (D0): off by default, never
    *  persisted — the overview refetches through the includeDeprecated param. */
   const [showDeprecated, setShowDeprecated] = useState(false)
+  /** Session-level tiering override (spec §3): 'auto' follows liveCount,
+   *  the toggles force the legacy walk or the folded view. */
+  const [viewOverride, setViewOverride] = useState<'auto' | 'full' | 'progressive'>('auto')
   const { data, isError, error, refetch } = useQuery({
-    queryKey: ['overview', oid, showDeprecated],
+    queryKey: ['overview', oid, showDeprecated, viewOverride],
     queryFn: () =>
-      api.get<NodesEdges>(`/api/ontologies/${oid}/overview?includeDeprecated=${showDeprecated}`),
+      api.get<NodesEdges>(
+        `/api/ontologies/${oid}/overview?includeDeprecated=${showDeprecated}&view=${viewOverride}`,
+      ),
     retry: false,
   })
   /** A focus outside a TRUNCATED overview used to degrade silently (backlog
@@ -244,6 +249,13 @@ export default function GraphOverview({
   const [insertedPos, setInsertedPos] = useState<Record<string, Pt>>({})
   const toggleFold = async (eid: string, folded: boolean) => {
     if (!folded) {
+      if (anchor && eid === anchor.self.id) {
+        // Collapsing the anchor root exits the anchored view: back to the
+        // overview's folded root layer.
+        setAnchor(null)
+        setExpanded({})
+        return
+      }
       const doomed = collectSubtree(eid, expanded)
       setExpanded((prev) => {
         const next = { ...prev }
@@ -279,15 +291,70 @@ export default function GraphOverview({
       // Failed expand: no state moved, the badge stays a retry-able +.
     }
   }
-  const foldedIds = useMemo(() => new Set(Object.keys(expanded)), [expanded])
+  /** Progressive reveal anchor (spec §5.4): revealing an entity the folded
+   *  view cannot show (search hit deep in a collapsed subtree) resets the
+   *  canvas to that entity + its foldable children instead of a dead end.
+   *  ClassTree owns revealEid's tree walk and clears it; this side reads it
+   *  without consuming. Classes only — instances never ride the fold view. */
+  const [anchor, setAnchor] = useState<{
+    self: GraphViewNode
+    payload: NodesEdges
+  } | null>(null)
+  const revealEid = useBrowseStore((s) => s.revealEid)
+  useEffect(() => {
+    if (!revealEid || data?.mode !== 'progressive') return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [ent, payload] = await Promise.all([
+          api.get<EntityIR>(
+            `/api/ontologies/${oid}/entities/${encodeURIComponent(revealEid)}`,
+          ),
+          api.get<NodesEdges>(
+            `/api/ontologies/${oid}/entities/${encodeURIComponent(revealEid)}/expand`,
+          ),
+        ]) as [EntityIR, NodesEdges]
+        if (cancelled || ent.type !== 'Class') return
+        setAnchor({
+          self: {
+            id: ent.eid,
+            curie: ent.curie,
+            label: ent.label,
+            kind: 'class',
+            folded: true,
+            subtreeSize: (payload.totalCount ?? 0) + 1,
+          },
+          payload,
+        })
+        // Reset the exploration state: the new anchor starts a fresh canvas.
+        setExpanded({})
+        setInsertedPos({})
+      } catch {
+        // Off-canvas fetch failed: keep the current view.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [revealEid, data?.mode, oid])
 
+  /** The effective fold payloads: the anchor's own expand rides first so
+   *  its children merge exactly like a manual fold click. */
+  const expandedAll = useMemo(
+    () =>
+      anchor ? { [anchor.self.id]: anchor.payload, ...expanded } : expanded,
+    [anchor, expanded],
+  )
+  /** Effective expanded ids including the anchor (its badge reads −). */
+  const foldedIdsAll = useMemo(() => new Set(Object.keys(expandedAll)), [expandedAll])
   const nodes: GraphViewNode[] = useMemo(() => {
     /** Merge by id: a multi-type instance appears in several class payloads
      *  (james is both Manager and FullTimeEmployee) — feeding G6 duplicate
      *  node ids whited the page on the second reveal. First payload wins. */
     const byId = new Map<string, GraphViewNode>()
-    for (const n of data?.nodes ?? []) byId.set(n.id, n)
-    for (const p of Object.values(expanded))
+    const base: GraphViewNode[] = anchor ? [anchor.self] : (data?.nodes ?? [])
+    for (const n of base) byId.set(n.id, n)
+    for (const p of Object.values(expandedAll))
       for (const n of p.nodes as GraphViewNode[]) if (!byId.has(n.id)) byId.set(n.id, n)
     for (const p of Object.values(revealed))
       for (const n of (p?.nodes ?? []) as GraphViewNode[]) if (!byId.has(n.id)) byId.set(n.id, n)
@@ -306,7 +373,7 @@ export default function GraphOverview({
       if (hit) byId.set(focus, { ...hit, highlighted: true })
     }
     return [...byId.values()]
-  }, [data, focus, revealed, expanded, t])
+  }, [data, anchor, focus, revealed, expandedAll, t])
   /** Revealed instance eids across all badges — the assertion-edge scope:
    *  the backend joins every pair whose both ends are expanded. */
   const revealedIds = useMemo(
@@ -338,7 +405,7 @@ export default function GraphOverview({
       ...Object.values(revealed).flatMap((p) => p?.edges ?? []),
       ...(aEdges?.edges ?? []).map((e) => ({ ...e, kind: 'assertion' as const })),
     ],
-    [data, revealed, aEdges, expanded],
+    [data, revealed, aEdges, expandedAll, anchor],
   )
 
   if (isError) {
@@ -391,7 +458,7 @@ export default function GraphOverview({
           onSelect={reveal}
           onBadgeClick={(eid) => void toggleInstances(eid)}
           onFoldClick={(eid, folded) => void toggleFold(eid, folded)}
-          foldedIds={foldedIds}
+          foldedIds={foldedIdsAll}
           defaultKinds={{ classes: true, objectProps: false, dataProps: false }}
           savedPositions={
             layoutData ? { ...layoutData.positions, ...insertedPos } : undefined
@@ -402,6 +469,24 @@ export default function GraphOverview({
           extraControls={
             <>
               {lint.button}
+              <Toggle
+                variant="outline"
+                size="sm"
+                className="h-6 min-w-0 px-2 text-xs"
+                pressed={viewOverride === 'full'}
+                onPressedChange={(v) => setViewOverride(v ? 'full' : 'auto')}
+              >
+                {t('canvas.viewFull')}
+              </Toggle>
+              <Toggle
+                variant="outline"
+                size="sm"
+                className="h-6 min-w-0 px-2 text-xs"
+                pressed={viewOverride === 'progressive'}
+                onPressedChange={(v) => setViewOverride(v ? 'progressive' : 'auto')}
+              >
+                {t('canvas.viewProgressive')}
+              </Toggle>
               <Toggle
                 variant="outline"
                 size="sm"
