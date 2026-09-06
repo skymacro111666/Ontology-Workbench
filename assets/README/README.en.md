@@ -18,6 +18,7 @@
 - **Three-pane browsing** — class-tree, property, and prefix-URI sidebars plus instant search; silky-smooth virtualized scrolling even on huge ontologies
 - **Smart graph visualization** — canvas hosts local-neighbor and global-overview graphs, edges colored by semantics, node positions remembered after dragging
 - **Point-and-edit canvas** — right-click to create, edit, and delete classes and properties, no page-hopping needed
+- **Progressive canvas for huge ontologies** — past 2000 live classes the overview switches to folded roots (click the +/− badges to expand subtrees in place, with live subtree sizes); a toggle forces the full view; deprecated entities are filtered by default and browsable in one bucket
 - **Millisecond incremental commits** — every edit patches the in-memory index at once (read-your-writes); the file lands via a debounced background save (3s quiet period by default, tunable via `OW_AUTOSAVE_DEBOUNCE_S`)
 - **Crash-loss window ≤ 3s** — debounced saving plus flush-on-exit means a process crash loses at most the edits inside one quiet period (2026-09-05 design §6)
 - **Integrated source editing** — built-in editor with full find-and-replace
