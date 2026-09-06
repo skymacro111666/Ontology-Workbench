@@ -116,6 +116,30 @@ describe('GraphOverview layout persistence', () => {
     }
   })
 
+  it('a drag and its debounced save must not rebuild the canvas', async () => {
+    // Regression (6431f85): the inline {...saved, ...inserted} spread gave
+    // savedPositions a fresh reference every render, so the layout PUT's
+    // pending→success state flips destroyed and rebuilt the whole Graph —
+    // the viewport reset to origin and the canvas read blank until 适配.
+    vi.useFakeTimers()
+    try {
+      draw(stubFetch())
+      await waitForGraph()
+      const before = g6Instances().length
+      const g = lastG6()!
+      g.elementPositions = { a: { x: 42, y: 43 } }
+      g.handlers['node:dragend']({})
+      vi.advanceTimersByTime(800)
+      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(0)
+      // The PUT landed (positions persisted) yet no Graph was rebuilt.
+      expect(savedBody?.positions).toEqual({ a: { x: 42, y: 43 } })
+      expect(g6Instances().length).toBe(before)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('重排 DELETEs the row and remounts onto the auto pipeline', async () => {
     const fetchMock = stubFetch({ a: { x: 5, y: 6 } })
     draw(fetchMock)

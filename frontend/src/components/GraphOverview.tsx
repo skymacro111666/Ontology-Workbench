@@ -348,6 +348,15 @@ export default function GraphOverview({
   )
   /** Effective expanded ids including the anchor (its badge reads −). */
   const foldedIdsAll = useMemo(() => new Set(Object.keys(expandedAll)), [expandedAll])
+  /** Merged coordinate source for the canvas. Memoized: an inline spread
+   *  here re-keys the reference every render, and GraphView's build effect
+   *  compares by reference — the layout PUT's pending→success flips then
+   *  destroyed and rebuilt the whole Graph after every drag (viewport
+   *  reset → blank canvas until 适配; the regression test pins this). */
+  const savedPositions = useMemo(
+    () => (layoutData ? { ...layoutData.positions, ...insertedPos } : undefined),
+    [layoutData, insertedPos],
+  )
   const nodes: GraphViewNode[] = useMemo(() => {
     /** Merge by id: a multi-type instance appears in several class payloads
      *  (james is both Manager and FullTimeEmployee) — feeding G6 duplicate
@@ -467,9 +476,7 @@ export default function GraphOverview({
           onFoldClick={(eid, folded) => void toggleFold(eid, folded)}
           foldedIds={foldedIdsAll}
           defaultKinds={{ classes: true, objectProps: false, dataProps: false }}
-          savedPositions={
-            layoutData ? { ...layoutData.positions, ...insertedPos } : undefined
-          }
+          savedPositions={savedPositions}
           onLayoutChange={(positions) => saveLayout.mutate(positions)}
           onResetLayout={() => void resetLayout()}
           onContextMenu={(info) => setMenu(info)}
