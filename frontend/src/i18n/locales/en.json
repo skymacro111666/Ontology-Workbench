@@ -297,7 +297,8 @@
     "legend": "Legend",
     "showDeprecated": "Show deprecated",
     "deprecatedHidden": "{{count}} deprecated entities hidden",
-    "saveFailed": "Autosave failed — recent edits may not be on disk; keep editing or retry the save"
+    "saveFailed": "Autosave failed — recent edits may not be on disk; keep editing or retry the save",
+    "deprecatedBucket": "Deprecated", "prefixBucket": "Prefix group"
   },
   "pwd": {
     "lenRule": "The new password needs 8–128 characters",

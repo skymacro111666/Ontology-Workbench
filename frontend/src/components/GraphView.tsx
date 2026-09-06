@@ -127,15 +127,36 @@ export function hitBadge(hit: HitShape | null | undefined, node: unknown): boole
   return false
 }
 
+/** True when the hit shape sits inside the FOLD badge. G6 names badge
+ *  sub-shapes by array index ('badge-0', …) and ignores any className the
+ *  badge option carries, so the fold badge must be badges[0] and this only
+ *  ever fires for folded nodes (plain nodes put the instance badge there). */
+export function hitFold(hit: HitShape | null | undefined, node: unknown): boolean {
+  let shape: HitShape | null | undefined = hit
+  while (shape && shape !== node) {
+    if (typeof shape.className === 'string' && shape.className === 'badge-0') return true
+    shape = shape.parentElement
+  }
+  return false
+}
+
+/** Bucket kinds render as large dashed rectangles (spec §5.2). */
+const isBucket = (kind: string) => kind === 'deprecatedBucket' || kind === 'prefixBucket'
+
 /** Card style (mockup): classes get a solid grey border, property nodes a
  *  dashed violet one (kind encoded in the border), and the highlighted
  *  entity a 2px primary border. Node labels prefer rdfs:label, falling
  *  back to the curie's local name; the inspector carries the full curie.
  *  Instances (on-demand badge reveal) render as small grey circles beside
  *  their class. */
-export function toG6Nodes(nodes: GraphViewNode[], t: CanvasTokens): NodeData[] {
+export function toG6Nodes(
+  nodes: GraphViewNode[],
+  t: CanvasTokens,
+  foldedIds?: Set<string>,
+): NodeData[] {
   return nodes.map((n) => {
     const isProperty = n.kind === 'property'
+    const bucket = isBucket(n.kind)
     const focused = !!n.highlighted
     // 节点显示名 rdfs:label 优先,缺失回退 curie 局部名。
     const human = Object.values(n.label ?? {})[0]
@@ -156,9 +177,9 @@ export function toG6Nodes(nodes: GraphViewNode[], t: CanvasTokens): NodeData[] {
         },
       }
     }
-    const w = Math.min(220, Math.max(72, Math.round(name.length * 6.6 + 26)))
+    const w = bucket ? 168 : Math.min(220, Math.max(72, Math.round(name.length * 6.6 + 26)))
     const style: Record<string, unknown> = {
-      size: [w, 32],
+      size: bucket ? [w, 40] : [w, 32],
       radius: 8,
       fill: t.panel,
       stroke: focused ? t.primary : isProperty ? t.edgeSub : t.line,
@@ -167,25 +188,39 @@ export function toG6Nodes(nodes: GraphViewNode[], t: CanvasTokens): NodeData[] {
       shadowBlur: 4,
       labelText: name,
       labelFill: focused ? t.primary : t.ink,
-      labelFontSize: 12,
-      labelFontWeight: focused ? 700 : 400,
+      labelFontSize: bucket ? 13 : 12,
+      labelFontWeight: focused ? 700 : bucket ? 600 : 400,
       labelPlacement: 'center',
     }
-    if (isProperty && !focused) style.lineDash = [4, 3]
-    // Badge = the class's direct instances; clicking it reveals them.
-    if ((n.instanceCount ?? 0) > 0) {
-      style.badges = [
-        {
-          text: String(n.instanceCount),
-          placement: 'right-top',
-          backgroundFill: t.primary,
-          fill: t.primaryFg,
-          fontSize: 9,
-          padding: [2, 5],
-          cursor: 'pointer',
-        },
-      ]
+    if ((isProperty || bucket) && !focused) style.lineDash = bucket ? [6, 4] : [4, 3]
+    // Badges, in a FIXED ORDER: fold first (badge-0, hitFold's index
+    // contract), then the instance count (badge-1). The fold badge flips
+    // between + and − as foldedIds (currently expanded nodes) changes.
+    const badges: Record<string, unknown>[] = []
+    if (n.folded) {
+      const sign = foldedIds?.has(n.id) ? '−' : '+'
+      badges.push({
+        text: `${sign}${n.subtreeSize ?? 1}`,
+        placement: 'left-top',
+        backgroundFill: t.edgeSub,
+        fill: t.primaryFg,
+        fontSize: 9,
+        padding: [2, 5],
+        cursor: 'pointer',
+      })
     }
+    if ((n.instanceCount ?? 0) > 0) {
+      badges.push({
+        text: String(n.instanceCount),
+        placement: 'right-top',
+        backgroundFill: t.primary,
+        fill: t.primaryFg,
+        fontSize: 9,
+        padding: [2, 5],
+        cursor: 'pointer',
+      })
+    }
+    if (badges.length) style.badges = badges
     return { id: n.id, data: { kind: n.kind, curie: n.curie }, style }
   })
 }
@@ -308,11 +343,12 @@ function buildData(
   kinds: KindFilter,
   showLabels: boolean,
   t: CanvasTokens,
+  foldedIds?: Set<string>,
 ): GraphData {
   const visible = visibleOf(nodes, kinds)
   const ids = new Map(visible.map((n) => [n.id, n.curie]))
   return {
-    nodes: toG6Nodes(visible, t),
+    nodes: toG6Nodes(visible, t, foldedIds),
     edges: toG6Edges(shownEdges(edges, kinds), ids, showLabels, t),
   }
 }
@@ -328,6 +364,7 @@ export default function GraphView({
   edges,
   onSelect,
   onBadgeClick,
+  onFoldClick,
   height = '100%',
   focusId,
   showControls = true,
@@ -339,12 +376,18 @@ export default function GraphView({
   onResetLayout,
   onContextMenu,
   extraControls,
+  foldedIds,
 }: {
   nodes: GraphViewNode[]
   edges: GEdge[]
   onSelect?: (eid: string) => void
   /** Badge (instance-count) click; default no-op. */
   onBadgeClick?: (eid: string) => void
+  /** Fold-badge click (progressive canvas); folded=true means "expand me".
+   *  Default no-op: without it fold badges render but select nothing. */
+  onFoldClick?: (eid: string, folded: boolean) => void
+  /** Currently expanded fold ids — flips their badge from + to −. */
+  foldedIds?: Set<string>
   height?: number | string
   /** Optional entity to fit-view onto (overview focus param). */
   focusId?: string
@@ -404,6 +447,10 @@ export default function GraphView({
   useEffect(() => {
     onBadgeClickRef.current = onBadgeClick
   })
+  const onFoldClickRef = useRef(onFoldClick)
+  useEffect(() => {
+    onFoldClickRef.current = onFoldClick
+  })
   const onLayoutChangeRef = useRef(onLayoutChange)
   useEffect(() => {
     onLayoutChangeRef.current = onLayoutChange
@@ -414,9 +461,9 @@ export default function GraphView({
   })
   // Latest state for the build effect (its deps are narrower than the state).
   // Updated in a render-following effect declared before everything else.
-  const stateRef = useRef({ nodes, edges, showLabels, kinds, focusId })
+  const stateRef = useRef({ nodes, edges, showLabels, kinds, focusId, foldedIds })
   useEffect(() => {
-    stateRef.current = { nodes, edges, showLabels, kinds, focusId }
+    stateRef.current = { nodes, edges, showLabels, kinds, focusId, foldedIds }
   })
   // Change-driven effects (label toggle, kind filter) must not fire on mount:
   // the build effect already rendered the current state. For a 5000-node
@@ -460,7 +507,7 @@ export default function GraphView({
     } else {
       positionsRef.current = {}
     }
-    const data = buildData(snap.nodes, snap.edges, snap.kinds, snap.showLabels, t)
+    const data = buildData(snap.nodes, snap.edges, snap.kinds, snap.showLabels, t, foldedIds)
     edgePropRef.current = new Map(
       (data.edges ?? []).map((ed) => [
         ed.id as string,
@@ -520,8 +567,13 @@ export default function GraphView({
       const evt = e as IPointerEvent & { originalTarget?: HitShape | null }
       const id = evt.target ? (evt.target as unknown as { id: string }).id : undefined
       if (!id) return
-      // The badge click (any badge-* shape) reveals instances; the body selects.
-      if (hitBadge(evt.originalTarget, evt.target)) onBadgeClickRef.current?.(id)
+      // Click routing, most specific first: the fold badge (badge-0 on a
+      // folded node) expands/collapses; the instance badge reveals; the
+      // body selects.
+      const datum = snap.nodes.find((nd) => nd.id === id)
+      if (datum?.folded && hitFold(evt.originalTarget, evt.target)) {
+        onFoldClickRef.current?.(id, !snap.foldedIds?.has(id))
+      } else if (hitBadge(evt.originalTarget, evt.target)) onBadgeClickRef.current?.(id)
       else onSelectRef.current?.(id)
     })
 
@@ -609,7 +661,7 @@ export default function GraphView({
       mount.remove()
       graphRef.current = null
     }
-  }, [nodes, edges, resolved, savedPositions])
+  }, [nodes, edges, resolved, savedPositions, foldedIds])
 
   /** Edge-label toggle without rebuilding (keeps dragged positions). */
   useEffect(() => {

@@ -156,6 +156,12 @@ export interface GNode {
   instanceCount?: number
   /** Property subtype (ObjectProperty / DatatypeProperty) — canvas filter key. */
   ptype?: string
+  /** Progressive canvas: fold badge size (subtree incl. the node itself). */
+  subtreeSize?: number
+  /** owl:deprecated flag (deprecated-bucket nodes and hidden children). */
+  deprecated?: boolean
+  /** The node renders a fold badge (progressive overview / expand payloads). */
+  folded?: boolean
 }
 
 /** Graph edge; kind encodes the relation (subClassOf / property / datatype / instance). */
@@ -177,6 +183,10 @@ export interface NodesEdges {
   totalCount?: number
   /** Entities hidden by the default deprecated filter (overview note bar). */
   deprecatedCount?: number
+  /** Progressive tiering: 'progressive' serves folded roots (spec §3). */
+  mode?: 'full' | 'progressive'
+  /** Non-deprecated entity count (tiering signal + note bar). */
+  liveCount?: number
 }
 
 /** List item from GET /api/ontologies. */

@@ -107,6 +107,25 @@ function menuItems(
   ]
 }
 
+/** Descendants an eid's collapse must remove: every node reachable from it
+ *  against the collected expand edges (child→parent direction), not the eid
+ *  itself — nested expanded folds ride along through their root edges. */
+function collectSubtree(root: string, expanded: Record<string, NodesEdges>): Set<string> {
+  const out = new Set<string>()
+  const childEdges = Object.values(expanded).flatMap((p) => p.edges)
+  const stack = [root]
+  while (stack.length) {
+    const cur = stack.pop()!
+    for (const e of childEdges) {
+      if (e.target === cur && !out.has(e.source)) {
+        out.add(e.source)
+        stack.push(e.source)
+      }
+    }
+  }
+  return out
+}
+
 /** Whole-ontology overview canvas — the workspace's single content view;
  *  degrades to the top 3 levels past 5000 entities (spec §7.5). Label switch
  *  and kind filter render as the canvas's in-canvas overlay controls. The
@@ -213,20 +232,64 @@ export default function GraphOverview({
     }
   }
 
+  /** Progressive canvas (spec §5): expanded fold payloads per eid. Expanding
+   *  fetches /expand and merges; collapsing collects the expanded subtree
+   *  (along the expand edges, nested folds included) and removes it. */
+  const [expanded, setExpanded] = useState<Record<string, NodesEdges>>({})
+  const toggleFold = async (eid: string, folded: boolean) => {
+    if (!folded) {
+      const doomed = collectSubtree(eid, expanded)
+      setExpanded((prev) => {
+        const next = { ...prev }
+        delete next[eid]
+        for (const d of doomed) delete next[d]
+        return next
+      })
+      // Instances revealed inside the folded-away subtree leave with it.
+      setRevealed((prev) => {
+        const next = { ...prev }
+        for (const d of doomed) delete next[d]
+        return next
+      })
+      return
+    }
+    try {
+      const payload = await api.get<NodesEdges>(
+        `/api/ontologies/${oid}/entities/${encodeURIComponent(eid)}/expand`,
+      )
+      setExpanded((prev) => ({ ...prev, [eid]: payload }))
+    } catch {
+      // Failed expand: no state moved, the badge stays a retry-able +.
+    }
+  }
+  const foldedIds = useMemo(() => new Set(Object.keys(expanded)), [expanded])
+
   const nodes: GraphViewNode[] = useMemo(() => {
     /** Merge by id: a multi-type instance appears in several class payloads
      *  (james is both Manager and FullTimeEmployee) — feeding G6 duplicate
      *  node ids whited the page on the second reveal. First payload wins. */
     const byId = new Map<string, GraphViewNode>()
     for (const n of data?.nodes ?? []) byId.set(n.id, n)
+    for (const p of Object.values(expanded))
+      for (const n of p.nodes as GraphViewNode[]) if (!byId.has(n.id)) byId.set(n.id, n)
     for (const p of Object.values(revealed))
       for (const n of (p?.nodes ?? []) as GraphViewNode[]) if (!byId.has(n.id)) byId.set(n.id, n)
+    // Bucket labels are i18n, not data: the backend ships label:{} and the
+    // canvas's name fallback (localName of the sentinel curie) would read
+    // "__deprecated__" — inject the translated bucket name (copied, never
+    // mutating the query-cache payload objects in place).
+    for (const n of byId.values()) {
+      if (n.kind === 'deprecatedBucket')
+        byId.set(n.id, { ...n, label: { '': t('canvas.deprecatedBucket') } })
+      else if (n.kind === 'prefixBucket')
+        byId.set(n.id, { ...n, label: { '': t('canvas.prefixBucket') } })
+    }
     if (focus) {
       const hit = byId.get(focus)
       if (hit) byId.set(focus, { ...hit, highlighted: true })
     }
     return [...byId.values()]
-  }, [data, focus, revealed])
+  }, [data, focus, revealed, expanded, t])
   /** Revealed instance eids across all badges — the assertion-edge scope:
    *  the backend joins every pair whose both ends are expanded. */
   const revealedIds = useMemo(
@@ -254,10 +317,11 @@ export default function GraphOverview({
   const edges = useMemo(
     () => [
       ...(data?.edges ?? []),
+      ...Object.values(expanded).flatMap((p) => p.edges),
       ...Object.values(revealed).flatMap((p) => p?.edges ?? []),
       ...(aEdges?.edges ?? []).map((e) => ({ ...e, kind: 'assertion' as const })),
     ],
-    [data, revealed, aEdges],
+    [data, revealed, aEdges, expanded],
   )
 
   if (isError) {
@@ -309,6 +373,8 @@ export default function GraphOverview({
           focusId={focus ?? undefined}
           onSelect={reveal}
           onBadgeClick={(eid) => void toggleInstances(eid)}
+          onFoldClick={(eid, folded) => void toggleFold(eid, folded)}
+          foldedIds={foldedIds}
           defaultKinds={{ classes: true, objectProps: false, dataProps: false }}
           savedPositions={layoutData?.positions}
           onLayoutChange={(positions) => saveLayout.mutate(positions)}

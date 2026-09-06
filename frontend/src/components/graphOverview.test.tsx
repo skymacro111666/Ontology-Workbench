@@ -8,7 +8,7 @@ import type { Envelope, NodesEdges } from '../api/types'
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
 import { ThemeProvider } from '../theme/ThemeProvider'
-import { lastG6, resetG6 } from '../test/g6Mock'
+import { g6Instances, lastG6, resetG6 } from '../test/g6Mock'
 import GraphOverview from './GraphOverview'
 
 /* The overview owns the layout query: it waits for GET /layout before
@@ -401,3 +401,95 @@ function waitForGraph() {
     if (!lastG6()) throw new Error('graph not mounted yet')
   })
 }
+
+/* Task 15 (progressive canvas): the overview serves folded roots; clicking
+   the fold badge expands via GET /expand and merges the children in, clicking
+   again collects the expanded subtree and removes it. */
+
+describe('GraphOverview progressive fold', () => {
+  const PROG: NodesEdges = {
+    nodes: [
+      { id: 'root', curie: 'ex:Root', label: {}, kind: 'class', folded: true, subtreeSize: 3 },
+      {
+        id: '__deprecated__',
+        curie: '__deprecated__',
+        label: {},
+        kind: 'deprecatedBucket',
+        folded: true,
+        subtreeSize: 2,
+      },
+    ],
+    edges: [],
+    truncated: false,
+    totalCount: 5,
+    mode: 'progressive',
+    liveCount: 3,
+    deprecatedCount: 2,
+  }
+  const EXPAND: NodesEdges = {
+    nodes: [{ id: 'kid', curie: 'ex:Kid', label: {}, kind: 'class', folded: true, subtreeSize: 1 }],
+    edges: [{ source: 'kid', target: 'root', kind: 'subClassOf' }],
+    truncated: false,
+    totalCount: 1,
+  }
+
+  function drawProgressive() {
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/overview')) return env(PROG)
+      if (u.includes('/expand')) return env(EXPAND)
+      if (u.endsWith('/layout') && init?.method === 'PUT') {
+        savedBody = JSON.parse(String(init.body))
+        return env(savedBody)
+      }
+      return env({ positions: {} })
+    })
+    draw(fetchMock)
+    return fetchMock
+  }
+
+  it('serves folded roots; the bucket label reads 已废弃', async () => {
+    drawProgressive()
+    await waitForGraph()
+    const ids = () =>
+      (
+        lastG6()!.options.data as {
+          nodes: { id: string; style?: { badges?: { text: string }[]; labelText?: string } }[]
+        }
+      ).nodes
+    expect(ids().map((n) => n.id)).toEqual(['root', '__deprecated__'])
+    expect(ids()[0].style?.badges?.[0].text).toBe('+3')
+    expect(ids()[1].style?.badges?.[0].text).toBe('+2')
+    expect(ids()[1].style?.labelText).toBe('已废弃')
+  })
+
+  it('fold click fetches /expand and merges children; clicking again removes them', async () => {
+    const fetchMock = drawProgressive()
+    await waitForGraph()
+    const g = lastG6()!
+    // Wait for the rebuilt graph (a new Graph mounts per data change).
+    g.handlers['node:click']({
+      target: { id: 'root' },
+      originalTarget: { className: 'badge-0' },
+    })
+    await vi.waitFor(() => {
+      const latest = [...g6Instances()].at(-1)!
+      const got = (latest.options.data as { nodes: { id: string }[] }).nodes.map((n) => n.id)
+      expect(got).toEqual(['root', '__deprecated__', 'kid'])
+    })
+    expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/entities/root/expand'))).toBe(
+      true,
+    )
+    // Collapse: the subtree under root leaves the canvas again.
+    const latest = [...g6Instances()].at(-1)!
+    latest.handlers['node:click']({
+      target: { id: 'root' },
+      originalTarget: { className: 'badge-0' },
+    })
+    await vi.waitFor(() => {
+      const after = [...g6Instances()].at(-1)!
+      const got = (after.options.data as { nodes: { id: string }[] }).nodes.map((n) => n.id)
+      expect(got).toEqual(['root', '__deprecated__'])
+    })
+  })
+})

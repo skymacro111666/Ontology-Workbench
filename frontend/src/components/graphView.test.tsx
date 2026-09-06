@@ -655,3 +655,98 @@ describe('instance isolation across rebuilds (dev double-mount safety)', () => {
     expect(second).not.toBe(first)
   })
 })
+
+/* Task 15 (progressive canvas): folded nodes carry a fold badge — always
+   badges[0] → G6 shape className 'badge-0' — so hitFold keys on the index
+   and only fires for folded nodes (plain class nodes put the instance badge
+   at the same index). Buckets render as large dashed rectangles. */
+
+describe('GraphView fold badges (progressive canvas)', () => {
+  const FOLD_NODES: GraphViewNode[] = [
+    {
+      id: 'r',
+      curie: 'ex:Root',
+      label: {},
+      kind: 'class',
+      folded: true,
+      subtreeSize: 5,
+      instanceCount: 2,
+    },
+    {
+      id: 'dep',
+      curie: '__deprecated__',
+      label: {},
+      kind: 'deprecatedBucket',
+      folded: true,
+      subtreeSize: 9,
+    },
+  ]
+
+  it('renders the fold badge first (+size); buckets get dashed large rects', () => {
+    render(
+      <ThemeProvider>
+        <GraphView nodes={FOLD_NODES} edges={[]} />
+      </ThemeProvider>,
+    )
+    const root = lastData().nodes.find((n) => n.id === 'r')!
+    expect(root.style.badges?.[0].text).toBe('+5')
+    expect(root.style.badges?.[1].text).toBe('2') // instance badge stays second
+    const dep = lastData().nodes.find((n) => n.id === 'dep')!
+    expect(dep.style.badges?.[0].text).toBe('+9')
+    expect(dep.style.lineDash).toEqual([6, 4])
+    expect((dep.style.size as [number, number])[0]).toBeGreaterThan(140)
+  })
+
+  it('flips the badge to −size for ids inside foldedIds', () => {
+    render(
+      <ThemeProvider>
+        <GraphView nodes={FOLD_NODES} edges={[]} foldedIds={new Set(['r'])} />
+      </ThemeProvider>,
+    )
+    const root = lastData().nodes.find((n) => n.id === 'r')!
+    expect(root.style.badges?.[0].text).toBe('−5')
+    const dep = lastData().nodes.find((n) => n.id === 'dep')!
+    expect(dep.style.badges?.[0].text).toBe('+9')
+  })
+
+  it('routes badge-0 hits on folded nodes to onFoldClick, not select/badge', () => {
+    const onSelect = vi.fn()
+    const onBadgeClick = vi.fn()
+    const onFoldClick = vi.fn()
+    render(
+      <ThemeProvider>
+        <GraphView
+          nodes={FOLD_NODES}
+          edges={[]}
+          onSelect={onSelect}
+          onBadgeClick={onBadgeClick}
+          onFoldClick={onFoldClick}
+        />
+      </ThemeProvider>,
+    )
+    const g = lastG6() as MockGraph
+    g.handlers['node:click']({
+      target: { id: 'r' },
+      originalTarget: { className: 'badge-0' },
+    })
+    expect(onFoldClick).toHaveBeenCalledWith('r', true)
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(onBadgeClick).not.toHaveBeenCalled()
+    // The instance badge (badge-1) on the same folded node still reveals.
+    g.handlers['node:click']({
+      target: { id: 'r' },
+      originalTarget: { className: 'badge-1' },
+    })
+    expect(onBadgeClick).toHaveBeenCalledWith('r')
+    // A body click on the folded node selects as usual.
+    g.handlers['node:click']({ target: { id: 'r' }, originalTarget: { className: 'key' } })
+    expect(onSelect).toHaveBeenCalledWith('r')
+    // Context menu ignores fold-badge hits (same doctrine as instance badges).
+    g.handlers['node:contextmenu']({
+      target: { id: 'r' },
+      originalTarget: { className: 'badge-0' },
+      preventDefault: vi.fn(),
+    })
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+})
