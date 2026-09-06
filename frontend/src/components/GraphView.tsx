@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Graph } from '@antv/g6'
 import type { EdgeData, GraphData, IPointerEvent, NodeData } from '@antv/g6'
 import type { GEdge, GNode } from '../api/types'
-import { FAST_LAYOUT_NODES, MIN_AUTO_ZOOM, linearTreePositions } from './linearTree'
+import { FAST_LAYOUT_NODES, MAX_AUTO_ZOOM, MIN_AUTO_ZOOM, linearTreePositions } from './linearTree'
 import type { WrapEdge, WrapNode } from './wrapRanks'
 import { localName } from '../lib/localName'
 import { cn } from '@/lib/utils'
@@ -640,10 +640,14 @@ export default function GraphView({
           // Folded oversized maps tower over the viewport (36k px tall): a raw
           // fitView lands near 2% zoom where cards are invisible dots. Clamp
           // to a readable floor around the viewport center; panning/zoom-out
-          // still covers the whole map.
+          // still covers the whole map. Tiny folded overviews fit the other
+          // way — past 100% the cards balloon and the block resizes on every
+          // expand — so an oversized fit pulls back to the ceiling.
           void graph.fitView().then(() => {
-            if (graph.getZoom() >= MIN_AUTO_ZOOM) return
-            return graph.zoomTo(MIN_AUTO_ZOOM).then(() => {
+            const zoom = graph.getZoom()
+            if (zoom >= MIN_AUTO_ZOOM && zoom <= MAX_AUTO_ZOOM) return undefined
+            const target = zoom < MIN_AUTO_ZOOM ? MIN_AUTO_ZOOM : MAX_AUTO_ZOOM
+            return graph.zoomTo(target).then(() => {
               setZoomPct(Math.round(graph.getZoom() * 100))
             })
           })
@@ -737,6 +741,8 @@ export default function GraphView({
     const g = graphRef.current
     if (!g) return
     await g.fitView()
+    // Same ceiling as the auto fit: 适配 means "all visible", not enlarged.
+    if (g.getZoom() > MAX_AUTO_ZOOM) await g.zoomTo(MAX_AUTO_ZOOM)
     setZoomPct(Math.round(g.getZoom() * 100))
   }
 

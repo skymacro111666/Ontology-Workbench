@@ -135,6 +135,8 @@ export interface TreeNode {
   childrenCount: number
   /** Direct named individuals of a class (sidebar badge). */
   instanceCount?: number
+  /** owl:deprecated (the sidebar's 已废弃 tab rows render struck through). */
+  deprecated?: boolean
 }
 
 /** One search result with the field that matched (GET /search). */

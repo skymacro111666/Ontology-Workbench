@@ -750,3 +750,37 @@ describe('GraphView fold badges (progressive canvas)', () => {
     expect(onSelect).toHaveBeenCalledTimes(1)
   })
 })
+
+/* F2: fitView has a zoom CEILING symmetric to its floor — a 3-node folded
+   overview must not blow the cards up to viewport size, and 展开/收起 must
+   not make the visible block size jump around. */
+
+describe('GraphView fit zoom ceiling', () => {
+  it('clamps an over-100% auto fit back to MAX_AUTO_ZOOM', async () => {
+    render(
+      <ThemeProvider>
+        <GraphView nodes={NODES.slice(0, 2)} edges={[]} />
+      </ThemeProvider>,
+    )
+    const g = lastG6() as MockGraph
+    // The engine reports an oversized fit (few nodes fill the viewport).
+    g.getZoom = vi.fn(() => 4.2)
+    g.zoomTo.mockClear()
+    await vi.waitFor(() => expect(g.zoomTo).toHaveBeenCalled())
+    expect(g.zoomTo).toHaveBeenLastCalledWith(1)
+  })
+
+  it('keeps a sub-100% fit untouched (only the floor applies)', async () => {
+    render(
+      <ThemeProvider>
+        <GraphView nodes={NODES} edges={EDGES} />
+      </ThemeProvider>,
+    )
+    const g = lastG6() as MockGraph
+    g.getZoom = vi.fn(() => 0.8)
+    g.zoomTo.mockClear()
+    await vi.waitFor(() => expect(g.fitView).toHaveBeenCalled())
+    await new Promise((r) => setTimeout(r, 30))
+    expect(g.zoomTo).not.toHaveBeenCalled()
+  })
+})

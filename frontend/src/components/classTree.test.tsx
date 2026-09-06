@@ -228,6 +228,28 @@ describe('ClassTree', () => {
     )
   })
 
+  it('lists deprecated classes on the 已废弃 tab, struck through', async () => {
+    const mock = vi.fn(async (url: string | URL) => {
+      const u = String(url)
+      if (u.endsWith('/meta')) return ok(META)
+      if (u.includes('parent=__deprecated__')) {
+        return ok([
+          { ...node('http://example.org/Dead', 'ex:Dead', 0), deprecated: true },
+          { ...node('http://example.org/Gone', 'ex:Gone', 2), deprecated: true },
+        ])
+      }
+      if (u.endsWith('/tree')) return ok([node(THING, 'ex:Thing', 1)])
+      throw new Error(`unmocked url: ${u}`)
+    })
+    renderTree(mock)
+    await screen.findByText('Thing')
+    await userEvent.click(screen.getByRole('button', { name: '已废弃' }))
+    expect(mock.mock.calls.some(([u]) => String(u).includes('parent=__deprecated__'))).toBe(true)
+    const dead = await screen.findByText('Dead')
+    expect(dead.className).toContain('line-through')
+    expect(dead.className).toContain('text-ink-3')
+  })
+
   it('renders the prefix table from ontology meta', async () => {
     const fetchMock = stubFetch()
     renderTree(fetchMock)

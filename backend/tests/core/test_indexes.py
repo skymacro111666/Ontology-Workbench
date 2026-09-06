@@ -662,3 +662,23 @@ def test_expand_prefix_bucket_lists_that_prefixes_roots() -> None:
     assert payload["truncated"] is False
     capped = ix.expand("__prefix__:p3", cap=3)
     assert len(capped["nodes"]) == 3 and capped["truncated"] is True
+
+
+def test_tree_deprecated_bucket_lists_deprecated_classes() -> None:
+    """tree(__deprecated__) serves the sidebar's deprecated tab.
+
+    Every deprecated class flat, flagged, regardless of include_deprecated.
+    """
+    ttl = MINI_DEPREC + ":Zombie a owl:Class ; owl:deprecated true .\n"
+    ix = build_indexes(_ir(ttl))
+    rows = ix.tree(DEPRECATED_BUCKET)
+    assert [r.curie for r in rows] == [":Dead", ":Zombie"]
+    assert all(r.deprecated is True for r in rows)
+    # The bucket lists them even with the default filter on (the request
+    # itself is the intent).
+    assert [r.curie for r in ix.tree(DEPRECATED_BUCKET, include_deprecated=False)] == [
+        ":Dead",
+        ":Zombie",
+    ]
+    # Deprecated individuals/properties never join (classes only).
+    assert all(r.type == "Class" for r in rows)

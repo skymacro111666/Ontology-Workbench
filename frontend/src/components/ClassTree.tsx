@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
 type ChildMap = Record<string, TreeNode[]>
-type Tab = 'classes' | 'props' | 'prefixes'
+type Tab = 'classes' | 'props' | 'prefixes' | 'deprecated'
 
 /** react-arborist row: a TreeNode plus children (absent = leaf, [] = not loaded). */
 type TreeRow = TreeNode & { children?: TreeRow[] }
@@ -91,7 +91,14 @@ function ClassRow({ node, style }: NodeRendererProps<TreeRow>) {
       )}
       <span
         title={node.data.curie}
-        className={cn('truncate', node.isSelected && 'font-mono')}
+        className={cn(
+          'truncate',
+          node.isSelected && 'font-mono',
+          // Deprecated rows read struck-through + dimmed (user call
+          // 2026-09-06): the archive state is visible at a glance without
+          // a per-row badge eating the row's width.
+          node.data.deprecated && 'text-ink-3 line-through',
+        )}
       >
         {localName(node.data.curie)}
       </span>
@@ -140,6 +147,13 @@ export default function ClassTree({ oid }: { oid: string }) {
     queryKey: ['tree', oid, '__props__'],
     queryFn: () => api.get<TreeNode[]>(`/api/ontologies/${oid}/tree?parent=__props__`),
     enabled: tab === 'props',
+  })
+  // F4 (user call 2026-09-06): deprecated classes live here, off the canvas.
+  // A flat virtualized list handles GO-scale counts (13k+) fine.
+  const { data: deprecatedNodes } = useQuery({
+    queryKey: ['tree', oid, '__deprecated__'],
+    queryFn: () => api.get<TreeNode[]>(`/api/ontologies/${oid}/tree?parent=__deprecated__`),
+    enabled: tab === 'deprecated',
   })
   const { data: meta } = useQuery({
     queryKey: ['ontology', oid],
@@ -225,6 +239,7 @@ export default function ClassTree({ oid }: { oid: string }) {
 
   const classRows = useMemo(() => toRows(roots ?? [], childMap), [roots, childMap])
   const propRows = useMemo(() => toRows(propNodes ?? [], {}), [propNodes])
+  const deprecatedRows = useMemo(() => toRows(deprecatedNodes ?? [], {}), [deprecatedNodes])
 
   // The selection prop applies once per change; re-assert when rows arrive so
   // late loads (deep link, lazy expand) still show the highlight. Guarded by
@@ -259,6 +274,7 @@ export default function ClassTree({ oid }: { oid: string }) {
     ['classes', t('tree.tabClasses')],
     ['props', t('tree.tabProps')],
     ['prefixes', t('tree.tabPrefixes')],
+    ['deprecated', t('tree.tabDeprecated')],
   ]
 
   return (
@@ -315,6 +331,11 @@ export default function ClassTree({ oid }: { oid: string }) {
         </div>
         {tab === 'props' && (
           <Tree ref={propTreeRef} data={propRows} aria-label={t('tree.propList')} {...shared}>
+            {ClassRow}
+          </Tree>
+        )}
+        {tab === 'deprecated' && (
+          <Tree data={deprecatedRows} aria-label={t('tree.tabDeprecated')} {...shared}>
             {ClassRow}
           </Tree>
         )}

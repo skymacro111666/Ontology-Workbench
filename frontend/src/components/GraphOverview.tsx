@@ -162,8 +162,10 @@ export default function GraphOverview({
    *  persisted — the overview refetches through the includeDeprecated param. */
   const [showDeprecated, setShowDeprecated] = useState(false)
   /** Session-level tiering override (spec §3): 'auto' follows liveCount,
-   *  the toggles force the legacy walk or the folded view. */
-  const [viewOverride, setViewOverride] = useState<'auto' | 'full' | 'progressive'>('auto')
+   *  the toggle forces the folded view (the legacy full walk stays an API
+   *  capability — user call 2026-09-06: its truncated 5000-node canvas
+   *  read worse than the folded one, so the button is gone). */
+  const [viewOverride, setViewOverride] = useState<'auto' | 'progressive'>('auto')
   const { data, isError, error, refetch } = useQuery({
     queryKey: ['overview', oid, showDeprecated, viewOverride],
     queryFn: () =>
@@ -356,6 +358,11 @@ export default function GraphOverview({
     for (const n of base) byId.set(n.id, n)
     for (const p of Object.values(expandedAll))
       for (const n of p.nodes as GraphViewNode[]) if (!byId.has(n.id)) byId.set(n.id, n)
+    // F4 (user call 2026-09-06): deprecated nodes live in the left sidebar's
+    // 已废弃 tab, never as a canvas bucket — drop them from every source.
+    for (const id of [...byId.keys()]) {
+      if (byId.get(id)?.kind === 'deprecatedBucket') byId.delete(id)
+    }
     for (const p of Object.values(revealed))
       for (const n of (p?.nodes ?? []) as GraphViewNode[]) if (!byId.has(n.id)) byId.set(n.id, n)
     // Bucket labels are i18n, not data: the backend ships label:{} and the
@@ -440,13 +447,14 @@ export default function GraphOverview({
           {t('canvas.truncatedNote', { total: data.totalCount })}
         </div>
       )}
-      {/* Hidden-deprecated count hint: only while the filter keeps them out. */}
+      {/* Hidden-deprecated hint: points at the sidebar's 已废弃 tab (F4),
+       *  only while the canvas filter keeps them out of the hierarchy. */}
       {!showDeprecated && (data.deprecatedCount ?? 0) > 0 && (
         <div
           role="status"
           className="border-primary-border bg-primary-soft text-ink-2 rounded-ctl shrink-0 border px-3 py-2 text-sm"
         >
-          {t('canvas.deprecatedHidden', { count: data.deprecatedCount })}
+          {t('canvas.deprecatedSidebar', { count: data.deprecatedCount })}
         </div>
       )}
       <div className="relative min-h-0 flex-1">
@@ -469,15 +477,6 @@ export default function GraphOverview({
           extraControls={
             <>
               {lint.button}
-              <Toggle
-                variant="outline"
-                size="sm"
-                className="h-6 min-w-0 px-2 text-xs"
-                pressed={viewOverride === 'full'}
-                onPressedChange={(v) => setViewOverride(v ? 'full' : 'auto')}
-              >
-                {t('canvas.viewFull')}
-              </Toggle>
               <Toggle
                 variant="outline"
                 size="sm"

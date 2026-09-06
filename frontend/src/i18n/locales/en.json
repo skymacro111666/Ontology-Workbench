@@ -112,6 +112,7 @@
     "tabClasses": "Classes",
     "tabProps": "Properties",
     "tabPrefixes": "Namespaces",
+    "tabDeprecated": "Deprecated",
     "searchPlaceholder": "Search classes / properties / comments…",
     "classTree": "Class tree",
     "propList": "Property list"
@@ -296,10 +297,10 @@
     "filterData": "Data",
     "legend": "Legend",
     "showDeprecated": "Show deprecated",
-    "deprecatedHidden": "{{count}} deprecated entities hidden",
+    "deprecatedSidebar": "{{count}} deprecated nodes live in the left sidebar’s Deprecated tab",
     "saveFailed": "Autosave failed — recent edits may not be on disk; keep editing or retry the save",
     "deprecatedBucket": "Deprecated", "prefixBucket": "Prefix group",
-    "viewFull": "Full view", "viewProgressive": "Progressive"
+    "viewProgressive": "Progressive"
   },
   "pwd": {
     "lenRule": "The new password needs 8–128 characters",

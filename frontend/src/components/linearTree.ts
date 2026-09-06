@@ -14,6 +14,13 @@ export const FAST_LAYOUT_NODES = 1000
  *  viewport center (the whole map is still reachable via zoom-out/pan). */
 export const MIN_AUTO_ZOOM = 0.3
 
+/** Post-fitView zoom ceiling: a folded progressive overview can hold just
+ *  3 root cards, and a raw fit blows them up to fill the viewport — the
+ *  visible block then resizes wildly on every expand/collapse (user report
+ *  2026-09-06). Fitting means "everything visible", never "enlarged":
+ *  anything past 100% pulls back to this ceiling. */
+export const MAX_AUTO_ZOOM = 1
+
 /** Fold options shared with the dagre pipeline's rank-wrap stage, so both
  *  auto paths produce the same org-chart rhythm. */
 const WRAP_OPTS: WrapOptions = { rowGap: 24, rankGap: 90, nodesep: 48, targetRowWidth: 1700 }

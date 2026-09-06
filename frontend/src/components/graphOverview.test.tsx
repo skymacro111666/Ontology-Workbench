@@ -384,9 +384,9 @@ describe('GraphOverview deprecated visibility', () => {
   it('notes the hidden deprecated count until the toggle is on', async () => {
     draw(stubFetch(null, { ...OVERVIEW, deprecatedCount: 2 }))
     await waitForGraph()
-    expect(screen.getByText('已隐藏 2 个废弃条目')).toBeTruthy()
+    expect(screen.getByText('2 个已废弃节点已归入左侧「已废弃」页签')).toBeTruthy()
     await userEvent.click(screen.getByRole('button', { name: '显示已废弃' }))
-    await waitFor(() => expect(screen.queryByText('已隐藏 2 个废弃条目')).toBeNull())
+    await waitFor(() => expect(screen.queryByText('2 个已废弃节点已归入左侧「已废弃」页签')).toBeNull())
   })
 
   it('stays quiet when nothing is deprecated', async () => {
@@ -448,19 +448,20 @@ describe('GraphOverview progressive fold', () => {
     return fetchMock
   }
 
-  it('serves folded roots; the bucket label reads 已废弃', async () => {
+  it('serves folded roots; the deprecated bucket stays off the canvas', async () => {
     drawProgressive()
     await waitForGraph()
     const ids = () =>
       (
         lastG6()!.options.data as {
-          nodes: { id: string; style?: { badges?: { text: string }[]; labelText?: string } }[]
+          nodes: { id: string; style?: { badges?: { text: string }[] } }[]
         }
       ).nodes
-    expect(ids().map((n) => n.id)).toEqual(['root', '__deprecated__'])
+    // F4 (user call): deprecated nodes live in the left sidebar, never on
+    // the canvas — the bucket node is filtered out, hint bar points there.
+    expect(ids().map((n) => n.id)).toEqual(['root'])
     expect(ids()[0].style?.badges?.[0].text).toBe('+3')
-    expect(ids()[1].style?.badges?.[0].text).toBe('+2')
-    expect(ids()[1].style?.labelText).toBe('已废弃')
+    expect(await screen.findByText(/已废弃节点/)).toBeTruthy()
   })
 
   it('fold click fetches /expand and merges children; clicking again removes them', async () => {
@@ -475,7 +476,7 @@ describe('GraphOverview progressive fold', () => {
     await vi.waitFor(() => {
       const latest = [...g6Instances()].at(-1)!
       const got = (latest.options.data as { nodes: { id: string }[] }).nodes.map((n) => n.id)
-      expect(got).toEqual(['root', '__deprecated__', 'kid'])
+      expect(got).toEqual(['root', 'kid'])
     })
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/entities/root/expand'))).toBe(
       true,
@@ -489,7 +490,7 @@ describe('GraphOverview progressive fold', () => {
     await vi.waitFor(() => {
       const after = [...g6Instances()].at(-1)!
       const got = (after.options.data as { nodes: { id: string }[] }).nodes.map((n) => n.id)
-      expect(got).toEqual(['root', '__deprecated__'])
+      expect(got).toEqual(['root'])
     })
   })
 })
@@ -597,16 +598,18 @@ describe('GraphOverview view override and reveal anchor', () => {
     return fetchMock
   }
 
-  it('renders 全图/渐进 toggles; 全图 refetches with view=full', async () => {
+  it('offers only the 渐进 toggle (no 全图); it forces view=progressive', async () => {
     const fetchMock = drawOverride()
     await waitForGraph()
-    await userEvent.click(screen.getByRole('button', { name: '全图' }))
-    await vi.waitFor(() => {
-      expect(fetchMock.mock.calls.some(([u]) => String(u).includes('view=full'))).toBe(true)
-    })
+    expect(screen.queryByRole('button', { name: '全图' })).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: '渐进' }))
     await vi.waitFor(() => {
       expect(fetchMock.mock.calls.some(([u]) => String(u).includes('view=progressive'))).toBe(true)
+    })
+    // Toggling off returns to auto (no view=full request may ever fire).
+    await userEvent.click(screen.getByRole('button', { name: '渐进' }))
+    await vi.waitFor(() => {
+      expect(fetchMock.mock.calls.some(([u]) => String(u).includes('view=full'))).toBe(false)
     })
   })
 

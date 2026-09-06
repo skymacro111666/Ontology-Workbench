@@ -256,6 +256,13 @@ class Indexes:
                 (e for e in list(self._ir.entities.values()) if e.type != "Class"),
                 key=lambda x: x.curie,
             )
+        elif parent_eid == DEPRECATED_BUCKET:
+            # The sidebar's deprecated tab: every deprecated class, flat.
+            # The request itself is the intent, so include_deprecated is moot.
+            items = sorted(
+                (e for e in list(self._ir.entities.values()) if e.type == "Class" and e.deprecated),
+                key=lambda x: x.curie,
+            )
         else:
             items = sorted(
                 (
