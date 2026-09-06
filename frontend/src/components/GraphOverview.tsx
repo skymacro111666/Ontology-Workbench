@@ -10,6 +10,7 @@ import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
 import GraphContextMenu, { type MenuItem } from './GraphContextMenu'
 import GraphView, { type GraphViewNode } from './GraphView'
+import { insertChildren } from './insertLayout'
 import { useLint } from './LintPanel'
 import LintSettingsDialog from './LintSettingsDialog'
 import type { Pt } from './layoutPositions'
@@ -236,6 +237,11 @@ export default function GraphOverview({
    *  fetches /expand and merges; collapsing collects the expanded subtree
    *  (along the expand edges, nested folds included) and removes it. */
   const [expanded, setExpanded] = useState<Record<string, NodesEdges>>({})
+  /** Session-local insert coordinates for expanded children (spec §5.3):
+   *  keeps a SAVED canvas stable across expands — the new row lands under
+   *  the parent's saved spot instead of dagre re-flowing everything. The
+   *  auto pipeline (nothing saved) keeps re-running dagre instead. */
+  const [insertedPos, setInsertedPos] = useState<Record<string, Pt>>({})
   const toggleFold = async (eid: string, folded: boolean) => {
     if (!folded) {
       const doomed = collectSubtree(eid, expanded)
@@ -258,6 +264,17 @@ export default function GraphOverview({
         `/api/ontologies/${oid}/entities/${encodeURIComponent(eid)}/expand`,
       )
       setExpanded((prev) => ({ ...prev, [eid]: payload }))
+      const saved = layoutData?.positions ?? {}
+      const parentPt = saved[eid] ?? insertedPos[eid]
+      if (parentPt) {
+        const known = { ...saved, ...insertedPos }
+        const fresh = insertChildren(
+          parentPt,
+          payload.nodes.map((n) => n.id),
+          known,
+        )
+        setInsertedPos((prev) => ({ ...prev, ...fresh }))
+      }
     } catch {
       // Failed expand: no state moved, the badge stays a retry-able +.
     }
@@ -376,7 +393,9 @@ export default function GraphOverview({
           onFoldClick={(eid, folded) => void toggleFold(eid, folded)}
           foldedIds={foldedIds}
           defaultKinds={{ classes: true, objectProps: false, dataProps: false }}
-          savedPositions={layoutData?.positions}
+          savedPositions={
+            layoutData ? { ...layoutData.positions, ...insertedPos } : undefined
+          }
           onLayoutChange={(positions) => saveLayout.mutate(positions)}
           onResetLayout={() => void resetLayout()}
           onContextMenu={(info) => setMenu(info)}

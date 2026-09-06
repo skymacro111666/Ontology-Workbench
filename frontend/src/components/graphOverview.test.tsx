@@ -493,3 +493,55 @@ describe('GraphOverview progressive fold', () => {
     })
   })
 })
+
+describe('GraphOverview insertion layout on expand', () => {
+  const PROG: NodesEdges = {
+    nodes: [{ id: 'root', curie: 'ex:Root', label: {}, kind: 'class', folded: true, subtreeSize: 2 }],
+    edges: [],
+    truncated: false,
+    totalCount: 3,
+    mode: 'progressive',
+    liveCount: 3,
+  }
+  const EXPAND: NodesEdges = {
+    nodes: [{ id: 'kid', curie: 'ex:Kid', label: {}, kind: 'class', folded: true, subtreeSize: 1 }],
+    edges: [{ source: 'kid', target: 'root', kind: 'subClassOf' }],
+    truncated: false,
+    totalCount: 1,
+  }
+
+  it('expanded children land under the saved parent spot, canvas stays explicit', async () => {
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/overview')) return env(PROG)
+      if (u.includes('/expand')) return env(EXPAND)
+      if (u.endsWith('/layout') && init?.method === 'PUT') {
+        savedBody = JSON.parse(String(init.body))
+        return env(savedBody)
+      }
+      return env({ positions: { root: { x: 100, y: 0 } } })
+    })
+    draw(fetchMock)
+    await waitForGraph()
+    expect(lastG6()!.options.layout).toBe(false) // saved canvas, explicit coords
+    lastG6()!.handlers['node:click']({
+      target: { id: 'root' },
+      originalTarget: { className: 'badge-0' },
+    })
+    await vi.waitFor(() => {
+      const latest = [...g6Instances()].at(-1)!
+      expect((latest.options.data as { nodes: { id: string }[] }).nodes.map((n) => n.id)).toEqual(
+        ['root', 'kid'],
+      )
+    })
+    const latest = [...g6Instances()].at(-1)!
+    // Still the explicit pipeline; the kid carries inserted coordinates one
+    // row under the saved parent spot (100, 0) → (100, 90).
+    expect(latest.options.layout).toBe(false)
+    const kid = (
+      latest.options.data as { nodes: { id: string; style?: { x?: number; y?: number } }[] }
+    ).nodes.find((n) => n.id === 'kid')!
+    expect(kid.style?.x).toBe(100)
+    expect(kid.style?.y).toBe(90)
+  })
+})
