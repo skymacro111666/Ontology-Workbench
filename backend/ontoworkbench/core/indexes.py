@@ -95,7 +95,11 @@ class Indexes:
         self._recount_subtree()
 
     def _recount_subtree(self) -> None:
-        """Memoized subtree size per class (fold sizes live on the fold badges).
+        """Memoized subtree size per class, live-only (存活口径, 2026-09-07).
+
+        Deprecated children never count — the canvas cannot unfold them
+        (spec §4), so a fold badge's number equals what a full unfold would
+        actually produce.
 
         A full recount after every incremental patch stays cheap (52k classes
         ~50ms) and can never disagree with the patched children map, so the
@@ -107,7 +111,9 @@ class Indexes:
             if eid in self._subtree:
                 return self._subtree[eid]
             self._subtree[eid] = 1  # cycle guard: counts itself even in a loop
-            self._subtree[eid] = 1 + sum(_count(c.eid) for c in self._children.get(eid, []))
+            self._subtree[eid] = 1 + sum(
+                _count(c.eid) for c in self._children.get(eid, []) if not c.deprecated
+            )
             return self._subtree[eid]
 
         for e in list(self._ir.entities.values()):
@@ -137,6 +143,8 @@ class Indexes:
                     "kind": "class",
                     "instanceCount": len(self._ir.instances.get(r.eid, [])),
                     "subtreeSize": self.subtree_size(r.eid),
+                    # 存活子树 >1 ⟺ 存在可展开的存活子类,叶子根不画角标。
+                    "folded": self.subtree_size(r.eid) > 1,
                     "deprecated": r.deprecated,
                 }
                 for r in roots[:cap]
@@ -160,6 +168,9 @@ class Indexes:
                     "kind": "class",
                     "instanceCount": len(self._ir.instances.get(e.eid, [])),
                     "subtreeSize": 1,
+                    # A deprecated class may still have live children worth
+                    # unfolding; most are leaves (deprecation unlinks them).
+                    "folded": self.subtree_size(e.eid) > 1,
                     "deprecated": True,
                 }
                 for e in deps[:cap]
@@ -182,6 +193,10 @@ class Indexes:
                 "kind": "class",
                 "instanceCount": len(self._ir.instances.get(c.eid, [])),
                 "subtreeSize": self.subtree_size(c.eid),
+                # Foldability follows the live subtree (存活口径): a child with
+                # only deprecated children must not render an empty-unfold
+                # badge — its expand payload would come back childless.
+                "folded": self.subtree_size(c.eid) > 1,
                 "deprecated": c.deprecated,
             }
             for c in kids[:cap]
@@ -557,7 +572,7 @@ class Indexes:
                         "kind": "class",
                         "instanceCount": len(self._ir.instances.get(r.eid, [])),
                         "subtreeSize": self.subtree_size(r.eid),
-                        "folded": True,
+                        "folded": self.subtree_size(r.eid) > 1,
                     }
                 )
         dep_count = sum(

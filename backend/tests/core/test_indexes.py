@@ -579,6 +579,51 @@ def test_rebuild_children_of_recomputes_subtree_sizes() -> None:
     assert ix.subtree_size("http://x/C") == 2
 
 
+# -- 存活口径 + folded 徽标 (2026-09-07 canvas 修复) ---------------------------
+
+DEPREC_CHILD = """@prefix : <http://x/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+:Root a owl:Class .
+:Mid a owl:Class ; rdfs:subClassOf :Root .
+:Dead2 a owl:Class ; owl:deprecated true ; rdfs:subClassOf :Mid .
+:Leaf a owl:Class ; rdfs:subClassOf :Root .
+"""
+
+
+def test_subtree_size_is_live_only() -> None:
+    """存活口径:废弃子类不进子树大小 —— 徽标数字等于实际能展开出来的类数。."""
+    ix = build_indexes(_ir(DEPREC_CHILD))
+    # Root counts itself + Mid + Leaf; Dead2 is deprecated and excluded.
+    assert ix.subtree_size("http://x/Root") == 3
+    assert ix.subtree_size("http://x/Mid") == 1  # only child is deprecated
+    assert ix.subtree_size("http://x/Dead2") == 1
+
+
+def test_expand_children_carry_folded() -> None:
+    """expand() 子节点带 folded:有存活子类才可折叠(叶子/纯废弃父类不可)。."""
+    ix = build_indexes(_ir(DEPREC_CHILD))
+    payload = ix.expand("http://x/Root")
+    by_curie = {n["curie"]: n for n in payload["nodes"]}
+    assert by_curie[":Mid"]["folded"] is False  # only child is deprecated
+    assert by_curie[":Leaf"]["folded"] is False  # leaf
+    ttl = DEPREC_CHILD + ":Pup a owl:Class ; rdfs:subClassOf :Leaf .\n"
+    ix2 = build_indexes(_ir(ttl))
+    payload2 = ix2.expand("http://x/Root")
+    by_curie2 = {n["curie"]: n for n in payload2["nodes"]}
+    assert by_curie2[":Leaf"]["folded"] is True  # now has a live child
+
+
+def test_progressive_roots_fold_only_when_unfoldable() -> None:
+    """折叠根的 folded 跟随存活子树:无存活后代的根不画可展开徽标。."""
+    ttl = DEPREC_CHILD + ":Solo a owl:Class .\n"
+    ix = build_indexes(_ir(ttl))
+    payload = ix.overview(view="progressive")
+    by_curie = {n["curie"]: n for n in payload["nodes"]}
+    assert by_curie[":Root"]["folded"] is True
+    assert by_curie[":Solo"]["folded"] is False  # parentless leaf root
+
+
 # -- Task 13: tiered overview (auto/full/progressive) ------------------------
 
 

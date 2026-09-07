@@ -9,6 +9,7 @@ import type { WrapEdge, WrapNode } from './wrapRanks'
 import { localName } from '../lib/localName'
 import { cn } from '@/lib/utils'
 import { assignFallbackPositions, type Pt } from './layoutPositions'
+import { cardDisplayName, cardWidth } from './cardSize'
 import { useTheme } from '../theme/ThemeProvider'
 import { Toggle } from '@/components/ui/toggle'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
@@ -159,8 +160,7 @@ export function toG6Nodes(
     const bucket = isBucket(n.kind)
     const focused = !!n.highlighted
     // 节点显示名 rdfs:label 优先,缺失回退 curie 局部名。
-    const human = Object.values(n.label ?? {})[0]
-    const name = human ?? localName(n.curie)
+    const name = cardDisplayName(n)
     if (n.kind === 'instance') {
       return {
         id: n.id,
@@ -177,7 +177,7 @@ export function toG6Nodes(
         },
       }
     }
-    const w = bucket ? 168 : Math.min(220, Math.max(72, Math.round(name.length * 6.6 + 26)))
+    const w = bucket ? 168 : cardWidth(name)
     const style: Record<string, unknown> = {
       size: bucket ? [w, 40] : [w, 32],
       radius: 8,

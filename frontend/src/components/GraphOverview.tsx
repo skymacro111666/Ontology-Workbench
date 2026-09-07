@@ -10,6 +10,7 @@ import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
 import GraphContextMenu, { type MenuItem } from './GraphContextMenu'
 import GraphView, { type GraphViewNode } from './GraphView'
+import { cardDisplayName, cardWidth } from './cardSize'
 import { insertChildren } from './insertLayout'
 import { useLint } from './LintPanel'
 import LintSettingsDialog from './LintSettingsDialog'
@@ -283,7 +284,7 @@ export default function GraphOverview({
         const known = { ...saved, ...insertedPos }
         const fresh = insertChildren(
           parentPt,
-          payload.nodes.map((n) => n.id),
+          payload.nodes.map((n) => ({ id: n.id, width: cardWidth(cardDisplayName(n)) })),
           known,
         )
         setInsertedPos((prev) => ({ ...prev, ...fresh }))
@@ -322,7 +323,9 @@ export default function GraphOverview({
             curie: ent.curie,
             label: ent.label,
             kind: 'class',
-            folded: true,
+            // Only foldable when the expand payload actually holds children —
+            // a childless anchor would otherwise render an empty-unfold badge.
+            folded: (payload.totalCount ?? 0) > 0,
             subtreeSize: (payload.totalCount ?? 0) + 1,
           },
           payload,

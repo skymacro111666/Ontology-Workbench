@@ -464,6 +464,11 @@ def test_expand_endpoint_shapes_and_404(client: TestClient) -> None:
     assert r["totalCount"] == 1
     assert r["nodes"][0]["curie"] == "ex:Animal"
     assert r["nodes"][0]["subtreeSize"] == 2  # Animal + Dog
+    assert r["nodes"][0]["folded"] is True  # Animal has a live child (Dog)
+    animal = quote("http://example.org/Animal", safe="")
+    leaf = client.get(f"/api/ontologies/{oid}/entities/{animal}/expand").json()["data"]
+    assert leaf["nodes"][0]["curie"] == "ex:Dog"
+    assert leaf["nodes"][0]["folded"] is False  # leaf: nothing to unfold
     assert r["edges"] == [
         {
             "source": "http://example.org/Animal",
