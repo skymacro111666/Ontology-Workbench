@@ -224,3 +224,26 @@ export interface ExportSiteResult {
   outputDir: string
   pageCount: number
 }
+
+/** SPARQL console (M1, spec 2026-09-07): one POST /query result cell.
+ *  IRIs shorten to curies when the ontology declares a matching prefix. */
+export type QueryCell = {
+  type: 'iri' | 'bnode' | 'literal'
+  value: string
+  curie?: string
+  language?: string
+  datatype?: string
+}
+
+/** The three query forms; every variant carries elapsedMs. */
+export type QueryResult =
+  | {
+      kind: 'select'
+      columns: string[]
+      rows: Record<string, QueryCell | null>[]
+      rowCount: number
+      truncated: boolean
+      elapsedMs: number
+    }
+  | { kind: 'ask'; boolean: boolean; elapsedMs: number }
+  | { kind: 'construct'; tripleCount: number; turtle: string; truncated: boolean; elapsedMs: number }

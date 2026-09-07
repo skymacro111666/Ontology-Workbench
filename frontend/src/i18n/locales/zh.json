@@ -77,6 +77,7 @@
     "exportSite": "导出文档站",
     "viewGraph": "图形",
     "viewText": "文本",
+    "viewQuery": "查询",
     "themeAria": "切换主题，当前：{{current}}（依次切换{{cycle}}）",
     "userFallback": "用户",
     "avatarFallback": "用",
@@ -350,5 +351,27 @@
     "UNSUPPORTED_FORMAT": "不支持的文件格式",
     "VALIDATION_ERROR": "输入不合法",
     "INTERNAL_ERROR": "服务器内部错误，请稍后重试"
+  }
+,
+  "query": {
+    "samples": "示例查询",
+    "sampleAll": "类清单 + rdfs:label",
+    "sampleNoLabel": "没有 rdfs:label 的类",
+    "sampleWide": "直接子类最多的 10 个类",
+    "run": "执行",
+    "running": "执行中…",
+    "readonly": "只读",
+    "readonlyHint": "SPARQL UPDATE 被引擎拒绝;编辑请走图形/文本视图",
+    "rowLimit": "上限 {{n}} 行",
+    "rows": "{{n}} 行",
+    "ms": "{{ms}} ms",
+    "truncated": "已截断",
+    "notTruncated": "未截断",
+    "askTrue": "真",
+    "askFalse": "假",
+    "empty": "查询返回 0 行",
+    "idleHint": "写好查询后点「执行」,或按 Ctrl/⌘ + Enter",
+    "errorTitle": "查询失败",
+    "assertedNote": "针对断言三元组(无推理);传递闭包用属性路径,如 rdfs:subClassOf+"
   }
 }

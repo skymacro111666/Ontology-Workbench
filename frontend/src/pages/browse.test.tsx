@@ -182,6 +182,14 @@ describe('Browse workspace (overview-only)', () => {
     expect(lastG6()).toBeFalsy()
     // Text mode drops the inspector column so the source reads wider.
     expect(screen.queryByText('在树或图中选择一个实体')).toBeNull()
+    cleanup()
+
+    // 查询 mode mirrors text mode's columns (tree + content, no inspector)
+    // and mounts the SPARQL console instead of the source pane.
+    useUiStore.setState({ browseView: 'query' })
+    renderBrowse(stubFetch())
+    expect(await screen.findByLabelText('示例查询')).toBeTruthy()
+    expect(screen.queryByText('在树或图中选择一个实体')).toBeNull()
   })
 
   it('canvas node click selects through reveal and walks the tree', async () => {

@@ -22,6 +22,7 @@
 - **Millisecond incremental commits** — every edit patches the in-memory index at once (read-your-writes); the file lands via a debounced background save (3s quiet period by default, tunable via `OW_AUTOSAVE_DEBOUNCE_S`)
 - **Crash-loss window ≤ 3s** — debounced saving plus flush-on-exit means a process crash loses at most the edits inside one quiet period (2026-09-05 design §6)
 - **Integrated source editing** — built-in editor with full find-and-replace
+- **Built-in SPARQL console** — a third browse view; read-only is engine-enforced (UPDATE always rejected), SELECT/ASK/CONSTRUCT results, IRIs auto-shortened to curies
 - **Zero re-parse on repeat edits** — consecutive edits to the same file version reuse one in-memory Store and parse zero times (pinned by `backend/tests/api/test_edit_store_cache.py`)
 - **Offline docs export** — generates a static site with zero external dependencies
 

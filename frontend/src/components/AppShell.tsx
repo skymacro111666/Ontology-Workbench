@@ -6,6 +6,7 @@ import {
   FileTextIcon,
   KeyRoundIcon,
   LogOutIcon,
+  SearchCodeIcon,
   Share2Icon,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
@@ -229,6 +230,10 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               <ToggleGroupItem value="text">
                 <FileTextIcon aria-hidden="true" />
                 {t('shell.viewText')}
+              </ToggleGroupItem>
+              <ToggleGroupItem value="query">
+                <SearchCodeIcon aria-hidden="true" />
+                {t('shell.viewQuery')}
               </ToggleGroupItem>
             </ToggleGroup>
           )}

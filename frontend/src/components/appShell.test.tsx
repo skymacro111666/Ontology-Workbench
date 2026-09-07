@@ -225,12 +225,17 @@ it('workspace topbar switches the browse view mode through the store', async () 
   shell('/browse/oid-1')
   const graph = screen.getByRole('radio', { name: /图形/ })
   const text = screen.getByRole('radio', { name: /文本/ })
+  const query = screen.getByRole('radio', { name: /查询/ })
   expect(graph.getAttribute('aria-checked')).toBe('true')
   expect(text.getAttribute('aria-checked')).toBe('false')
+  expect(query.getAttribute('aria-checked')).toBe('false')
 
   await userEvent.click(text)
   expect(useUiStore.getState().browseView).toBe('text')
   expect(text.getAttribute('aria-checked')).toBe('true')
+
+  await userEvent.click(query)
+  expect(useUiStore.getState().browseView).toBe('query')
 
   await userEvent.click(graph)
   expect(useUiStore.getState().browseView).toBe('graph')

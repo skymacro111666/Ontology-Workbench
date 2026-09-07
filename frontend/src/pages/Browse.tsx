@@ -13,6 +13,7 @@ import InspectorPanel from '../components/InspectorPanel'
 // CodeMirror) that must not sit in the entry chunk.
 const GraphOverview = lazy(() => import('../components/GraphOverview'))
 const SourceView = lazy(() => import('../components/SourceView'))
+const QueryConsole = lazy(() => import('../components/QueryConsole'))
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
@@ -173,8 +174,10 @@ export default function Browse() {
         <Suspense fallback={<div className="text-ink-3 py-16 text-center text-sm">{t('common.loading')}</div>}>
           {browseView === 'graph' ? (
             <GraphOverview oid={oid} focus={selectedEid} />
-          ) : (
+          ) : browseView === 'text' ? (
             <SourceView oid={oid} />
+          ) : (
+            <QueryConsole oid={oid} />
           )}
         </Suspense>
       </section>
