@@ -110,8 +110,10 @@ def test_default_prefix_terms_render_compact() -> None:
     assert ":subClassOf :Animal" in block
     assert "<http://example.org/Dog>" not in block
     assert "<http://example.org/Animal>" not in block
-    # IR prefixes keep the rdflib-era display name for "" (meta payload only)
-    assert ir.prefixes["base"] == "http://example.org/"
+    # IR prefixes expose the raw "" key for the default namespace; meta
+    # passes it through, the frontend renders ":", and iri_for("") answers.
+    assert ir.prefixes[""] == "http://example.org/"
+    assert "base" not in ir.prefixes
 
 
 def test_individuals_data_assertions_include_plain_strings() -> None:

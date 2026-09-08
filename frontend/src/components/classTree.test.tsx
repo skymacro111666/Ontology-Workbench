@@ -38,7 +38,7 @@ const META: OntologyMeta = {
   fileSizeBytes: 1024,
   createdAt: '2026-01-01T00:00:00Z',
   fileHash: 'h', revision: 0,
-  prefixes: { owl: 'http://www.w3.org/2002/07/owl#', ex: 'http://example.org/' },
+  prefixes: { owl: 'http://www.w3.org/2002/07/owl#', ex: 'http://example.org/', '': 'http://example.org/pizza#' },
 }
 
 /** Route the tree's four endpoints: roots, children, __props__, meta. */
@@ -112,6 +112,17 @@ describe('ClassTree', () => {
     // Unbound-namespace curie (full IRI fallback) reduces to its last segment.
     const odd = screen.getByText('Odd')
     expect(odd.title).toBe('http://fallback.example/Odd')
+  })
+
+  it('renders the default namespace prefix as ":" in the prefixes tab', async () => {
+    renderTree(stubFetch())
+    await screen.findByText('Thing')
+    await userEvent.click(screen.getByRole('button', { name: '命名空间' }))
+    // The "" key is the default namespace: its name cell shows ":" (the
+    // raw empty string would render a blank cell).
+    const nsCell = await screen.findByText('http://example.org/pizza#')
+    const nameCell = nsCell.closest('tr')?.querySelector('td')
+    expect(nameCell?.textContent).toBe(':')
   })
 
   it('lazily loads children on expand and publishes selection to the store', async () => {

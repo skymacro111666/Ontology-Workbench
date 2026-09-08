@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Envelope, NodesEdges } from '../api/types'
+import type { Envelope, NodesEdges, OntologyMeta } from '../api/types'
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
 import { ThemeProvider } from '../theme/ThemeProvider'
@@ -74,12 +74,12 @@ function stubFetch(opts: { dupOnPost?: boolean } = {}) {
   })
 }
 
-function draw(fetchMock: ReturnType<typeof stubFetch>) {
+function draw(fetchMock: ReturnType<typeof stubFetch>, meta: OntologyMeta = META) {
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   // Browse keeps the meta entry warm in production (status bar); seed it the
   // same way so the open transition reads lib as the default prefix.
-  qc.setQueryData(['ontology', OID], META)
+  qc.setQueryData(['ontology', OID], meta)
   return render(
     <QueryClientProvider client={qc}>
       <ThemeProvider>
@@ -124,6 +124,22 @@ describe('InstanceDialogs', () => {
     expect(useBrowseStore.getState().revealEid).toBe(TB2)
     expect(useUiStore.getState().instanceAutoEdit).toBe(TB2)
     await waitFor(() => expect(useUiStore.getState().instanceDialog).toBeNull())
+  })
+
+  it('treats the "" default-namespace prefix as ":" end to end', async () => {
+    // Contract pin across the stack: meta may carry "" (the default
+    // namespace, pizza-style). The dialog offers it as ":" and posts the
+    // raw "" — iri_for("") answers server-side; "base" would 422.
+    const fetchMock = stubFetch()
+    draw(fetchMock, { ...META, prefixes: { '': 'http://example.org/library#' } })
+    useUiStore.getState().setInstanceDialog({ mode: 'create', parent: SF })
+    const name = await screen.findByLabelText(/名称/)
+    const option = screen.getByRole('option', { name: ':' }) as HTMLOptionElement
+    expect(option.value).toBe('')
+    await userEvent.type(name, 'BallLightning')
+    await userEvent.click(screen.getByRole('button', { name: /创建|保存/ }))
+    await waitFor(() => expect(calls.post).toHaveLength(1))
+    expect(calls.post[0].body).toMatchObject({ prefix: '' })
   })
 
   it('shows an inline duplicate-name error and keeps the dialog open', async () => {

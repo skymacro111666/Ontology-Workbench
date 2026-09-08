@@ -652,9 +652,7 @@ def build_ir_store(store: ox.Store, prefixes: PrefixMap) -> IRBundle:
         if type(obj) is ox.NamedNode:
             _add_used(obj.value)
     prefixes_out = {
-        p or "base": n
-        for p, n in prefixes.as_dict().items()
-        if any(iri.startswith(n) for iri in used_iris)
+        p: n for p, n in prefixes.as_dict().items() if any(iri.startswith(n) for iri in used_iris)
     }
 
     # Named individuals group under their declared rdf:type classes (direct

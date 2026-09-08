@@ -361,7 +361,7 @@ export default function ClassTree({ oid }: { oid: string }) {
             <TableBody>
               {Object.entries(meta?.prefixes ?? {}).map(([prefix, iri]) => (
                 <TableRow key={prefix}>
-                  <TableCell className="font-mono text-xs">{prefix}</TableCell>
+                  <TableCell className="font-mono text-xs">{prefix === '' ? ':' : prefix}</TableCell>
                   <TableCell className="text-ink-2 font-mono text-xs break-all whitespace-normal">
                     {iri}
                   </TableCell>
