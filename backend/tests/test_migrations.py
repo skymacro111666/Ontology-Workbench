@@ -4,8 +4,11 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
+from sqlalchemy.orm import Session
 
 from ontoworkbench.cli import _migrate
+from ontoworkbench.db.models import Base
+from ontoworkbench.db.session import init_engine
 
 
 def test_upgrade_head_on_fresh_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -24,9 +27,10 @@ def test_upgrade_head_on_fresh_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         ontology_cols = {row[1] for row in conn.execute(sa.text("PRAGMA table_info(ontologies)"))}
     engine.dispose()
 
-    assert version == "0006"
+    assert version == "0007"
     assert "ontology_layouts" in tables
     assert "lint_rules" in tables
+    assert "validation_shapes" in tables
     # 0005: provenance column lands with its upload default (no backfill).
     assert "source" in ontology_cols
     # 0006: edit-axis optimistic lock lands at 0 for every existing row.
@@ -53,3 +57,28 @@ def test_migration_output_is_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert {p["event"] for p in payloads} == {"db.migrate"}
     assert any("0004" in p["message"] or "0005" in p["message"] for p in payloads)
     assert all(p["level"] == "info" and "timestamp" in p for p in payloads)
+
+
+@pytest.fixture()
+def db_session() -> Session:
+    """In-memory SQLite session (same shape as tests/db/test_repositories.py)."""
+    engine = init_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as s:
+        yield s
+
+
+def test_validation_shapes_roundtrip(db_session):
+    """Upsert overwrites the single shapes row per oid; get returns None when unsaved."""
+    from uuid import uuid4
+
+    from ontoworkbench.db.repositories import ValidationShapesRepository
+
+    oid = uuid4()
+    repo = ValidationShapesRepository(db_session)
+    assert repo.get(oid) is None
+    repo.upsert(oid, "@prefix sh: <http://www.w3.org/ns/shacl#> .\n")
+    row = repo.get(oid)
+    assert row is not None and row.source.startswith("@prefix sh:")
+    repo.upsert(oid, "[] a sh:NodeShape .")
+    assert repo.get(oid).source == "[] a sh:NodeShape ."

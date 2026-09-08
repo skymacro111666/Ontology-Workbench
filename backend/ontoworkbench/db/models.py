@@ -138,3 +138,23 @@ class LintRule(Base):
     sparql: Mapped[str | None] = mapped_column(Text)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())
+
+
+class OntologyValidationShape(Base):
+    """Per-ontology SHACL shapes source (M1 validation view).
+
+    One editable shapes graph per ontology; writes replace the single
+    row's source wholesale. Pure tool config — never touches ontology
+    files.
+    """
+
+    __tablename__ = "validation_shapes"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    ontology_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ontologies.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    source: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTimeTZ, server_default=func.now(), onupdate=_now
+    )

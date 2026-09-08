@@ -7,7 +7,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ontoworkbench.db.models import LintRule, Ontology, OntologyLayout, User
+from ontoworkbench.db.models import (
+    LintRule,
+    Ontology,
+    OntologyLayout,
+    OntologyValidationShape,
+    User,
+)
 
 
 class UserRepository:
@@ -306,3 +312,48 @@ class LintRuleRepository:
                 )
             )
         self._s.commit()
+
+
+class ValidationShapesRepository:
+    """Access to validation_shapes: one editable SHACL source per ontology."""
+
+    def __init__(self, session: Session) -> None:
+        """Initialize the repository with a SQLAlchemy session.
+
+        Args:
+            session: SQLAlchemy database session.
+        """
+        self._s = session
+
+    def get(self, ontology_id: UUID) -> OntologyValidationShape | None:
+        """Get the shapes row for an ontology.
+
+        Args:
+            ontology_id: UUID of the ontology.
+
+        Returns:
+            OntologyValidationShape if saved, None otherwise.
+        """
+        stmt = select(OntologyValidationShape).where(
+            OntologyValidationShape.ontology_id == ontology_id
+        )
+        return self._s.scalar(stmt)
+
+    def upsert(self, ontology_id: UUID, source: str) -> OntologyValidationShape:
+        """Overwrite the shapes source for an ontology (one row, no merge).
+
+        Args:
+            ontology_id: UUID of the ontology.
+            source: Full SHACL shapes graph text.
+
+        Returns:
+            The saved OntologyValidationShape row.
+        """
+        row = self.get(ontology_id)
+        if row:
+            row.source = source
+        else:
+            row = OntologyValidationShape(ontology_id=ontology_id, source=source)
+            self._s.add(row)
+        self._s.commit()
+        return row
