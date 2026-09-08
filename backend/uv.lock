@@ -1005,6 +1005,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyjwt" },
     { name = "pyoxigraph" },
+    { name = "pyrudof" },
     { name = "python-multipart" },
     { name = "sqlalchemy" },
     { name = "structlog" },
@@ -1033,6 +1034,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.15.0" },
     { name = "pyjwt", specifier = ">=2.10" },
     { name = "pyoxigraph", specifier = "==0.5.11" },
+    { name = "pyrudof", specifier = "==0.3.18" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "sqlalchemy", specifier = ">=2.0.52" },
     { name = "structlog", specifier = ">=26.1.0" },
@@ -1318,6 +1320,18 @@ wheels = [
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/76/3a/5ef368d710c1ddbc3e5e17de91e1cff9226135d4af791f24914f8f766bf0/pyoxigraph-0.5.11-pp311-pypy311_pp73-manylinux_2_28_aarch64.whl", hash = "sha256:48906bceececf8a4ac7534dcc4ffbb3de9ef33a5dbda880485d3e4cc9ad3fcf6", size = 7679699, upload-time = "2026-09-02T20:05:37.099Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/1a/49/2769c407f356e3d26f7cd89f3e1046778c303eb9d6a4d221744a69a2677f/pyoxigraph-0.5.11-pp311-pypy311_pp73-manylinux_2_28_x86_64.whl", hash = "sha256:1b9ac337a215e94bae1747b98e3b4f2c8552e1834fa834f4c4cc678bd79c1e58", size = 8180504, upload-time = "2026-09-02T20:05:39.105Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/b5/ea/a8c94b8ea0bbc1ebb2cb89d5ab34fd95a47f84202c9e84d59c2b4ee7281a/pyoxigraph-0.5.11-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:e8a61682eb44bc8b056d0f230325ba91f8c68d917bfa498f46ed3178f9e97d00", size = 5421500, upload-time = "2026-09-02T20:05:41.095Z" },
+]
+
+[[package]]
+name = "pyrudof"
+version = "0.3.18"
+source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+wheels = [
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/b4/c1/a6e38eb263e6016d0c5eb8dc34bea8a7663b71881645f8a290fde66f8825/pyrudof-0.3.18-cp37-abi3-macosx_13_0_arm64.whl", hash = "sha256:b4ce1f001677e0f808bf301d3046f92c1df930aa91e0902a16987651a561be0b", size = 15903500, upload-time = "2026-09-04T10:25:34.544Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/2c/35/e166ac33a12aa765babd5e76e465b589e5e020a2b67f8b466b9b9b9ae498/pyrudof-0.3.18-cp37-abi3-macosx_13_0_x86_64.whl", hash = "sha256:f3405535617e7cf2a16a95871e1984adb0c33a0390f812f9e2a49f4cc149c5ce", size = 16694733, upload-time = "2026-09-04T10:25:37.392Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/92/00/1bca3e6f66d2bf044eff7e75d8cf2e740aa2d99b4af334b360731901d6d9/pyrudof-0.3.18-cp37-abi3-manylinux_2_34_aarch64.whl", hash = "sha256:4a7cbfef548bf5be4b3bbff1fe666f7e3b2f03406e67261cc1246707f4c5e516", size = 23328319, upload-time = "2026-09-04T10:25:39.963Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/41/f1/1bffe78245158613a968d3c9958defed99ee9e02a409a2ffac679c440506/pyrudof-0.3.18-cp37-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:73ea67788463a9801f2630843baf7a73393b01d88c36b5c952d4f45a4e477e2e", size = 23622635, upload-time = "2026-09-04T10:25:42.669Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/fb/4d/4fb1520f742e82cc5e9b7c2c7e883ff7200a4d9ff9e878264f57bbcfc176/pyrudof-0.3.18-cp37-abi3-win_amd64.whl", hash = "sha256:dae16438e0b6f8e49cd4b9fa8aaa19b75126de5ab11ada7e56188b8e4b87d0c1", size = 18299958, upload-time = "2026-09-04T10:25:45.636Z" },
 ]
 
 [[package]]

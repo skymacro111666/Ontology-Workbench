@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Y-axis debounce: mutations land in memory, files flush after this many
     # seconds of quiet (OW_AUTOSAVE_DEBOUNCE_S).
     autosave_debounce_s: float = 3.0
+    # SHACL validation: escape-hatch bound, waiting UX by design (spec
+    # §2.2 — spike measured go.owl at ~33s end to end).
+    validate_timeout_s: float = 300.0
 
     @classmethod
     def load(cls, cli: dict | None = None) -> Settings:

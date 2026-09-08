@@ -52,6 +52,18 @@ class PrefixMap:
             self._decls.items(), key=lambda kv: -len(kv[1])
         )
 
+    @classmethod
+    def from_dict(cls, table: dict[str, str]) -> PrefixMap:
+        """Build from an already-merged table (e.g. IR prefixes).
+
+        No builtin merge, no parse. Longest-namespace order preserved
+        like __init__.
+        """
+        pm = cls.__new__(cls)
+        pm._decls = dict(table)
+        pm._sorted = sorted(pm._decls.items(), key=lambda kv: -len(kv[1]))
+        return pm
+
     def curie_for(self, uri: str) -> tuple[str, str] | None:
         """Split `uri` into (prefix, local) if it starts with a known namespace.
 

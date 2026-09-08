@@ -13,6 +13,8 @@ ow_cached_ontologies = Gauge("ow_cached_ontologies", "Ontologies held in memory 
 ow_cached_stores = Gauge("ow_cached_stores", "Editable Stores held in memory cache")
 ow_ir_cache_reads_total = Counter("ow_ir_cache_reads_total", "Disk IR cache reads", ["result"])
 ow_autosave_total = Counter("ow_autosave_total", "Debounced autosave outcomes", ["result"])
+ow_validate_seconds = Histogram("ow_validate_seconds", "SHACL validation duration", ["engine"])
+ow_validate_runs_total = Counter("ow_validate_runs_total", "SHACL validation runs", ["conforms"])
 
 
 def configure_metrics(app: FastAPI) -> None:
