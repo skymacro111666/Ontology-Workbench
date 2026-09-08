@@ -35,6 +35,7 @@ from ontoworkbench.server.routers import instances as instances_router
 from ontoworkbench.server.routers import lint as lint_router
 from ontoworkbench.server.routers import ontologies as ontologies_router
 from ontoworkbench.server.routers import query as query_router
+from ontoworkbench.server.routers import validation as validation_router
 from ontoworkbench.server.staticfiles import SPAStaticFiles
 
 # Error-path logger: every failed request leaves a machine-readable trace
@@ -107,6 +108,7 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     app.include_router(instances_router.router)
     app.include_router(lint_router.router)
     app.include_router(query_router.router)
+    app.include_router(validation_router.router)
     app.include_router(export_router.router)
     configure_metrics(app)
 
