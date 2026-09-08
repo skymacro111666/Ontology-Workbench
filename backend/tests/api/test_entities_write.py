@@ -606,3 +606,9 @@ def test_edit_jsonld_round_trips(client: TestClient, autosave_debounce_50ms) -> 
     client.app.state.cache.drop(oid)
     ov = _overview(client, oid)
     assert any(n["id"] == "http://example.org/Cat" for n in ov["nodes"])
+    # The dumped file must carry @context — the same serializer backs the
+    # autosave path, and a context-less dump would strip ex: on the next
+    # cold parse (curies degrade to full IRIs).
+    content = client.get(f"/api/ontologies/{oid}/source").json()["data"]["content"]
+    assert '"@context"' in content
+    assert '"ex"' in content

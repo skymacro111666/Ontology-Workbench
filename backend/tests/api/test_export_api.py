@@ -153,10 +153,12 @@ def test_export_file_reserializes_all_three_formats(client: TestClient) -> None:
     jsonld = client.get(f"/api/ontologies/{oid}/export/file", params={"format": "json-ld"})
     assert jsonld.status_code == 200
     assert jsonld.json()["data"]["filename"] == "mini.jsonld"
-    # Round-trip: the JSON-LD payload parses back and still carries both classes.
-    graph = json.loads(jsonld.json()["data"]["content"])
-    ids = {e["@id"] for e in graph}
+    # Round-trip: the payload parses back, still carries both classes, and
+    # keeps the prefix table via the root @context.
+    doc = json.loads(jsonld.json()["data"]["content"])
+    ids = {e["@id"] for e in doc["@graph"]}
     assert {"http://example.org/A", "http://example.org/B"} <= ids
+    assert doc["@context"]["ex"] == "http://example.org/"
 
     rdf = client.get(f"/api/ontologies/{oid}/export/file", params={"format": "rdf-xml"})
     assert rdf.status_code == 200

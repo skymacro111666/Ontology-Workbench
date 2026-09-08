@@ -1,5 +1,7 @@
 """serialize_store: dump with prefixes; round-trips across all formats."""
 
+import json
+
 import pyoxigraph as ox
 import pytest
 
@@ -46,6 +48,21 @@ def test_jsonld_roundtrip() -> None:
     store2, _ = parse_store(out, "jsonld")
     assert len(store2) == 2
     assert _triple_set(store2) == _triple_set(store)
+
+
+def test_jsonld_dump_carries_context() -> None:
+    """JSON-LD dump embeds @context so custom prefixes survive re-parse.
+
+    serialize_store also backs the autosave path: a context-less dump would
+    strip file prefixes on every edit, degrading curies to full IRIs.
+    """
+    store, pm = parse_store(SRC, "turtle")
+    out = serialize_store(store, pm, "jsonld")
+    doc = json.loads(out)
+    assert isinstance(doc, dict)
+    assert doc["@context"]["ex"] == "http://example.org/"
+    store2, pm2 = parse_store(out, "jsonld")
+    assert pm2.iri_for("ex", "Thing") == "http://example.org/Thing"
 
 
 def test_unknown_format_rejected() -> None:

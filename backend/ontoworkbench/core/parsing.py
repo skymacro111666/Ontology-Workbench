@@ -5,6 +5,7 @@ parse_store/serialize_store load and dump bytes through pyoxigraph.
 
 from __future__ import annotations
 
+import json
 import time
 from typing import cast
 
@@ -104,11 +105,12 @@ _OX_OUT = {
 def serialize_store(store: ox.Store, prefixes: PrefixMap, fmt: str) -> bytes:
     """Dump the default graph back to bytes in the stored format (A2 writes).
 
-    prefixes feeds the serializer's @prefix/xmlns table (jsonld output
-    ignores it). from_graph=DefaultGraph scopes the dump: jsonld is a
-    dataset format and would otherwise write the full store, named
-    graphs included. Unknown fmt raises UNSUPPORTED_FORMAT; dump
-    failures raise PARSE_FAILED with ox's detail.
+    prefixes feeds the serializer's @prefix/xmlns table; jsonld gets the
+    table merged in as a root @context afterwards (ox ignores the prefixes
+    parameter there — see _with_jsonld_context). from_graph=DefaultGraph
+    scopes the dump: jsonld is a dataset format and would otherwise write
+    the full store, named graphs included. Unknown fmt raises
+    UNSUPPORTED_FORMAT; dump failures raise PARSE_FAILED with ox's detail.
     """
     fmt_enum = _OX_OUT.get(fmt)
     if fmt_enum is None:
@@ -119,10 +121,31 @@ def serialize_store(store: ox.Store, prefixes: PrefixMap, fmt: str) -> bytes:
         )
     try:
         out = store.dump(format=fmt_enum, from_graph=ox.DefaultGraph(), prefixes=prefixes.as_dict())
+        if fmt == "jsonld":
+            out = _with_jsonld_context(cast("bytes", out), prefixes)
         # dump returns None only when an output stream is given; we omit it.
         return cast("bytes", out)
     except Exception as exc:
         raise ParseError("PARSE_FAILED", f"Serialization error: {exc}") from exc
+
+
+def _with_jsonld_context(out: bytes, prefixes: PrefixMap) -> bytes:
+    """Merge the prefix table into a JSON-LD dump as the root @context.
+
+    ox dumps JSON-LD as a top-level node array and drops the prefixes
+    parameter on the floor; without a @context every autosave of a jsonld
+    ontology would strip the file's prefixes on the next cold parse
+    (PrefixMap rebuilds from @context, curies degrading to full IRIs).
+    """
+    doc: object = json.loads(out)
+    ctx = prefixes.as_dict()
+    if isinstance(doc, list):
+        wrapped: dict[str, object] = {"@context": ctx, "@graph": doc}
+    elif isinstance(doc, dict):
+        wrapped = {**doc, "@context": ctx}
+    else:
+        return out  # not a graph-shaped dump; leave untouched
+    return json.dumps(wrapped, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
 
 def literal_type_ok(value: str, datatype: str) -> bool:
