@@ -49,7 +49,11 @@ export default function QueryConsole({ oid }: { oid: string }) {
       setRunning(false)
     }
   }
-  runRef.current = () => void run()
+  // Latest-ref for the Mod-Enter keymap: reassigned after every render so
+  // the closure always sees fresh state (refs must not be written in render).
+  useEffect(() => {
+    runRef.current = () => void run()
+  })
 
   // Editor mounts once with the first sample; sample switches rewrite the doc.
   useEffect(() => {
@@ -85,7 +89,6 @@ export default function QueryConsole({ oid }: { oid: string }) {
       view.destroy()
       viewRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const loadSample = (idx: number) => {
