@@ -99,6 +99,7 @@ export default function EntityDialogs({ oid }: { oid: string }) {
   const dialog = useUiStore((s) => s.entityDialog)
   const setEntityDialog = useUiStore((s) => s.setEntityDialog)
   const reveal = useBrowseStore((s) => s.reveal)
+  const setSelected = useBrowseStore((s) => s.setSelected)
   const queryClient = useQueryClient()
 
   const { data: meta } = useQuery({
@@ -173,7 +174,18 @@ export default function EntityDialogs({ oid }: { oid: string }) {
     toast.success(t('common.saved'))
     setEntityDialog(null)
     void queryClient.invalidateQueries()
-    if (eid) reveal(eid)
+    if (!eid) return
+    // Progressive canvases re-anchor on reveal (§5.4) — a brand-new class
+    // has no fold children, so revealing IT would reset the canvas to one
+    // lonely node. Anchor the first parent instead (its refetched expand
+    // now includes the newcomer) and keep the inspector on the created
+    // entity; parentless creates keep the reveal-the-newcomer behavior.
+    if ((mode === 'class' || mode === 'subclass') && picked.length > 0) {
+      reveal(picked[0])
+      setSelected(eid)
+    } else {
+      reveal(eid)
+    }
   }
 
   const mutation = useMutation({

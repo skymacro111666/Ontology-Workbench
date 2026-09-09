@@ -156,6 +156,22 @@ describe('EntityDialogs', () => {
     expect(calls.post[0].body.parents).toEqual([DOG])
   })
 
+  it('after a subclass create, reveal anchors the parent; the newcomer selects', async () => {
+    const fetchMock = stubFetch()
+    draw(fetchMock)
+    useUiStore.getState().setEntityDialog({ mode: 'subclass', parent: TOY })
+    await screen.findByLabelText(/名称/)
+    await userEvent.type(screen.getByLabelText(/名称/), 'Puppy')
+    await userEvent.click(screen.getByRole('button', { name: /创建|保存/ }))
+    await waitFor(() => expect(calls.post).toHaveLength(1))
+    // Progressive canvases re-anchor on reveal; a brand-new class has no
+    // fold children, so revealing IT would blank the canvas to one node.
+    // The parent anchors (its expand now includes the newcomer) while the
+    // inspector lands on the created entity.
+    await waitFor(() => expect(useBrowseStore.getState().revealEid).toBe(TOY))
+    expect(useBrowseStore.getState().selectedEid).toBe(DOG)
+  })
+
   it('shows an inline duplicate-name error', async () => {
     const fetchMock = stubFetch({ dupOnPost: true })
     draw(fetchMock)
