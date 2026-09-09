@@ -235,6 +235,23 @@ describe('EntityDialogs', () => {
     await waitFor(() => expect(useBrowseStore.getState().selectedEid).toBeNull())
   })
 
+  it('defers the blanket invalidation behind the canvas critical path', async () => {
+    const fetchMock = stubFetch()
+    draw(fetchMock)
+    // The dialog's own queries go inactive the moment it closes, so the
+    // harness pins the scheduling itself: the blanket invalidate must ride
+    // a ~600ms timer, not fire inline with the small anchor fetches.
+    const sched = vi.spyOn(window, 'setTimeout')
+    useUiStore.getState().setEntityDialog({ mode: 'subclass', parent: TOY })
+    await screen.findByLabelText(/名称/)
+    await userEvent.type(screen.getByLabelText(/名称/), 'Puppy')
+    sched.mockClear()
+    await userEvent.click(screen.getByRole('button', { name: /创建|保存/ }))
+    await waitFor(() => expect(calls.post).toHaveLength(1))
+    expect(sched.mock.calls.some(([, ms]) => typeof ms === 'number' && ms >= 500)).toBe(true)
+    sched.mockRestore()
+  })
+
   it('deletes with prune and the lock in the query string', async () => {
     const fetchMock = stubFetch()
     draw(fetchMock)

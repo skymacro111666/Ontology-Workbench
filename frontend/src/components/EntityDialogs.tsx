@@ -178,7 +178,14 @@ export default function EntityDialogs({ oid }: { oid: string }) {
     if (mode === 'delete' && dialog?.eid && useBrowseStore.getState().selectedEid === dialog.eid)
       setSelected(null)
     setEntityDialog(null)
-    void queryClient.invalidateQueries()
+    // Heavy refetch fleet (tree roots, layout, …) rides BEHIND the canvas's
+    // small critical fetches (anchor entity+expand): fired together they
+    // queue on the browser's ~6 per-origin connections and delay the
+    // visible update. While anchored the overview query is paused anyway
+    // and refetches on anchor exit.
+    window.setTimeout(() => {
+      void queryClient.invalidateQueries()
+    }, 600)
     if (!eid) return
     // Progressive canvases re-anchor on reveal (§5.4) — a brand-new class
     // has no fold children, so revealing IT would reset the canvas to one
