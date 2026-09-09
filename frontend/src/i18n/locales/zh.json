@@ -78,6 +78,7 @@
     "viewGraph": "图形",
     "viewText": "文本",
     "viewQuery": "查询",
+    "viewValidate": "校验",
     "themeAria": "切换主题，当前：{{current}}（依次切换{{cycle}}）",
     "userFallback": "用户",
     "avatarFallback": "用",

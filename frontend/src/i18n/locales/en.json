@@ -78,6 +78,7 @@
     "viewGraph": "Graph",
     "viewText": "Text",
     "viewQuery": "Query",
+    "viewValidate": "Validate",
     "themeAria": "Switch theme, current: {{current}} (cycles {{cycle}})",
     "userFallback": "User",
     "avatarFallback": "U",

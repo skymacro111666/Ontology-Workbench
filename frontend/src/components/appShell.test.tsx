@@ -241,6 +241,16 @@ it('workspace topbar switches the browse view mode through the store', async () 
   expect(useUiStore.getState().browseView).toBe('graph')
 })
 
+it('adds the validate view as the fourth browse mode', async () => {
+  shell('/browse/oid-1')
+  const validate = screen.getByRole('radio', { name: /校验/ })
+  expect(validate.getAttribute('aria-checked')).toBe('false')
+
+  await userEvent.click(validate)
+  expect(useUiStore.getState().browseView).toBe('validate')
+  expect(validate.getAttribute('aria-checked')).toBe('true')
+})
+
 it('guards switching away from dirty text view', async () => {
   const saveFn = vi.fn(async () => true)
   useUiStore.setState({

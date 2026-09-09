@@ -8,6 +8,7 @@ import {
   LogOutIcon,
   SearchCodeIcon,
   Share2Icon,
+  ShieldCheckIcon,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
@@ -234,6 +235,10 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               <ToggleGroupItem value="query">
                 <SearchCodeIcon aria-hidden="true" />
                 {t('shell.viewQuery')}
+              </ToggleGroupItem>
+              <ToggleGroupItem value="validate">
+                <ShieldCheckIcon aria-hidden="true" />
+                {t('shell.viewValidate')}
               </ToggleGroupItem>
             </ToggleGroup>
           )}

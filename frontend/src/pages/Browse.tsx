@@ -14,6 +14,7 @@ import InspectorPanel from '../components/InspectorPanel'
 const GraphOverview = lazy(() => import('../components/GraphOverview'))
 const SourceView = lazy(() => import('../components/SourceView'))
 const QueryConsole = lazy(() => import('../components/QueryConsole'))
+const ValidationConsole = lazy(() => import('../components/ValidationConsole'))
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
@@ -176,8 +177,10 @@ export default function Browse() {
             <GraphOverview oid={oid} focus={selectedEid} />
           ) : browseView === 'text' ? (
             <SourceView oid={oid} />
-          ) : (
+          ) : browseView === 'query' ? (
             <QueryConsole oid={oid} />
+          ) : (
+            <ValidationConsole oid={oid} />
           )}
         </Suspense>
       </section>
