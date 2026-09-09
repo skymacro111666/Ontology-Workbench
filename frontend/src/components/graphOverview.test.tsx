@@ -635,6 +635,57 @@ describe('GraphOverview view override and reveal anchor', () => {
     })
   })
 
+  it('an anchored canvas drops a deleted child when revision bumps', async () => {
+    // The server-side mutation: after it, meta.revision moves and the
+    // anchor's expand payload no longer carries the kid. What afterSuccess
+    // does (invalidateQueries) must propagate into the anchored canvas —
+    // the anchor payload is component state, not a query cache entry, so
+    // it used to stay a stale snapshot with the deleted kid on screen.
+    let deleted = false
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const u = String(url)
+      if (u.endsWith('/meta')) return env({ id: 'oid-1', revision: deleted ? 2 : 1 })
+      if (u.includes('/overview')) return env(PROG)
+      if (u.endsWith(`/entities/${encodeURIComponent(FAR)}/expand`))
+        return env(
+          deleted
+            ? { nodes: [], edges: [], truncated: false, totalCount: 0 }
+            : EXPAND,
+        )
+      if (u.endsWith(`/entities/${encodeURIComponent(FAR)}`)) return env(ENTITY)
+      if (u.endsWith('/layout') && init?.method === 'PUT') {
+        savedBody = JSON.parse(String(init.body))
+        return env(savedBody)
+      }
+      return env({ positions: {} })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <ThemeProvider>
+          <GraphOverview oid="oid-1" />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    )
+    await waitForGraph()
+    useBrowseStore.getState().reveal(FAR)
+    await vi.waitFor(() => {
+      const latest = [...g6Instances()].at(-1)!
+      expect(
+        (latest.options.data as { nodes: { id: string }[] }).nodes.map((n) => n.id),
+      ).toEqual([FAR, 'kid'])
+    })
+    deleted = true
+    await qc.invalidateQueries()
+    await vi.waitFor(() => {
+      const latest = [...g6Instances()].at(-1)!
+      expect(
+        (latest.options.data as { nodes: { id: string }[] }).nodes.map((n) => n.id),
+      ).toEqual([FAR])
+    })
+  })
+
   it('progressive reveal of an off-canvas entity anchors the canvas there', async () => {
     const fetchMock = drawOverride()
     await waitForGraph()

@@ -4,7 +4,7 @@ import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
-import type { AssertionEdgePayload, EntityIR, NodesEdges } from '../api/types'
+import type { AssertionEdgePayload, EntityIR, NodesEdges, OntologyMeta } from '../api/types'
 import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
@@ -174,6 +174,14 @@ export default function GraphOverview({
       api.get<NodesEdges>(`/api/ontologies/${oid}/overview?includeDeprecated=false&view=${viewOverride}`),
     retry: false,
   })
+  /** Revision = the mutation counter (every create/edit/delete bumps it).
+   *  The fold snapshots below live in component state, not in query caches,
+   *  so invalidateQueries alone never refreshes them — they re-fetch when
+   *  the revision moves. Shares Browse's cache entry; no extra request. */
+  const { data: meta } = useQuery({
+    queryKey: ['ontology', oid],
+    queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
+  })
   /** A focus outside a TRUNCATED overview used to degrade silently (backlog
    *  T12①); say so once per (oid, focus). Non-truncated overviews stay quiet —
    *  an absent entity there is a dead link, and the inspector already reports
@@ -303,17 +311,23 @@ export default function GraphOverview({
     payload: NodesEdges
   } | null>(null)
   const revealEid = useBrowseStore((s) => s.revealEid)
+  /** Refresh target: an incoming reveal, else the seated anchor — revision
+   *  refreshes re-fetch by anchor id after ClassTree has cleared revealEid. */
+  const anchorEid = revealEid ?? anchor?.self.id ?? null
+  /** The seated anchor id: fresh-canvas resets fire on TARGET change only;
+   *  a revision refresh must not collapse the user's manual expansions. */
+  const lastAnchored = useRef<string | null>(null)
   useEffect(() => {
-    if (!revealEid || data?.mode !== 'progressive') return
+    if (!anchorEid || data?.mode !== 'progressive') return
     let cancelled = false
     ;(async () => {
       try {
         const [ent, payload] = await Promise.all([
           api.get<EntityIR>(
-            `/api/ontologies/${oid}/entities/${encodeURIComponent(revealEid)}`,
+            `/api/ontologies/${oid}/entities/${encodeURIComponent(anchorEid)}`,
           ),
           api.get<NodesEdges>(
-            `/api/ontologies/${oid}/entities/${encodeURIComponent(revealEid)}/expand`,
+            `/api/ontologies/${oid}/entities/${encodeURIComponent(anchorEid)}/expand`,
           ),
         ]) as [EntityIR, NodesEdges]
         if (cancelled || ent.type !== 'Class') return
@@ -330,17 +344,73 @@ export default function GraphOverview({
           },
           payload,
         })
-        // Reset the exploration state: the new anchor starts a fresh canvas.
-        setExpanded({})
-        setInsertedPos({})
-      } catch {
-        // Off-canvas fetch failed: keep the current view.
+        if (lastAnchored.current !== anchorEid) {
+          // Reset the exploration state: a NEW anchor starts a fresh canvas.
+          lastAnchored.current = anchorEid
+          setExpanded({})
+          setInsertedPos({})
+        }
+      } catch (e) {
+        // The anchor itself was deleted (entity 404): fall back to the
+        // overview's folded roots. Other failures keep the current view.
+        if (e instanceof ApiErr && e.code === 'NOT_FOUND')
+          setAnchor((prev) => (prev?.self.id === anchorEid ? null : prev))
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [revealEid, data?.mode, oid])
+  }, [anchorEid, data?.mode, oid, meta?.revision])
+
+  /** Revision refresh for the fold/instance snapshots: invalidateQueries
+   *  replays the query caches, but these payloads live in component state —
+   *  a delete used to leave the deleted child on screen. Re-fetch every
+   *  seated payload when the revision moves; a 404 (the fold root itself
+   *  was deleted) drops the whole row, subtree and all. */
+  useEffect(() => {
+    if (meta?.revision === undefined) return
+    const foldKeys = Object.keys(expanded)
+    const instKeys = Object.keys(revealed).filter((k) => revealed[k])
+    if (foldKeys.length === 0 && instKeys.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      const fetchOne = async (eid: string, suffix: string) => {
+        try {
+          const payload = await api.get<NodesEdges>(
+            `/api/ontologies/${oid}/entities/${encodeURIComponent(eid)}${suffix}`,
+          )
+          return [eid, payload] as const
+        } catch {
+          return [eid, null] as const
+        }
+      }
+      const folds = await Promise.all(foldKeys.map((e) => fetchOne(e, '/expand')))
+      const insts = await Promise.all(instKeys.map((e) => fetchOne(e, '/instances')))
+      if (cancelled) return
+      setExpanded((prev) => {
+        const next = { ...prev }
+        for (const [eid, payload] of folds) {
+          if (payload) next[eid] = payload
+          else delete next[eid]
+        }
+        return next
+      })
+      setRevealed((prev) => {
+        const next = { ...prev }
+        for (const [eid, payload] of insts) {
+          if (payload) next[eid] = payload
+          else delete next[eid]
+        }
+        return next
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+    // expanded/revealed are read on purpose (the snapshot keys to refresh at
+    // this revision) and must not re-run the fetch on every fold click.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meta?.revision, oid])
 
   /** The effective fold payloads: the anchor's own expand rides first so
    *  its children merge exactly like a manual fold click. */
@@ -426,7 +496,7 @@ export default function GraphOverview({
       ...Object.values(revealed).flatMap((p) => p?.edges ?? []),
       ...(aEdges?.edges ?? []).map((e) => ({ ...e, kind: 'assertion' as const })),
     ],
-    [data, revealed, aEdges, expandedAll, anchor],
+    [data, revealed, aEdges, expandedAll],
   )
 
   if (isError) {
