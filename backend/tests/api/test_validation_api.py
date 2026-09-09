@@ -50,3 +50,79 @@ def test_put_shapes_flags_shacl_af(client: TestClient) -> None:
     r = client.put(f"/api/ontologies/{oid}/validation/shapes", json={"source": af})
     assert r.status_code == 200
     assert "sh:sparql" in r.json()["data"]["afWarnings"]
+
+
+# --- POST /validation/run (spec 2026-09-08 §2.2) -------------------------
+
+SHAPES_OK = (
+    "@prefix sh: <http://www.w3.org/ns/shacl#> .\n"
+    "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
+    "[] a sh:NodeShape ; sh:targetClass <http://www.w3.org/2002/07/owl#Class> ;\n"
+    "   sh:property [ sh:path rdfs:comment ; sh:minCount 1 ; sh:severity sh:Warning ] .\n"
+)
+
+
+def _save_shapes(client: TestClient, oid: str, source: str) -> None:
+    r = client.put(f"/api/ontologies/{oid}/validation/shapes", json={"source": source})
+    assert r.status_code == 200, r.text
+
+
+def test_run_without_any_source_is_400_shapes_required(client: TestClient) -> None:
+    """Neither stored shapes nor inline source: 400 SHAPES_REQUIRED."""
+    oid = _setup(client)
+    r = client.post(f"/api/ontologies/{oid}/validation/run", json={})
+    assert r.status_code == 400 and r.json()["code"] == "SHAPES_REQUIRED"
+
+
+def test_run_returns_normalized_report(client: TestClient) -> None:
+    """Real pyrudof run: warning for the comment-less class, camelCase payload."""
+    oid = _setup(client)
+    _save_shapes(client, oid, SHAPES_OK)
+    r = client.post(f"/api/ontologies/{oid}/validation/run", json={})
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["conforms"] is False and d["counts"]["warning"] == 1
+    assert d["engine"] == "pyrudof" and d["elapsedMs"] >= 0
+    row = d["results"][0]
+    assert row["severity"] == "warning" and "http://example.org/A" in row["focusIri"]
+
+
+def test_run_inline_source_beats_stored(client: TestClient) -> None:
+    """Inline source shadows the saved shapes; empty target = conforms."""
+    oid = _setup(client)
+    _save_shapes(client, oid, SHAPES_OK)
+    inline = (
+        "@prefix sh: <http://www.w3.org/ns/shacl#> .\n"
+        "[] a sh:NodeShape ; sh:targetClass <http://no.match/x> .\n"
+    )
+    r = client.post(f"/api/ontologies/{oid}/validation/run", json={"source": inline})
+    assert r.status_code == 200
+    assert r.json()["data"]["conforms"] is True
+
+
+def test_run_timeout_maps_504(client: TestClient, monkeypatch) -> None:
+    """ValidationTimeout escapes as 504 VALIDATION_TIMEOUT."""
+    oid = _setup(client)
+    _save_shapes(client, oid, SHAPES_OK)
+    import ontoworkbench.server.routers.validation as v
+
+    def _hang(engine, data_path, shapes_source, fmt, timeout_s):
+        raise v.ValidationTimeout("0.001")
+
+    monkeypatch.setattr(v, "run_validated", _hang)
+    r = client.post(f"/api/ontologies/{oid}/validation/run", json={})
+    assert r.status_code == 504 and r.json()["code"] == "VALIDATION_TIMEOUT"
+
+
+def test_run_engine_failure_maps_500(client: TestClient, monkeypatch) -> None:
+    """EngineFailure escapes as 500 VALIDATION_ENGINE with the detail."""
+    oid = _setup(client)
+    _save_shapes(client, oid, SHAPES_OK)
+    import ontoworkbench.server.routers.validation as v
+
+    def _boom(engine, data_path, shapes_source, fmt, timeout_s):
+        raise v.EngineFailure("rudof exploded")
+
+    monkeypatch.setattr(v, "run_validated", _boom)
+    r = client.post(f"/api/ontologies/{oid}/validation/run", json={})
+    assert r.status_code == 500 and r.json()["code"] == "VALIDATION_ENGINE"

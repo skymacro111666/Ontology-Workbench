@@ -4,13 +4,21 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
 from ontoworkbench.core.parsing import ParseError, parse_store
-from ontoworkbench.core.validation import PRESETS, af_terms_in
+from ontoworkbench.core.validation import (
+    PRESETS,
+    EngineFailure,
+    PyrudofEngine,
+    ValidationTimeout,
+    af_terms_in,
+    normalize_report,
+    run_validated,
+)
 from ontoworkbench.db.models import User
 from ontoworkbench.db.repositories import OntologyRepository, ValidationShapesRepository
 from ontoworkbench.db.session import get_session
@@ -88,3 +96,70 @@ def put_shapes(
     af = _parse_or_422(body.source)
     ValidationShapesRepository(session).upsert(oid, body.source)
     return respond(_shapes_payload(session, oid, af_warnings=af))
+
+
+class RunIn(CamelModel):
+    """POST body: optional inline shapes shadowing the saved source."""
+
+    source: str | None = None
+
+
+@router.post("/{ontology_id}/validation/run")
+def run_validation(
+    ontology_id: str,
+    body: RunIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Read-only SHACL run against the on-disk file (spec §2.2).
+
+    The engine reads the stored ontology directly (no store pool, no
+    revision bump); elapsedMs is the engine-side measure from run_validated.
+    """
+    from ontoworkbench.observability.metrics import ow_validate_runs_total, ow_validate_seconds
+    from ontoworkbench.server.routers.browse import _camel, _owned
+
+    row, ix = _owned(request, user, ontology_id, session)
+    stored = ValidationShapesRepository(session).get(row.id)
+    source = body.source if body.source is not None else (stored.source if stored else None)
+    if not source or not source.strip():
+        raise ApiError(
+            ErrorCode.SHAPES_REQUIRED,
+            "No shapes to validate against",
+            "保存 shapes 或在请求中提供 source",
+        )
+    engine = PyrudofEngine()
+    with ow_validate_seconds.labels(engine.name).time():
+        try:
+            turtle, elapsed_ms = run_validated(
+                engine,
+                row.storage_path,
+                source,
+                row.format,
+                request.app.state.settings.validate_timeout_s,
+            )
+        except ValidationTimeout as exc:
+            raise ApiError(
+                ErrorCode.VALIDATION_TIMEOUT,
+                "Validation timed out",
+                f"超过 {request.app.state.settings.validate_timeout_s:.0f}s;"
+                "可调大 OW_VALIDATE_TIMEOUT_S 后重试",
+            ) from exc
+        except EngineFailure as exc:
+            raise ApiError(
+                ErrorCode.VALIDATION_ENGINE, "Validation engine failed", str(exc)[:300]
+            ) from exc
+    report = normalize_report(turtle, ix.ir.prefixes)
+    af = _parse_or_422(source)  # PUT 已校验过;run 的内联 source 也要提示
+    ow_validate_runs_total.labels(str(report.conforms).lower()).inc()
+    return respond(
+        _camel(
+            {
+                **report.model_dump(),
+                "engine": engine.name,
+                "elapsedMs": round(elapsed_ms, 1),
+                "afWarnings": af,
+            }
+        )
+    )
