@@ -419,7 +419,10 @@ export default function GraphOverview({
   const edges = useMemo(
     () => [
       ...(data?.edges ?? []),
-      ...Object.values(expanded).flatMap((p) => p.edges),
+      // expandedAll, not expanded: the anchor's own payload rides first
+      // (like the nodes memo) — anchor→children edges used to miss the
+      // list, so an anchored progressive canvas drew nodes with no lines.
+      ...Object.values(expandedAll).flatMap((p) => p.edges),
       ...Object.values(revealed).flatMap((p) => p?.edges ?? []),
       ...(aEdges?.edges ?? []).map((e) => ({ ...e, kind: 'assertion' as const })),
     ],

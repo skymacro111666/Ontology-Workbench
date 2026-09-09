@@ -654,5 +654,14 @@ describe('GraphOverview view override and reveal anchor', () => {
         String(u).endsWith(`/entities/${encodeURIComponent(FAR)}`),
       ),
     ).toBe(true)
+    // The anchor payload's edges ride along too: the edges memo once spread
+    // only manual expansions, so the anchored canvas drew nodes with no
+    // lines between them. subClassOf swaps in the G6 map (parent on top).
+    const edges = (
+      [...g6Instances()].at(-1)!.options.data as { edges: { source: string; target: string }[] }
+    ).edges
+    expect(edges).toEqual(
+      expect.arrayContaining([expect.objectContaining({ source: FAR, target: 'kid' })]),
+    )
   })
 })
