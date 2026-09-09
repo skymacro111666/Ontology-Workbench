@@ -72,7 +72,7 @@ interface CallLog {
 
 let calls: CallLog
 
-function stubFetch(opts: { dupOnPost?: boolean } = {}) {
+function stubFetch(opts: { dupOnPost?: boolean; hangMeta?: boolean } = {}) {
   calls = { post: [], put: [], del: [] }
   return vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
@@ -81,17 +81,22 @@ function stubFetch(opts: { dupOnPost?: boolean } = {}) {
     if (method === 'POST') {
       calls.post.push({ url: u, body })
       if (opts.dupOnPost) return env(null, 'DUPLICATE_ENTITY')
-      return env({ meta: META, entity: { eid: DOG, curie: 'ex:Cat', type: 'Class' } })
+      return env({ meta: { ...META, revision: 4 }, entity: { eid: DOG, curie: 'ex:Cat', type: 'Class' } })
     }
     if (method === 'PUT') {
       calls.put.push({ url: u, body })
-      return env({ meta: META, entity: { eid: DOG, curie: 'ex:Dog', type: 'Class' } })
+      return env({ meta: { ...META, revision: 4 }, entity: { eid: DOG, curie: 'ex:Dog', type: 'Class' } })
     }
     if (method === 'DELETE') {
       calls.del.push(u)
-      return env({ removed: 3, meta: META })
+      return env({ removed: 3, meta: { ...META, revision: 4 } })
     }
-    if (u.endsWith('/meta')) return env(META)
+    if (u.endsWith('/meta')) {
+      // Hangs forever when asked: whatever lands in the ['ontology'] cache
+      // then can only have come from a mutation response, not a refetch.
+      if (opts.hangMeta) return new Promise<Response>(() => {})
+      return env(META)
+    }
     if (u.endsWith('/overview')) return env(OVERVIEW)
     if (u.includes('/entities/')) return env(ENTITY)
     return env({})
@@ -101,13 +106,14 @@ function stubFetch(opts: { dupOnPost?: boolean } = {}) {
 function draw(fetchMock: ReturnType<typeof stubFetch>) {
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return render(
+  const view = render(
     <QueryClientProvider client={qc}>
       <ThemeProvider>
         <EntityDialogs oid={OID} />
       </ThemeProvider>
     </QueryClientProvider>,
   )
+  return { qc, view }
 }
 
 beforeEach(() => {
@@ -198,6 +204,22 @@ describe('EntityDialogs', () => {
     // No label row: the request must not carry a label key at all.
     expect(calls.put[0].body).not.toHaveProperty('label')
     expect(screen.queryByLabelText(/标签/)).toBeNull()
+  })
+
+  it("lands the mutation's meta in the cache without a refetch round-trip", async () => {
+    const fetchMock = stubFetch({ hangMeta: true })
+    const { qc } = draw(fetchMock)
+    useUiStore.getState().setEntityDialog({ mode: 'subclass', parent: TOY })
+    await screen.findByLabelText(/名称/)
+    await userEvent.type(screen.getByLabelText(/名称/), 'Puppy')
+    await userEvent.click(screen.getByRole('button', { name: /创建|保存/ }))
+    await waitFor(() => expect(calls.post).toHaveLength(1))
+    // The progressive canvas's snapshot refresh keys off meta.revision — it
+    // must be able to start from the response itself, not wait for the
+    // invalidateQueries /meta refetch (one extra round-trip).
+    await waitFor(() =>
+      expect(qc.getQueryData(['ontology', OID])).toMatchObject({ revision: 4 }),
+    )
   })
 
   it('deletes with prune and the lock in the query string', async () => {

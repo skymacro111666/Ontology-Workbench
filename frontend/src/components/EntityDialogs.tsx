@@ -234,8 +234,12 @@ export default function EntityDialogs({ oid }: { oid: string }) {
       )
     },
     onSuccess: (r) => {
-      const created = r as { entity?: { eid?: string } } | null
-      afterSuccess(created?.entity?.eid)
+      const resp = r as { entity?: { eid?: string }; meta?: OntologyMeta } | null
+      // Land the mutation's meta locally (no refetch round-trip): the
+      // progressive canvas's snapshot refresh keys off meta.revision and
+      // starts immediately instead of waiting for invalidateQueries' /meta.
+      if (resp?.meta) queryClient.setQueryData(['ontology', oid], resp.meta)
+      afterSuccess(resp?.entity?.eid)
     },
     onError: (e) => {
       if (e instanceof ApiErr && e.code === 'DUPLICATE_ENTITY') {
