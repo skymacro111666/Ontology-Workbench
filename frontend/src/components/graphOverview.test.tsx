@@ -486,6 +486,24 @@ describe('GraphOverview progressive fold', () => {
     expect(await screen.findByText(/已废弃节点/)).toBeTruthy()
   })
 
+  it('a node BODY click selects without re-anchoring the canvas', async () => {
+    const fetchMock = drawProgressive()
+    await waitForGraph()
+    const anchorCalls = () =>
+      fetchMock.mock.calls.filter(([u]) => String(u).includes('/entities/root')).length
+    const before = anchorCalls()
+    lastG6()!.handlers['node:click']({
+      target: { id: 'root' },
+      // A body hit: no badge className anywhere on the climb.
+      originalTarget: { className: undefined, parentElement: null },
+    })
+    // Selection lands; the reveal mechanism (canvas re-anchor + tree walk)
+    // must not fire from a body click — only the fold badge expands.
+    await vi.waitFor(() => expect(useBrowseStore.getState().selectedEid).toBe('root'))
+    expect(useBrowseStore.getState().revealEid).toBeNull()
+    expect(anchorCalls()).toBe(before)
+  })
+
   it('fold click fetches /expand and merges children; clicking again removes them', async () => {
     const fetchMock = drawProgressive()
     await waitForGraph()

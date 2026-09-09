@@ -142,6 +142,7 @@ export default function GraphOverview({
 }) {
   const { t } = useTranslation()
   const reveal = useBrowseStore((s) => s.reveal)
+  const setSelected = useBrowseStore((s) => s.setSelected)
   const setEntityDialog = useUiStore((s) => s.setEntityDialog)
   const setInstanceDialog = useUiStore((s) => s.setInstanceDialog)
   const setInstanceAutoEdit = useUiStore((s) => s.setInstanceAutoEdit)
@@ -542,12 +543,16 @@ export default function GraphOverview({
         </div>
       )}
       <div className="relative min-h-0 flex-1">
+        {/* Body clicks select only: wiring reveal() to onSelect predates the
+         *  progressive canvas — once reveal grew its re-anchor semantics
+         *  (09-06), every body click silently re-anchored the whole canvas.
+         *  Only the fold badge expands (spec §5). */}
         <GraphView
           key={layoutKey}
           nodes={nodes}
           edges={edges}
           focusId={focus ?? undefined}
-          onSelect={reveal}
+          onSelect={setSelected}
           onBadgeClick={(eid) => void toggleInstances(eid)}
           onFoldClick={(eid, folded) => void toggleFold(eid, folded)}
           foldedIds={foldedIdsAll}
