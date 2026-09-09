@@ -222,6 +222,19 @@ describe('EntityDialogs', () => {
     )
   })
 
+  it('clears the selection when the deleted entity was selected', async () => {
+    const fetchMock = stubFetch()
+    draw(fetchMock)
+    useBrowseStore.setState({ selectedEid: DOG })
+    useUiStore.getState().setEntityDialog({ mode: 'delete', eid: DOG })
+    await screen.findByText('删除实体')
+    await userEvent.click(screen.getByRole('button', { name: '删除' }))
+    await waitFor(() => expect(calls.del).toHaveLength(1))
+    // A dangling selection would keep a dead entity in the inspector and
+    // point the canvas rebuild's focusElement at a missing node.
+    await waitFor(() => expect(useBrowseStore.getState().selectedEid).toBeNull())
+  })
+
   it('deletes with prune and the lock in the query string', async () => {
     const fetchMock = stubFetch()
     draw(fetchMock)

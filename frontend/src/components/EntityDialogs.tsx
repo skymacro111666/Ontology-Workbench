@@ -172,6 +172,11 @@ export default function EntityDialogs({ oid }: { oid: string }) {
 
   const afterSuccess = (eid?: string) => {
     toast.success(t('common.saved'))
+    // Deleting the selected entity leaves a dangling focus: the inspector
+    // keeps showing a dead entity and the canvas rebuild's focusElement
+    // would target a node that no longer exists (blank canvas until 适配).
+    if (mode === 'delete' && dialog?.eid && useBrowseStore.getState().selectedEid === dialog.eid)
+      setSelected(null)
     setEntityDialog(null)
     void queryClient.invalidateQueries()
     if (!eid) return

@@ -634,7 +634,10 @@ export default function GraphView({
               positionsRef.current[nd.id] = { x, y }
           }
         }
-        if (snap.focusId) {
+        // A stale focus (the entity was just deleted) must not skip the
+        // fitView branch — focusElement on a missing node moves nothing and
+        // the canvas read blank until the user pressed 适配.
+        if (snap.focusId && snap.nodes.some((nd) => nd.id === snap.focusId)) {
           void graph.focusElement(snap.focusId)
         } else {
           // Folded oversized maps tower over the viewport (36k px tall): a raw
@@ -728,6 +731,8 @@ export default function GraphView({
   useEffect(() => {
     const g = graphRef.current
     if (!g || !focusId) return
+    // Stale focus (the entity was just deleted): nothing to center on.
+    if (!stateRef.current.nodes.some((nd) => nd.id === focusId)) return
     void g.focusElement(focusId)
   }, [focusId])
 

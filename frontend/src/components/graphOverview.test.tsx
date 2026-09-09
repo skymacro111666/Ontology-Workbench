@@ -486,6 +486,18 @@ describe('GraphOverview progressive fold', () => {
     expect(await screen.findByText(/已废弃节点/)).toBeTruthy()
   })
 
+  it('a stale focus falls back to fitView instead of a blank canvas', async () => {
+    // Deleting the selected entity rebuilds the graph with focusId pointing
+    // at a node that no longer exists: focusElement on it moves nothing and
+    // the fitView else-branch never ran — the canvas read empty until the
+    // user pressed 适配. A missing focus must fall back to fitView.
+    draw(stubFetch(), 'http://x/gone')
+    await waitForGraph()
+    const g = lastG6()!
+    await vi.waitFor(() => expect(g.fitView).toHaveBeenCalled())
+    expect(g.focusElement).not.toHaveBeenCalled()
+  })
+
   it('a node BODY click selects without re-anchoring the canvas', async () => {
     const fetchMock = drawProgressive()
     await waitForGraph()
