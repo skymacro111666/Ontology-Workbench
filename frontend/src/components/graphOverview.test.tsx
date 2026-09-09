@@ -716,6 +716,53 @@ describe('GraphOverview view override and reveal anchor', () => {
     })
   })
 
+  it('pauses the overview query while anchored; exiting refetches it', async () => {
+    // The overview renders nothing while anchored (base = [anchor.self]):
+    // mutation invalidations must not refetch the 13k-node payload for
+    // nothing. Exiting the anchor re-enables the query and refetches.
+    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/overview')) return env(PROG)
+      if (u.endsWith(`/entities/${encodeURIComponent(FAR)}/expand`)) return env(EXPAND)
+      if (u.endsWith(`/entities/${encodeURIComponent(FAR)}`)) return env(ENTITY)
+      if (u.endsWith('/layout') && init?.method === 'PUT') {
+        savedBody = JSON.parse(String(init.body))
+        return env(savedBody)
+      }
+      return env({ positions: {} })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <ThemeProvider>
+          <GraphOverview oid="oid-1" />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    )
+    await waitForGraph()
+    const overviews = () =>
+      fetchMock.mock.calls.filter(([u]) => String(u).includes('/overview')).length
+    const base = overviews()
+    useBrowseStore.getState().reveal(FAR)
+    await vi.waitFor(() => {
+      const latest = [...g6Instances()].at(-1)!
+      expect(
+        (latest.options.data as { nodes: { id: string }[] }).nodes.map((n) => n.id),
+      ).toEqual([FAR, 'kid'])
+    })
+    // What mutations do — must NOT refetch the paused overview.
+    await qc.invalidateQueries()
+    expect(overviews()).toBe(base)
+    // Exiting the anchor (the − badge on the anchor node) re-enables and
+    // refetches the now-stale overview.
+    ;[...g6Instances()].at(-1)!.handlers['node:click']({
+      target: { id: FAR },
+      originalTarget: { className: 'badge-0', parentElement: null },
+    })
+    await vi.waitFor(() => expect(overviews()).toBe(base + 1))
+  })
+
   it('progressive reveal of an off-canvas entity anchors the canvas there', async () => {
     const fetchMock = drawOverride()
     await waitForGraph()

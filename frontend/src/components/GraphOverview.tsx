@@ -169,11 +169,22 @@ export default function GraphOverview({
    *  capability — user call 2026-09-06: its truncated 5000-node canvas
    *  read worse than the folded one, so the button is gone). */
   const [viewOverride, setViewOverride] = useState<'auto' | 'progressive'>('auto')
+  /** Progressive reveal anchor (spec §5.4) — declared early: the overview
+   *  query below pauses while it is seated. */
+  const [anchor, setAnchor] = useState<{
+    self: GraphViewNode
+    payload: NodesEdges
+  } | null>(null)
   const { data, isError, error, refetch } = useQuery({
     queryKey: ['overview', oid, viewOverride],
     queryFn: () =>
       api.get<NodesEdges>(`/api/ontologies/${oid}/overview?includeDeprecated=false&view=${viewOverride}`),
     retry: false,
+    // Paused while anchored: the overview renders nothing then (base =
+    // [anchor.self]), and mutation invalidations must not refetch a
+    // 13k-node payload for nothing. Exiting the anchor re-enables the
+    // query, which refetches it if the invalidation marked it stale.
+    enabled: !anchor,
   })
   /** Revision = the mutation counter (every create/edit/delete bumps it).
    *  The fold snapshots below live in component state, not in query caches,
@@ -307,10 +318,6 @@ export default function GraphOverview({
    *  canvas to that entity + its foldable children instead of a dead end.
    *  ClassTree owns revealEid's tree walk and clears it; this side reads it
    *  without consuming. Classes only — instances never ride the fold view. */
-  const [anchor, setAnchor] = useState<{
-    self: GraphViewNode
-    payload: NodesEdges
-  } | null>(null)
   const revealEid = useBrowseStore((s) => s.revealEid)
   /** Refresh target: an incoming reveal, else the seated anchor — revision
    *  refreshes re-fetch by anchor id after ClassTree has cleared revealEid. */
