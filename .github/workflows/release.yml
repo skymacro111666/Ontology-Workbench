@@ -5,6 +5,7 @@ name: release
 # feat→Added、fix→Fixed、perf/refactor/docs→Changed、其余→Maintenance,
 # 条目为 scope 前缀 + 提交标题 + 短 hash;首个 tag(无上一 tag)列全部历史。
 # 流程:git tag vX.Y.Z → git push origin vX.Y.Z
+# Release 标题为「Ontology-Workbench vX.Y.Z」,tag 本身保持 v* 命名。
 on:
   push:
     tags: ['v*']
@@ -29,4 +30,4 @@ jobs:
           ARGS=(--to "$TAG")
           if [ -n "$PREV" ]; then ARGS+=(--from "$PREV"); fi
           python3 tools/release_notes.py "${ARGS[@]}" > /tmp/release-notes.md
-          gh release create "$TAG" --title "$TAG" --notes-file /tmp/release-notes.md
+          gh release create "$TAG" --title "Ontology-Workbench $TAG" --notes-file /tmp/release-notes.md
