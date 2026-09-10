@@ -6,18 +6,19 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import structlog
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
 
 from ontoworkbench.core.indexes import DEPRECATED_BUCKET, Indexes, build_indexes
-from ontoworkbench.core.ir import build_ir_store
+from ontoworkbench.core.ir import IRBundle, build_ir_store
 from ontoworkbench.core.ir_cache import read_ir_cache, write_ir_cache
 from ontoworkbench.core.parsing import timed_parse_store
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
 from ontoworkbench.db.repositories import OntologyRepository
-from ontoworkbench.db.session import get_session
+from ontoworkbench.db.session import get_session, sessionmaker_or_fail
 from ontoworkbench.observability.metrics import (
     ow_build_seconds,
     ow_ir_cache_reads_total,
@@ -28,26 +29,81 @@ from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
 router = APIRouter(prefix="/api/ontologies", tags=["browse"])
 
+_log = structlog.get_logger("ow.cache")
+
+
+def _heal_row(row: Ontology, data: bytes, disk_hash: str, ir: IRBundle) -> None:
+    """Catch the DB row up after an external edit (方案三 self-heal).
+
+    The file is the single source of truth: when the disk hash moved on
+    from the row's, the row records the healed facts. Failure degrades to
+    a warning — the read itself is already valid.
+    """
+    if row.file_hash == disk_hash:
+        return
+    stats = dict(row.stats_json or {})
+    stats["prefixes"] = ir.prefixes
+    try:
+        with sessionmaker_or_fail()() as db:
+            OntologyRepository(db).update(
+                row.id,
+                class_count=ir.counts.class_count,
+                property_count=ir.counts.property_count,
+                axiom_count=ir.counts.axiom_count,
+                instance_count=ir.counts.individual_count,
+                stats_json=stats,
+                file_size_bytes=len(data),
+                file_hash=disk_hash,
+            )
+    except Exception as exc:
+        _log.warning(
+            "browse.self_heal_failed",
+            ontology_id=str(row.id),
+            error_type=type(exc).__name__,
+        )
+        return
+    # Keep the request-scoped row (and the memory-cache key indexes_for
+    # stores right after the loader returns) on the healed values.
+    row.file_hash = disk_hash
+    row.file_size_bytes = len(data)
+    row.class_count = ir.counts.class_count
+    row.property_count = ir.counts.property_count
+    row.axiom_count = ir.counts.axiom_count
+    row.instance_count = ir.counts.individual_count
+    row.stats_json = stats
+    _log.info(
+        "browse.self_heal",
+        ontology_id=str(row.id),
+        file_size_bytes=len(data),
+    )
+
 
 def _loader(request: Request):
     """Build a cache-miss loader: disk IR cache first, re-parse as fallback.
 
-    A hit skips parse+build_ir_store entirely (restart recovery for big
-    ontologies); a miss re-parses and writes the bundle back through.
+    The pkl validates against the CURRENT disk hash, not the DB row's
+    (方案三: an external edit — vim/rsync/Protégé — must never serve
+    stale); a mismatch re-parses, re-keys the pkl and heals the row. A
+    hit still skips parse+build_ir_store entirely (restart recovery for
+    big ontologies).
     """
     store: LocalUserDirStore = request.app.state.store
 
     def load(row: Ontology) -> Indexes:
-        cached = read_ir_cache(Path(row.storage_path), row.file_hash)
+        path = Path(row.storage_path)
+        data = store.read(path)
+        disk_hash = LocalUserDirStore.file_hash(data)
+        cached = read_ir_cache(path, disk_hash)
         ow_ir_cache_reads_total.labels(cached.outcome).inc()
         if cached.ir is not None:
+            _heal_row(row, data, disk_hash, cached.ir)
             return build_indexes(cached.ir)
-        data = store.read(Path(row.storage_path))
         with ow_parse_seconds.labels(row.format).time():
             ox_store, prefixes, _ = timed_parse_store(data, row.format)
         with ow_build_seconds.time():
             ir = build_ir_store(ox_store, prefixes)
-        write_ir_cache(Path(row.storage_path), ir, row.file_hash)
+        write_ir_cache(path, ir, disk_hash)
+        _heal_row(row, data, disk_hash, ir)
         return build_indexes(ir)
 
     return load

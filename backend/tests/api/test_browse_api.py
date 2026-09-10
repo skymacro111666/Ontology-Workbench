@@ -1,6 +1,7 @@
 """Read APIs over an uploaded mini ontology."""
 
 import io
+from pathlib import Path
 from urllib.parse import quote
 
 from fastapi.testclient import TestClient
@@ -395,6 +396,57 @@ def test_upload_warms_disk_ir_cache(client: TestClient, monkeypatch) -> None:
     tree = client.get(f"/api/ontologies/{oid}/tree")
     assert tree.status_code == 200
     assert calls == []
+
+
+def test_external_edit_self_heals_pkl_and_db_row(client: TestClient, monkeypatch) -> None:
+    """An externally edited cabinet file self-heals on the next open (方案三).
+
+    Behind-the-app overwrite (vim/rsync/Protégé stand-in) → memory drop
+    (restart stand-in) → the open re-parses from disk, serves the NEW
+    class, and catches the DB row up (hash/size/count); the next cold
+    open hits the re-keyed pkl with zero parses.
+    """
+    from uuid import UUID
+
+    from ontoworkbench.core.store import LocalUserDirStore
+    from ontoworkbench.db.models import Ontology
+    from ontoworkbench.db.session import sessionmaker_or_fail
+
+    oid = _upload(client)
+    assert client.get(f"/api/ontologies/{oid}/overview").json()["data"]["totalCount"] == 3
+
+    edited = MINI + b"ex:Machine a owl:Class ; rdfs:subClassOf ex:Thing .\n"
+    with sessionmaker_or_fail()() as db:
+        row = db.get(Ontology, UUID(oid))
+        assert row is not None
+        Path(row.storage_path).write_bytes(edited)
+
+    client.app.state.cache.drop(oid)
+    healed = client.get(f"/api/ontologies/{oid}/overview")
+    assert healed.status_code == 200
+    assert healed.json()["data"]["totalCount"] == 4  # fresh parse, not the stale pkl
+
+    with sessionmaker_or_fail()() as db:
+        row = db.get(Ontology, UUID(oid))
+        assert row is not None
+        assert row.file_hash == LocalUserDirStore.file_hash(edited)
+        assert row.file_size_bytes == len(edited)
+        assert row.class_count == 4
+
+    client.app.state.cache.drop(oid)
+    import ontoworkbench.server.routers.browse as browse_mod
+
+    calls = []
+    real = browse_mod.timed_parse_store
+
+    def spy(data, fmt):  # noqa: ANN001 — test-local shape
+        calls.append(1)
+        return real(data, fmt)
+
+    monkeypatch.setattr(browse_mod, "timed_parse_store", spy)
+    again = client.get(f"/api/ontologies/{oid}/overview")
+    assert again.json()["data"]["totalCount"] == 4
+    assert calls == []  # pkl re-keyed to the disk hash — served without re-parse
 
 
 def test_browse_records_build_metric(client: TestClient) -> None:
