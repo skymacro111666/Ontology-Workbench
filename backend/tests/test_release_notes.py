@@ -63,3 +63,24 @@ def test_scopeless_conventional_commits_skip_the_prefix() -> None:
     """`feat: x` (no scope) renders without a bold prefix."""
     md = _md(("ddd0001", "feat: bare feature"))
     assert "- bare feature (ddd0001)" in md
+
+
+def test_mention_shaped_at_signs_are_escaped() -> None:
+    """`@context` in a subject must not @-mention a GitHub account."""
+    md = _md(("eee0001", "fix(core): embed @context in JSON-LD dumps"))
+    assert "&#64;context" in md
+    assert "@context" not in md
+
+
+def test_at_sign_inside_a_word_is_left_alone() -> None:
+    """Mid-word `@` (an email) cannot become a mention — keep it literal."""
+    md = _md(("fff0001", "docs: contact noreply@anthropic.com"))
+    assert "noreply@anthropic.com" in md
+    assert "&#64;" not in md
+
+
+def test_at_sign_inside_code_spans_is_left_alone() -> None:
+    """HTML entities render literally inside code spans — never escape there."""
+    md = _md(("ggg0001", "fix(front): keep `@apply` literal"))
+    assert "`@apply`" in md
+    assert "&#64;" not in md

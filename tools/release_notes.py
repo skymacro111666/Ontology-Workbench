@@ -27,6 +27,21 @@ SECTION_FOR_TYPE = {
     "docs": "Changed",
 }
 SUBJECT_RE = re.compile(r"^([a-z]+)(?:\(([^)]+)\))?:\s*(.+)$")
+# An `@` that starts a GitHub mention: not mid-word, followed by a username
+# character. `&#64;` renders identically in prose without creating a link.
+MENTION_AT_RE = re.compile(r"(?<![A-Za-z0-9])@(?=[A-Za-z0-9_-])")
+
+
+def escape_mentions(text: str) -> str:
+    """Neutralize `@user` mentions in prose.
+
+    Code spans render entities literally, so backtick-delimited segments
+    are left untouched.
+    """
+    parts = text.split("`")
+    for i in range(0, len(parts), 2):
+        parts[i] = MENTION_AT_RE.sub("&#64;", parts[i])
+    return "`".join(parts)
 
 
 def group_markdown(entries: list[tuple[str, str]]) -> str:
@@ -39,6 +54,7 @@ def group_markdown(entries: list[tuple[str, str]]) -> str:
             section = SECTION_FOR_TYPE.get(typ, "Maintenance")
         else:
             scope, text, section = None, subject, "Maintenance"
+        text = escape_mentions(text)
         entry = (
             f"- **{scope}**: {text} ({short_hash})"
             if scope
@@ -54,6 +70,7 @@ def group_markdown(entries: list[tuple[str, str]]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Read the log range and print the grouped markdown."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--from",
