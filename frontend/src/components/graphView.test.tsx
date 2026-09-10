@@ -510,6 +510,82 @@ describe('GraphView saved layout', () => {
     }
   })
 
+  it('keeps dragged positions when a data change rebuilds the canvas', () => {
+    vi.useFakeTimers()
+    try {
+      const onLayoutChange = vi.fn()
+      const { view } = draw({ onLayoutChange })
+      const g = lastG6()!
+      // Auto pipeline laid the first canvas; a drag moved 'b' (badge-click
+      // rebuilds arrive the same way — new nodes array identity).
+      g.elementPositions = Object.fromEntries(
+        NODES.map((n, i) => [n.id, { x: i * 100, y: 50 }]),
+      )
+      g.elementPositions.b = { x: 999, y: 777 }
+      g.handlers['node:dragend']({})
+      view.rerender(
+        <ThemeProvider>
+          <GraphView
+            nodes={[...NODES, { id: 'i2', curie: 'ex:two', label: {}, kind: 'instance' }]}
+            edges={EDGES}
+            onSelect={vi.fn()}
+            onLayoutChange={onLayoutChange}
+          />
+        </ThemeProvider>,
+      )
+      const next = lastG6()!
+      // The rebuild carries live coordinates instead of re-running dagre —
+      // License-on-badge-click must not snap back to its auto spot.
+      expect(next.options.layout).toBe(false)
+      const { nodes } = lastData()
+      expect(nodes.find((n) => n.id === 'b')?.style).toMatchObject({ x: 999, y: 777 })
+      // The brand-new node gets a deterministic fallback spot, not a re-flow.
+      expect(typeof nodes.find((n) => n.id === 'i2')?.style.x).toBe('number')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('flushes a pending debounced save on rebuild instead of dropping it', () => {
+    vi.useFakeTimers()
+    try {
+      const onLayoutChange = vi.fn()
+      const { view } = draw({ onLayoutChange })
+      const g = lastG6()!
+      g.elementPositions = Object.fromEntries(
+        NODES.map((n, i) => [n.id, { x: i * 100, y: 50 }]),
+      )
+      g.handlers['node:dragend']({})
+      expect(onLayoutChange).not.toHaveBeenCalled() // still inside the debounce
+      view.rerender(
+        <ThemeProvider>
+          <GraphView
+            nodes={[...NODES]}
+            edges={EDGES}
+            onSelect={vi.fn()}
+            onLayoutChange={onLayoutChange}
+          />
+        </ThemeProvider>,
+      )
+      expect(onLayoutChange).toHaveBeenCalledTimes(1) // flushed, not dropped
+      vi.advanceTimersByTime(800)
+      expect(onLayoutChange).toHaveBeenCalledTimes(1) // no double fire later
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not flush an empty map when no drag ever happened', () => {
+    const onLayoutChange = vi.fn()
+    const { view } = draw({ onLayoutChange })
+    view.rerender(
+      <ThemeProvider>
+        <GraphView nodes={[...NODES]} edges={EDGES} onSelect={vi.fn()} onLayoutChange={onLayoutChange} />
+      </ThemeProvider>,
+    )
+    expect(onLayoutChange).not.toHaveBeenCalled()
+  })
+
   it('renders the 重排 escape hatch only when onResetLayout is wired', async () => {
     draw()
     expect(screen.queryByText('重排')).toBeNull()

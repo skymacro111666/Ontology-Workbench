@@ -498,15 +498,23 @@ export default function GraphView({
     document.documentElement.classList.toggle('dark', resolved === 'dark')
     const t = readCanvasTokens()
     const snap = stateRef.current
-    // Saved positions switch the canvas off the auto pipeline: every node
-    // needs an explicit spot, unvisited ones get deterministic fallbacks.
-    const seeded: Record<string, Pt> = savedPositions ?? {}
-    const useSaved = Object.keys(seeded).length > 0
-    if (useSaved) {
-      positionsRef.current = assignFallbackPositions(snap.nodes, snap.edges, seeded)
-    } else {
-      positionsRef.current = {}
+    // Seed a rebuild from BOTH sources: the server-saved layout and the
+    // live coordinates this mount already knows (auto-captured after the
+    // first render, moved by drags). Live wins — a data-change rebuild
+    // (badge reveal, refresh) must not snap a dragged node back to its
+    // saved/auto spot. Ids no longer on the canvas (collapsed reveals,
+    // deleted entities) drop out so the saved map cannot grow forever.
+    const saved: Record<string, Pt> = savedPositions ?? {}
+    const liveIds = new Set(snap.nodes.map((n) => n.id))
+    const carried: Record<string, Pt> = {}
+    for (const [id, p] of Object.entries(positionsRef.current)) {
+      if (liveIds.has(id)) carried[id] = p
     }
+    const seeded = { ...saved, ...carried }
+    const useSaved = Object.keys(seeded).length > 0
+    positionsRef.current = useSaved
+      ? assignFallbackPositions(snap.nodes, snap.edges, seeded)
+      : {}
     const data = buildData(snap.nodes, snap.edges, snap.kinds, snap.showLabels, t, foldedIds)
     edgePropRef.current = new Map(
       (data.edges ?? []).map((ed) => [
@@ -663,7 +671,16 @@ export default function GraphView({
       })
 
     return () => {
-      window.clearTimeout(saveTimerRef.current)
+      // A pending debounced save must not die with this graph — flush it
+      // before destroying. The empty-map guard keeps StrictMode's dev
+      // double-mount (rebuild before any drag) from PUTting a blank map
+      // over a stored layout.
+      if (saveTimerRef.current !== undefined) {
+        window.clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = undefined
+        if (Object.keys(positionsRef.current).length > 0)
+          onLayoutChangeRef.current?.({ ...positionsRef.current })
+      }
       graph.destroy()
       mount.remove()
       graphRef.current = null
