@@ -71,9 +71,15 @@ export interface EntityIR {
   axioms: { turtle: string }[]
   /** Manchester rendering (lazy per request, OWL 2 M1): null = bridge
    *  failure or no axioms — the panel then shows no axiom section at all. */
-  manchester?: string[] | null
+  manchester?: ManchesterLine[] | null
   stats: EntityStats
   kind?: 'entity'
+}
+
+/** One rendered axiom: kind = axiom type (badge/filter), text = readable line. */
+export interface ManchesterLine {
+  kind: string
+  text: string
 }
 
 /** Instance detail page payload (GET /entities/{eid}). */

@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
-import type { CounterpartRef, EntityIR, GNode, InstanceIR, NodesEdges, Ref, ReferencedRef, SchemaProp } from '../api/types'
+import type { CounterpartRef, EntityIR, GNode, InstanceIR, ManchesterLine, NodesEdges, Ref, ReferencedRef, SchemaProp } from '../api/types'
 import { errText } from '../i18n/errText'
 import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
@@ -179,6 +179,116 @@ function ClassPropSection({ oid, cls }: { oid: string; cls: string }) {
   )
 }
 
+/** Manchester 关键词(行内着色):渲染器模板词表 + 布尔/基数连接词. */
+const MANCHESTER_KEYWORDS = new Set([
+  'SubClassOf',
+  'SubPropertyOf',
+  'EquivalentTo',
+  'DisjointClasses',
+  'DisjointUnionOf',
+  'HasKey',
+  'Type',
+  'Self',
+  'some',
+  'only',
+  'min',
+  'max',
+  'exactly',
+  'and',
+  'or',
+  'not',
+  'value',
+  'chain',
+])
+
+/** One axiom line: keywords carry the primary tint, literals dim, rest ink. */
+function ManchesterText({ text }: { text: string }) {
+  return (
+    <code className="text-ink-2 font-mono text-xs break-all">
+      {text.split(/(\s+)/).map((tok, i) => (
+        <span
+          key={i}
+          className={cn(
+            MANCHESTER_KEYWORDS.has(tok) && 'text-primary font-semibold',
+            tok.startsWith('"') && 'text-ink-3',
+          )}
+        >
+          {tok}
+        </span>
+      ))}
+    </code>
+  )
+}
+
+/** Axiom section (A+B iteration): one row per axiom with its kind as the
+ *  leading anchor, kind chips filter when several families mix, and the box
+ *  scrolls past ~12 rows instead of pushing the sections below away. Raw
+ *  Turtle stays a closed <details> safety net (OWL 2 M1 degradation). */
+function ManchesterSection({
+  lines,
+  axioms,
+}: {
+  lines: ManchesterLine[]
+  axioms: { turtle: string }[]
+}) {
+  const { t } = useTranslation()
+  const [kindFilter, setKindFilter] = useState<string | null>(null)
+  const kinds = useMemo(() => [...new Set(lines.map((l) => l.kind))], [lines])
+  const visible = kindFilter ? lines.filter((l) => l.kind === kindFilter) : lines
+  return (
+    <Section
+      label={t('inspector.axioms.structured')}
+      count={lines.length}
+      action={
+        kinds.length > 1 ? (
+          <div className="flex flex-wrap gap-1">
+            {kinds.map((k) => (
+              <button
+                key={k}
+                type="button"
+                aria-pressed={kindFilter === k}
+                onClick={() => setKindFilter(kindFilter === k ? null : k)}
+                className={cn(
+                  'rounded-full border px-2 py-px font-mono text-[10px] leading-4',
+                  kindFilter === k
+                    ? 'bg-primary-soft border-primary-border text-primary'
+                    : 'border-line text-ink-2 hover:text-primary',
+                )}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+        ) : undefined
+      }
+    >
+      <div className="border-line bg-panel-2 rounded-ctl flex max-h-72 flex-col gap-0.5 overflow-y-auto border p-1.5">
+        {visible.map((l, i) => (
+          <div
+            key={`${l.kind}:${i}`}
+            className={cn('flex items-start gap-2 py-1', i > 0 && 'border-line border-t')}
+          >
+            <span className="text-ink-3 shrink-0 pt-px font-mono text-[10px] leading-5">
+              {l.kind}
+            </span>
+            <ManchesterText text={l.text} />
+          </div>
+        ))}
+      </div>
+      {axioms.length > 0 && (
+        <details>
+          <summary className="text-ink-3 cursor-pointer text-[11px] select-none">
+            {t('inspector.axioms.raw')}
+          </summary>
+          <pre className="text-ink bg-panel-2 border-line rounded-ctl mt-1 max-w-full overflow-x-auto border p-1.5 font-mono text-xs break-all whitespace-pre-wrap">
+            {axioms.map((a) => a.turtle).join('\n')}
+          </pre>
+        </details>
+      )}
+    </Section>
+  )
+}
+
 export function Section({
   label,
   count,
@@ -316,28 +426,7 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
         <BackRefChips refs={ent.referencedBy} />
       </Section>
       {ent.manchester && ent.manchester.length > 0 && (
-        <Section label={t('inspector.axioms.structured')} count={ent.manchester.length}>
-          {/* OWL 2 M1: readable Manchester lines are the surface; the raw
-           *  Turtle rides below in a closed <details> as the safety net.
-           *  manchester null/empty → no section at all (yesterday's DOM). */}
-          <div className="border-line bg-panel-2 rounded-ctl flex flex-col gap-0.5 border p-1.5">
-            {ent.manchester.map((line, i) => (
-              <code key={i} className="text-ink-2 font-mono text-xs break-all">
-                {line}
-              </code>
-            ))}
-          </div>
-          {ent.axioms.length > 0 && (
-            <details>
-              <summary className="text-ink-3 cursor-pointer text-[11px] select-none">
-                {t('inspector.axioms.raw')}
-              </summary>
-              <pre className="text-ink bg-panel-2 border-line rounded-ctl mt-1 max-w-full overflow-x-auto border p-1.5 font-mono text-xs break-all whitespace-pre-wrap">
-                {ent.axioms.map((a) => a.turtle).join('\n')}
-              </pre>
-            </details>
-          )}
-        </Section>
+        <ManchesterSection lines={ent.manchester} axioms={ent.axioms} />
       )}
       {ent.type === 'Class' && (
         <Section

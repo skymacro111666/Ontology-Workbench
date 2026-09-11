@@ -267,13 +267,28 @@ describe('InspectorPanel', () => {
     )
   })
 
-  it('renders structured manchester axioms with a collapsible raw Turtle fallback', async () => {
-    const ent = { ...entity(), manchester: ['Dog SubClassOf Animal', 'Dog HasKey owner'] }
+  /** Token-colored lines split a text across spans: match the CODE wrapper
+   *  by its full textContent instead of a plain string query. */
+  const codeLine = (text: string) => (_: string, el: Element | null) =>
+    el?.tagName === 'CODE' && el.textContent === text
+
+  it('renders structured axiom rows with kind badges and raw Turtle fallback', async () => {
+    const ent = {
+      ...entity(),
+      manchester: [
+        { kind: 'SubClassOf', text: 'Dog SubClassOf Animal' },
+        { kind: 'HasKey', text: 'Dog HasKey owner' },
+      ],
+    }
     renderPanel(stubFetch(ent))
     // Structured section: monospace rows, count in the title (panel convention).
     expect(await screen.findByText('公理(结构化) (2)')).toBeTruthy()
-    expect(screen.getByText('Dog SubClassOf Animal').className).toContain('font-mono')
-    expect(screen.getByText('Dog HasKey owner').className).toContain('font-mono')
+    expect(screen.getByText(codeLine('Dog SubClassOf Animal')).className).toContain('font-mono')
+    expect(screen.getByText(codeLine('Dog HasKey owner')).className).toContain('font-mono')
+    // Keyword tokens inside a line carry the primary tint (syntax coloring).
+    expect(
+      screen.getAllByText('SubClassOf').some((el) => el.className.includes('text-primary')),
+    ).toBeTruthy()
     // Raw Turtle rides below in a <details> block: closed by default, opens
     // on click — the readable list is the surface, the Turtle is the safety net.
     const raw = screen.getByText('原始 Turtle')
@@ -285,6 +300,38 @@ describe('InspectorPanel', () => {
     // The Turtle text rides inside the details block (exact match: the URI
     // block's example.org also contains an "x").
     expect(within(details).getByText('x')).toBeTruthy()
+  })
+
+  it('filters axiom rows by the kind chip in the section header', async () => {
+    const ent = {
+      ...entity(),
+      manchester: [
+        { kind: 'SubClassOf', text: 'Dog SubClassOf Animal' },
+        { kind: 'SubClassOf', text: 'Dog SubClassOf Mammal' },
+        { kind: 'HasKey', text: 'Dog HasKey owner' },
+      ],
+    }
+    renderPanel(stubFetch(ent))
+    await screen.findByText('公理(结构化) (3)')
+    // One chip per unique kind; picking one keeps only its rows.
+    await userEvent.click(screen.getByRole('button', { name: 'HasKey' }))
+    expect(screen.getByText(codeLine('Dog HasKey owner'))).toBeTruthy()
+    expect(screen.queryByText(codeLine('Dog SubClassOf Animal'))).toBeNull()
+    // Clicking the active chip again clears the filter.
+    await userEvent.click(screen.getByRole('button', { name: 'HasKey' }))
+    expect(screen.getByText(codeLine('Dog SubClassOf Animal'))).toBeTruthy()
+  })
+
+  it('caps the axiom box height with an inner scroll region', async () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      kind: 'SubClassOf',
+      text: `Dog SubClassOf C${i}`,
+    }))
+    renderPanel(stubFetch({ ...entity(), manchester: many }))
+    const firstRow = await screen.findByText(codeLine('Dog SubClassOf C0'))
+    // Progressive disclosure: the box scrolls past ~12 rows instead of
+    // pushing every section below off-screen.
+    expect(firstRow.closest('.overflow-y-auto')).toBeTruthy()
   })
 
   it('shows no axiom section when manchester is null (degradation = status quo)', async () => {
