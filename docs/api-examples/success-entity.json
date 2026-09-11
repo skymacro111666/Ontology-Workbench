@@ -1,5 +1,5 @@
 {
-  "_comment": "Golden sample: GET /api/ontologies/{id}/entities/{eid} -> 200. Contract-test baseline; do not edit without updating spec §6. 2026-08-21 reconciliation (M1 fix wave): properties[].type -> ptype (plan Task 9 model name), refs carry eid (always emitted), referencedBy carries relation (implemented per this contract; see tests/api/test_contract.py).",
+  "_comment": "Golden sample: GET /api/ontologies/{id}/entities/{eid} -> 200. Contract-test baseline; do not edit without updating spec §6. 2026-08-21 reconciliation (M1 fix wave): properties[].type -> ptype (plan Task 9 model name), refs carry eid (always emitted), referencedBy carries relation (implemented per this contract; see tests/api/test_contract.py). 2026-09-11 OWL 2 M1: manchester added (lazy per-request rendering; null = bridge failure or no axioms, the degraded contract).",
   "code": "OK",
   "message": "success",
   "data": {
@@ -25,6 +25,10 @@
     ],
     "axioms": [
       { "turtle": "pizza:NamedPizza rdfs:subClassOf pizza:Pizza, [ owl:onProperty pizza:hasTopping ; owl:someValuesFrom pizza:CheeseTopping ]" }
+    ],
+    "manchester": [
+      "NamedPizza SubClassOf Pizza",
+      "NamedPizza SubClassOf hasTopping some CheeseTopping"
     ],
     "stats": { "directChildren": 3, "totalDescendants": 17 }
   },

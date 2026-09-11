@@ -82,6 +82,9 @@ class EntityIR(BaseModel):
     properties: list[PropRef] = []
     referenced_by: list[ReferencedRef] = []
     axioms: list[Axiom] = []
+    # Manchester 渲染按请求惰性现算(OWL 2 M1 spec:不进 IR 缓存),详情
+    # 路由浅拷贝填充;None = 桥失败或零公理 → 前端不显示公理区(降级).
+    manchester: list[str] | None = None
     stats: Stats = Stats()
     kind: str = "entity"
 

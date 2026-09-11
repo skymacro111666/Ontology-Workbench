@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from ontoworkbench.core.indexes import DEPRECATED_BUCKET, Indexes, build_indexes
 from ontoworkbench.core.ir import IRBundle, build_ir_store
 from ontoworkbench.core.ir_cache import read_ir_cache, write_ir_cache
+from ontoworkbench.core.owl2.render import entity_manchester
 from ontoworkbench.core.parsing import timed_parse_store
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
@@ -24,6 +25,7 @@ from ontoworkbench.observability.metrics import (
     ow_ir_cache_reads_total,
     ow_parse_seconds,
 )
+from ontoworkbench.server.cache import load_store
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
@@ -222,11 +224,23 @@ def entity(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    """One entity's page-shaped IR; named individuals dispatch to IndividualIR."""
-    _, ix = _owned(request, user, ontology_id, session)
+    """One entity's page-shaped IR; named individuals dispatch to IndividualIR.
+
+    Manchester rendering is lazy per request (OWL 2 M1): a shallow copy
+    carries it, the cached EntityIR stays pristine. Any bridge failure
+    degrades to manchester=None — the axioms payload is never at risk.
+    """
+    row, ix = _owned(request, user, ontology_id, session)
     e = ix.entity(eid)
     if e is not None:
-        return respond(_camel(e.model_dump()))
+        manchester = None
+        try:
+            store, prefixes = request.app.state.cache.store_for(row, load_store)
+            manchester = entity_manchester(store, eid, prefixes)
+        except Exception:  # 桥失败/超预算一律降级,详情页永不因渲染阻塞
+            manchester = None
+        out = e.model_copy(update={"manchester": manchester})
+        return respond(_camel(out.model_dump()))
     ind = ix.individual(eid)
     if ind is not None:
         return respond(_camel(ind.model_dump()))
