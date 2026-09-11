@@ -105,7 +105,8 @@
     "statClass": "{{n}} classes",
     "statProperty": "{{n}} properties",
     "statInstance": "{{n}} instances",
-    "statAxiom": "{{n}} axioms"
+    "statAxiom": "{{n}} axioms",
+    "profileTip": "OWL 2 profile detection (vocabulary-level approximation)"
   },
   "tree": {
     "expand": "Expand",

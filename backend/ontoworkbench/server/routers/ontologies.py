@@ -20,6 +20,7 @@ from ontoworkbench.core import terms
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir_store
 from ontoworkbench.core.ir_cache import write_ir_cache
+from ontoworkbench.core.owl2.profile import classify
 from ontoworkbench.core.parsing import sniff_format, timed_parse_store
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
@@ -27,7 +28,7 @@ from ontoworkbench.db.repositories import LayoutRepository, OntologyRepository
 from ontoworkbench.db.session import get_session
 from ontoworkbench.observability.metrics import ow_build_seconds, ow_parse_seconds, ow_uploads_total
 from ontoworkbench.observability.middleware import request_id_ctx
-from ontoworkbench.server.cache import OntologyCache
+from ontoworkbench.server.cache import OntologyCache, load_store
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
@@ -43,6 +44,22 @@ class CamelModel(BaseModel):
     """Base model serializing snake_case fields as camelCase."""
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+class ProfileViolation(CamelModel):
+    """One banned-term hit: the offending triple + the profiles it betrays."""
+
+    axiom: str
+    bans: list[str]
+
+
+class ProfileReport(CamelModel):
+    """OWL 2 profile verdict (vocabulary-level approximation, core/owl2)."""
+
+    top: str
+    approximate: bool
+    axiom_count: int
+    violations: list[ProfileViolation]
 
 
 class OntologyMeta(CamelModel):
@@ -63,6 +80,7 @@ class OntologyMeta(CamelModel):
     save_state: str = "idle"  # autosave: idle|pending|saving|failed (Y-axis)
     prefixes: dict[str, str] = Field(default_factory=dict)
     parse_ms: float | None = None
+    profile: ProfileReport | None = None
     created_at: str
 
 
@@ -150,6 +168,7 @@ def meta_of(row: Ontology) -> dict[str, Any]:
     """Assemble the camelCase OntologyMeta payload for a row."""
     prefixes = (row.stats_json or {}).get("prefixes", {})
     parse_ms = (row.stats_json or {}).get("parse_ms")
+    profile = (row.stats_json or {}).get("profile")
     return OntologyMeta(
         id=str(row.id),
         title=row.title or row.filename,
@@ -165,8 +184,37 @@ def meta_of(row: Ontology) -> dict[str, Any]:
         revision=row.revision,
         prefixes=prefixes,
         parse_ms=parse_ms,
+        profile=ProfileReport(**profile) if profile else None,
         created_at=row.created_at.isoformat(),
     ).model_dump(by_alias=True)
+
+
+# 超过此实体数不现算 profile(词表扫描虽快,巨型池化 Store 仍可能拖慢轮询)
+_PROFILE_MAX_ENTITIES = 2000
+
+
+def _profile_payload(request: Request, session: Session, row: Ontology) -> dict[str, Any] | None:
+    """Lazy profile verdict for the meta poll: cache → compute → persist.
+
+    stats_json 携带 "profile" 时零成本透出;小本体(≤_PROFILE_MAX_ENTITIES
+    个实体)现算一次并写回 stats_json;超限或任何失败 → None,轮询永不阻塞。
+    保存路径整体重写 stats_json,缓存随之失效,下次轮询重算。
+    """
+    if (row.stats_json or {}).get("profile") is not None:
+        return None  # 已由 meta_of 透出,无需现算
+    entities = row.class_count + row.property_count + row.instance_count
+    if entities > _PROFILE_MAX_ENTITIES:
+        return None
+    try:
+        store, prefixes = request.app.state.cache.store_for(row, load_store)
+        verdict = classify(store, prefixes)
+    except Exception:  # 词表扫描失败一律降级,meta 永不因 profile 阻塞
+        return None
+    stats = dict(row.stats_json or {})
+    stats["profile"] = verdict
+    OntologyRepository(session).update(row.id, stats_json=stats)
+    row.stats_json = stats
+    return verdict
 
 
 def meta_with_state(request: Request, row: Ontology) -> dict[str, Any]:
@@ -356,7 +404,11 @@ def get_meta(
     row = OntologyRepository(session).get_owned(user.id, oid) if oid else None
     if not row:
         raise ApiError(ErrorCode.NOT_FOUND, "No such ontology")
-    return respond(meta_with_state(request, row))
+    meta = meta_with_state(request, row)
+    verdict = _profile_payload(request, session, row)
+    if verdict is not None:
+        meta["profile"] = ProfileReport(**verdict).model_dump(by_alias=True)
+    return respond(meta)
 
 
 @router.put("/ontologies/{ontology_id}/source")

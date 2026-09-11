@@ -259,6 +259,47 @@ describe('Browse workspace (overview-only)', () => {
     expect(screen.queryByRole('button', { name: '展开检查器' })).toBeNull()
   })
 
+  it('statusbar shows the OWL 2 profile badge with the approximation tooltip', async () => {
+    // meta carries a DL verdict (owl2 constructs): badge = mono pill + tooltip.
+    const withProfile = {
+      ...meta(),
+      profile: {
+        top: 'DL',
+        approximate: true,
+        axiomCount: 47,
+        violations: [{ axiom: 'ex:Student qualifiedCardinality 1', bans: ['EL', 'QL', 'RL'] }],
+      },
+    }
+    const fetchMock = vi.fn(async (url: string | URL) => {
+      const u = String(url)
+      let data: unknown = withProfile
+      if (u.includes('/overview')) data = overview()
+      else if (u.includes('/tree')) data = []
+      else if (u.includes('/entities/')) data = dog()
+      return new Response(
+        JSON.stringify({
+          code: 'OK',
+          message: 'ok',
+          data,
+          hint: null,
+          request_id: 'r',
+        } satisfies Envelope<unknown>),
+        { headers: { 'Content-Type': 'application/json' } },
+      )
+    })
+    renderBrowse(fetchMock)
+    const badge = await screen.findByText('OWL 2 DL')
+    expect(badge.title).toBe('OWL 2 profile 判定(词表级近似)')
+    expect(badge.className).toContain('rounded-full')
+  })
+
+  it('statusbar hides the profile badge when the verdict is null', async () => {
+    // meta() fixture has no profile — the degraded contract stays invisible.
+    renderBrowse(stubFetch())
+    expect(await screen.findByText('pizza.ttl')).toBeTruthy()
+    expect(screen.queryByText(/^OWL 2 /)).toBeNull()
+  })
+
   it('a failed autosave surfaces one error toast (saveState polling)', async () => {
     const failed = { ...meta(), saveState: 'failed' as const }
     const fetchMock = vi.fn(async (url: string | URL) => {

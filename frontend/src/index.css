@@ -15,6 +15,11 @@
   --color-panel: #ffffff;
   --color-panel-2: #f8fafc;
   --color-success: #10b981;
+  /* OWL 2 profile badge family (M1): EL green / QL blue / RL violet / DL orange */
+  --color-profile-el: #059669;
+  --color-profile-ql: #2563eb;
+  --color-profile-rl: #7c3aed;
+  --color-profile-dl: #ea580c;
   --color-line: #e2e8f0;
   --color-ink: #0f172a;
   --color-ink-2: #475569;
@@ -56,6 +61,10 @@
   --color-panel: #1e293b;
   --color-panel-2: #334155;
   --color-success: #34d399;
+  --color-profile-el: #34d399;
+  --color-profile-ql: #60a5fa;
+  --color-profile-rl: #a78bfa;
+  --color-profile-dl: #fb923c;
   --color-line: #334155;
   --color-ink: #e2e8f0;
   --color-ink-2: #94a3b8;

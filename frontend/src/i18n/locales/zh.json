@@ -105,7 +105,8 @@
     "statClass": "{{n}} 类",
     "statProperty": "{{n}} 属性",
     "statInstance": "{{n}} 实例",
-    "statAxiom": "{{n}} 公理"
+    "statAxiom": "{{n}} 公理",
+    "profileTip": "OWL 2 profile 判定(词表级近似)"
   },
   "tree": {
     "expand": "展开",

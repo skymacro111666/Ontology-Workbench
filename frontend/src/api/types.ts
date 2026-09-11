@@ -216,12 +216,28 @@ export interface OntologySummary {
   createdAt: string
 }
 
+/** One banned-term hit from the profile verdict (OWL 2 M1). */
+export interface ProfileViolation {
+  axiom: string
+  bans: string[]
+}
+
+/** OWL 2 profile verdict carried by GET /meta (vocabulary-level approximation). */
+export interface ProfileReport {
+  top: string
+  approximate: boolean
+  axiomCount: number
+  violations: ProfileViolation[]
+}
+
 /** Upload response: full metadata including prefixes (POST /api/ontologies). */
 export interface OntologyMeta extends OntologySummary {
   fileHash: string
   prefixes: Record<string, string>
   /** Parse wall-clock duration in ms (absent for records imported before this field). */
   parseMs?: number | null
+  /** OWL 2 profile verdict (absent/null = not computed or classify failed). */
+  profile?: ProfileReport | null
   /** Y-axis edit lock token: bumps the moment an edit commits (not when it lands). */
   revision: number
   /** Debounced autosave state (absent on older payloads → treat as idle). */

@@ -25,6 +25,15 @@ function formatParseMs(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`
 }
 
+/** OWL 2 profile badge tint per verdict (M1): EL green / QL blue / RL violet /
+ *  DL orange — registered theme tokens, so the opacity modifiers ride along. */
+const PROFILE_TINT: Record<string, string> = {
+  EL: 'text-profile-el border-profile-el/40 bg-profile-el/10',
+  QL: 'text-profile-ql border-profile-ql/40 bg-profile-ql/10',
+  RL: 'text-profile-rl border-profile-rl/40 bg-profile-rl/10',
+  DL: 'text-profile-dl border-profile-dl/40 bg-profile-dl/10',
+}
+
 /** Sidebar column templates per collapse state — literal class strings so
  *  Tailwind emits them; a collapsed sidebar shrinks to a 24px rail. */
 const GRAPH_COLS = {
@@ -220,6 +229,17 @@ export default function Browse() {
             ? t('browse.parseOkMs', { ms: formatParseMs(meta.parseMs) })
             : t('browse.parseOk')}
         </span>
+        {meta.profile && (
+          <span
+            title={t('browse.profileTip')}
+            className={cn(
+              'rounded-full border px-2 py-px font-mono text-[10px] font-semibold',
+              PROFILE_TINT[meta.profile.top],
+            )}
+          >
+            OWL 2 {meta.profile.top}
+          </span>
+        )}
       </footer>
 
       {/* A2 canvas-editing dialogs + B2 instance dialogs (menus/inspector). */}
