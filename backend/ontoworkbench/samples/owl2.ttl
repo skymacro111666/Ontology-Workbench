@@ -1,0 +1,152 @@
+@prefix o2: <https://github.com/skymacro111666/ontology-workbench/samples/owl2#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<https://github.com/skymacro111666/ontology-workbench/samples/owl2>
+    a owl:Ontology ;
+    rdfs:label "OWL 2 Constructs Sampler" ;
+    rdfs:comment """A teaching sample covering the OWL 2 constructs the workbench
+recognizes: one snipped per construct, each with an English note saying
+what it means and which OWL 2 profile admits it (EL/QL/RL/DL vocabulary
+level). Deliberate modeling decisions worth teaching:
+
+- Every expression blank node carries an explicit rdf:type (owl:Restriction
+  / owl:Class). Hand-written Turtle often omits them; tools that require
+  typed nodes would silently drop those axioms — the workbench normalizes
+  this on read, and this file demonstrates the explicit form.
+- Genius is deliberately punned: the same IRI is both a class (subclass of
+  Person) and a named individual (an instance of Person). OWL 2 allows
+  punning; naive tools collapse one identity or the other.
+- The library chain (textbook → shelf → library) exercises a property
+  chain axiom at the instance level: shelfIn ∘ partOf ⊑ locatedIn.""" .
+
+## ---------- base vocabulary ----------
+
+o2:Person a owl:Class ; rdfs:label "Person" ;
+    rdfs:comment "Anyone the ontology talks about." .
+
+o2:Student a owl:Class ; rdfs:label "Student" ; rdfs:subClassOf o2:Person .
+o2:Course a owl:Class ; rdfs:label "Course" .
+o2:University a owl:Class ; rdfs:label "University" .
+o2:Textbook a owl:Class ; rdfs:label "Textbook" .
+o2:Chapter a owl:Class ; rdfs:label "Chapter" .
+o2:Shelf a owl:Class ; rdfs:label "Shelf" .
+o2:Library a owl:Class ; rdfs:label "Library" .
+
+o2:enrolledIn a owl:ObjectProperty ; rdfs:label "enrolled in" ;
+    rdfs:domain o2:Student ; rdfs:range o2:Course .
+o2:locatedIn a owl:ObjectProperty ; rdfs:label "located in" .
+o2:partOf a owl:ObjectProperty ; rdfs:label "part of" ;
+    rdfs:comment "Transitive-free mereological part; the chain axiom below derives locatedIn." .
+o2:shelfIn a owl:ObjectProperty ; rdfs:label "shelf in" ;
+    rdfs:comment "Direct containment: a textbook sits on a shelf." .
+o2:knows a owl:ObjectProperty ; rdfs:label "knows" .
+o2:parentOf a owl:ObjectProperty ; rdfs:label "parent of" .
+o2:hasPageCount a owl:DatatypeProperty ; rdfs:label "page count" .
+
+## ---------- construct 1: property chain (EL/RL allow, QL/DL vocabulary ok) ----------
+
+o2:locatedIn owl:propertyChainAxiom ( o2:shelfIn o2:partOf ) .
+[] a owl:Axiom ;
+    owl:annotatedSource o2:locatedIn ;
+    owl:annotatedProperty owl:propertyChainAxiom ;
+    owl:annotatedTarget ( o2:shelfIn o2:partOf ) ;
+    rdfs:comment "What sits on a shelf is located in whatever the shelf is part of." .
+
+## ---------- construct 2: qualified cardinality (outside EL/QL) ----------
+
+o2:Student rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty o2:enrolledIn ;
+    owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+    owl:onClass o2:Course ;
+] .
+[] a owl:Axiom ;
+    owl:annotatedSource o2:Student ;
+    owl:annotatedProperty rdfs:subClassOf ;
+    owl:annotatedTarget [
+        a owl:Restriction ;
+        owl:onProperty o2:enrolledIn ;
+        owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+        owl:onClass o2:Course ;
+    ] ;
+    o2:difficulty "moderate" .
+
+## ---------- construct 3: disjoint union (outside EL/QL) ----------
+
+o2:University owl:disjointUnionOf ( o2:Person o2:Course ) .
+
+## ---------- construct 4: hasKey (outside QL) ----------
+
+o2:Person owl:hasKey ( o2:parentOf ) .
+
+## ---------- construct 5: reflexive property ----------
+
+o2:knows a owl:ReflexiveProperty ;
+    rdfs:comment "Everyone knows themselves — a deliberately odd reading, for the construct demo." .
+
+## ---------- construct 6: asymmetric property ----------
+
+o2:parentOf a owl:AsymmetricProperty .
+
+## ---------- construct 7: negative object property assertion ----------
+
+o2:alice o2:parentOf o2:bob .
+[] a owl:NegativePropertyAssertion ;
+    owl:sourceIndividual o2:carol ;
+    owl:assertionProperty o2:parentOf ;
+    owl:targetIndividual o2:bob ;
+    rdfs:comment "Carol is explicitly NOT a parent of Bob (negative assertion)." .
+
+## ---------- construct 8: boolean connectives + oneOf ----------
+
+o2:Undergrad a owl:Class ;
+    rdfs:subClassOf o2:Person ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:intersectionOf ( o2:Student [
+            a owl:Class ;
+            owl:unionOf (
+                [ a owl:Restriction ; owl:onProperty o2:enrolledIn ; owl:someValuesFrom o2:Course ]
+                o2:Person
+            ) ;
+        ] ) ;
+    ] .
+
+o2:Reviewer a owl:Class ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:oneOf ( o2:alice o2:bob ) ;
+    ] .
+
+o2:NonReviewer a owl:Class ;
+    owl:equivalentClass [
+        a owl:Class ;
+        owl:complementOf o2:Reviewer ;
+    ] .
+
+## ---------- construct 9: annotation property ----------
+
+o2:difficulty a owl:AnnotationProperty ;
+    rdfs:label "difficulty" ;
+    rdfs:comment "Teaching difficulty of an axiom: basic | moderate | advanced." .
+o2:Student o2:difficulty "moderate" .
+
+## ---------- construct 10: punning — same IRI as class and individual ----------
+
+o2:Genius a owl:Class ;
+    rdfs:subClassOf o2:Person ;
+    rdfs:comment "Punned on purpose: a class of exceptional people AND an individual person." .
+o2:Genius a o2:Person ;
+    rdfs:label "Genius (the individual)" .
+
+## ---------- instances wiring the chain ----------
+
+o2:alice a o2:Student, o2:Person ; o2:hasPageCount "0"^^xsd:integer .
+o2:bob a o2:Person .
+o2:carol a o2:Student .
+
+o2:ontobook a o2:Textbook ; o2:shelfIn o2:shelf-1 ; o2:hasPageCount "412"^^xsd:integer .
+o2:shelf-1 a o2:Shelf ; o2:partOf o2:central-library .
+o2:central-library a o2:Library ; rdfs:label "Central Library" .
