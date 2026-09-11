@@ -11,12 +11,16 @@ DisjointUnion/.first(头类) .second(列表);HasKey/.ce .vpe;组合表达式的
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pyoxigraph as ox
 
-from ..ir import _ox_curie
+from ..ir import ManchesterLine, _ox_curie
 from .bridge import Owl2BridgeError, fragment, parse
+
+# py-horned-owl str(ax) 函数语法里 IRI 的形态:<http://…>
+_IRI_RE = re.compile(r"<([^<>]+)>")
 
 
 def _as_list(v: Any) -> list[Any]:
@@ -84,8 +88,13 @@ def _expr(node: Any, prefixes: Any) -> str:
     return str(node)  # 兜底:HasValue/DatatypeRestriction/数据表达式等仍可读
 
 
-def _axiom(ax: Any, prefixes: Any) -> str | None:
-    """公理 → Manchester 一行;Declaration/Annotation 跳过(详情页已有专门区)."""
+def _fallback(ax: Any, prefixes: Any) -> str:
+    """未识别公理的函数语法兜底行:<IRI> 一律缩写(curie/本地名),禁全 IRI 墙."""
+    return _IRI_RE.sub(lambda m: _c(prefixes, m.group(1)), str(ax))
+
+
+def _axiom(ax: Any, prefixes: Any) -> tuple[str, str] | None:
+    """公理 → (kind, Manchester 行);Declaration/Annotation 跳过(详情页已有专门区)."""
     t = type(ax).__name__
     if t == "AnnotatedComponent":
         ax = ax.component
@@ -99,7 +108,7 @@ def _axiom(ax: Any, prefixes: Any) -> str | None:
         return _expr(x, prefixes)
 
     if t == "SubClassOf":
-        return f"{e(ax.sub)} SubClassOf {e(ax.sup)}"
+        return t, f"{e(ax.sub)} SubClassOf {e(ax.sup)}"
     if t == "SubObjectPropertyOf":
         # 属性链在此 binding 里是裸 list(无 ObjectPropertyChain 包装)
         sub_s = (
@@ -107,22 +116,22 @@ def _axiom(ax: Any, prefixes: Any) -> str | None:
             if isinstance(ax.sub, list)
             else e(ax.sub)
         )
-        return f"{sub_s} SubPropertyOf {e(ax.sup)}"
+        return t, f"{sub_s} SubPropertyOf {e(ax.sup)}"
     if t == "EquivalentClasses":
         ops = _as_list(ax.first)
-        return f"{e(ops[0])} EquivalentTo {', '.join(e(x) for x in ops[1:])}"
+        return t, f"{e(ops[0])} EquivalentTo {', '.join(e(x) for x in ops[1:])}"
     if t == "DisjointClasses":
-        return f"DisjointClasses ({', '.join(e(x) for x in _as_list(ax.first))})"
+        return t, f"DisjointClasses ({', '.join(e(x) for x in _as_list(ax.first))})"
     if t == "DisjointUnion":
         rest = ", ".join(e(x) for x in _as_list(ax.second))
-        return f"{e(ax.first)} DisjointUnionOf ({rest})"
+        return t, f"{e(ax.first)} DisjointUnionOf ({rest})"
     if t == "HasKey":
         props = ", ".join(e(x) for x in _as_list(ax.vpe))
-        return f"{e(ax.ce)} HasKey ({props})"
+        return t, f"{e(ax.ce)} HasKey ({props})"
     if t == "ClassAssertion":
-        return f"{e(ax.i)} Type {e(ax.ce)}"
+        return t, f"{e(ax.i)} Type {e(ax.ce)}"
     if t == "NegativeObjectPropertyAssertion":
-        return f"{_c(prefixes, ax.source)} not {e(ax.ope)} {_c(prefixes, ax.target)}"
+        return t, f"{_c(prefixes, ax.source)} not {e(ax.ope)} {_c(prefixes, ax.target)}"
     if t in (
         "ReflexiveObjectProperty",
         "IrreflexiveObjectProperty",
@@ -133,19 +142,20 @@ def _axiom(ax: Any, prefixes: Any) -> str | None:
         "InverseFunctionalObjectProperty",
     ):
         word = t.removesuffix("ObjectProperty")
-        return f"{e(ax.first)} {word}"
-    return str(ax) or None  # 未识别公理:函数语法整行保留
+        return t, f"{e(ax.first)} {word}"
+    text = _fallback(ax, prefixes)  # 未识别公理:函数语法整行保留(已缩写)
+    return (t, text) if text else None
 
 
-def entity_manchester(store: ox.Store, iri: str, prefixes: Any) -> list[str] | None:
+def entity_manchester(store: ox.Store, iri: str, prefixes: Any) -> list[ManchesterLine] | None:
     """实体邻域公理 → Manchester 行列表;桥失败或零公理 → None(调用方降级)."""
     try:
         ont = parse(fragment(store, iri, prefixes))
     except Owl2BridgeError:
         return None
-    out: list[str] = []
+    out: list[ManchesterLine] = []
     for ax in ont.get_axioms_for_iri(iri):
-        text = _axiom(ax, prefixes)
-        if text:
-            out.append(text)
+        rendered = _axiom(ax, prefixes)
+        if rendered:
+            out.append(ManchesterLine(kind=rendered[0], text=rendered[1]))
     return out or None

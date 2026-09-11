@@ -68,6 +68,13 @@ class Stats(BaseModel):
     total_descendants: int = 0
 
 
+class ManchesterLine(BaseModel):
+    """One rendered axiom: kind = 公理类型(前端徽章/过滤),text = 可读行."""
+
+    kind: str
+    text: str
+
+
 class EntityIR(BaseModel):
     """Everything a detail page renders (spec §5.2)."""
 
@@ -84,7 +91,8 @@ class EntityIR(BaseModel):
     axioms: list[Axiom] = []
     # Manchester 渲染按请求惰性现算(OWL 2 M1 spec:不进 IR 缓存),详情
     # 路由浅拷贝填充;None = 桥失败或零公理 → 前端不显示公理区(降级).
-    manchester: list[str] | None = None
+    # 缓存 pkl 里恒为 None,形状升级不触 IR_SCHEMA_VERSION 重建.
+    manchester: list[ManchesterLine] | None = None
     stats: Stats = Stats()
     kind: str = "entity"
 

@@ -28,7 +28,8 @@ def test_entity_detail_carries_manchester(client: TestClient, oid: str) -> None:
     eid = quote(f"{NS}Student", safe="")
     ent = client.get(f"/api/ontologies/{oid}/entities/{eid}").json()["data"]
     assert ent["manchester"], "manchester 字段应非空"
-    assert any("exactly 1" in line for line in ent["manchester"])
+    assert all({"kind", "text"} <= set(line) for line in ent["manchester"])
+    assert any("exactly 1" in line["text"] for line in ent["manchester"])
     assert ent["axioms"], "axioms(原始 Turtle)不因渲染失败而消失"
 
 
