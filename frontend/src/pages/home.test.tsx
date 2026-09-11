@@ -108,22 +108,22 @@ describe('Home', () => {
     vi.stubGlobal('fetch', fetchMock)
     renderHome()
 
-    // All six bundled samples surface behind the user's own card.
+    // All five bundled samples surface behind the user's own card.
     await screen.findByText('My Work')
-    for (const title of ['Pizza', 'Wine', 'FOAF', 'Library', 'Human Resources', 'OWL 2 Constructs']) {
+    for (const title of ['Pizza', 'Wine', 'FOAF', 'Library', 'OWL 2 Constructs']) {
       expect(screen.getByText(title)).toBeTruthy()
     }
-    expect(screen.getAllByText('示例')).toHaveLength(6)
-    expect(screen.getByText(/人力资源本体/)).toBeTruthy()
+    expect(screen.getAllByText('示例')).toHaveLength(5)
+    expect(screen.getByText(/OWL 2 构造教学样例/)).toBeTruthy()
     // User data first: the real card precedes every sample card.
     const real = screen.getByText('My Work')
-    const sample = screen.getByText('Human Resources')
+    const sample = screen.getByText('OWL 2 Constructs')
     expect(real.compareDocumentPosition(sample) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     // Load goes through POST /api/samples/{name} and opens the result.
     const loadButtons = screen.getAllByRole('button', { name: '载入' })
-    expect(loadButtons).toHaveLength(6)
-    await userEvent.click(loadButtons[5]) // OWL 2 Constructs — last in SAMPLES order
+    expect(loadButtons).toHaveLength(5)
+    await userEvent.click(loadButtons[4]) // OWL 2 Constructs — last in SAMPLES order
     expect(await screen.findByText('browse:owl2-oid')).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/samples/owl2',
@@ -153,8 +153,8 @@ describe('Home', () => {
     expect(within(realPizza).getByText('示例')).toBeTruthy()
     const mine = screen.getByRole('button', { name: '打开 Mine' })
     expect(within(mine).queryByText('示例')).toBeNull()
-    // The pizza placeholder is deduped away; the other five remain.
-    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(5)
+    // The pizza placeholder is deduped away; the other four remain.
+    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(4)
   })
 
   it('hides a sample card once its ontology is imported', async () => {
@@ -162,16 +162,16 @@ describe('Home', () => {
       'fetch',
       vi.fn(async () =>
         ok({
-          items: [summary('hr-oid', { title: 'HR', filename: 'human-resources-v1.ttl' })],
+          items: [summary('owl2-oid', { title: 'OWL2', filename: 'owl2.ttl' })],
           total: 1,
         }),
       ),
     )
     renderHome()
 
-    expect(await screen.findByText('HR')).toBeTruthy()
-    expect(screen.queryByText('Human Resources')).toBeNull()
-    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(5)
+    expect(await screen.findByText('OWL2')).toBeTruthy()
+    expect(screen.queryByText('OWL 2 Constructs')).toBeNull()
+    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(4)
   })
 
   it('empty list keeps the samples and a one-line hint instead of the old box', async () => {
@@ -183,7 +183,7 @@ describe('Home', () => {
 
     expect(await screen.findByText(/载入内置示例快速体验/)).toBeTruthy()
     expect(screen.queryByText('还没有本体')).toBeNull()
-    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(6)
+    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(5)
   })
 
   it('deletes only after the AlertDialog confirmation', async () => {
