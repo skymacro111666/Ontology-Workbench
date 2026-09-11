@@ -315,6 +315,30 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
       <Section label={t('inspector.referencedBy')} count={dirRefs(ent.referencedBy).length}>
         <BackRefChips refs={ent.referencedBy} />
       </Section>
+      {ent.manchester && ent.manchester.length > 0 && (
+        <Section label={t('inspector.axioms.structured')} count={ent.manchester.length}>
+          {/* OWL 2 M1: readable Manchester lines are the surface; the raw
+           *  Turtle rides below in a closed <details> as the safety net.
+           *  manchester null/empty → no section at all (yesterday's DOM). */}
+          <div className="border-line bg-panel-2 rounded-ctl flex flex-col gap-0.5 border p-1.5">
+            {ent.manchester.map((line, i) => (
+              <code key={i} className="text-ink-2 font-mono text-xs break-all">
+                {line}
+              </code>
+            ))}
+          </div>
+          {ent.axioms.length > 0 && (
+            <details>
+              <summary className="text-ink-3 cursor-pointer text-[11px] select-none">
+                {t('inspector.axioms.raw')}
+              </summary>
+              <pre className="text-ink bg-panel-2 border-line rounded-ctl mt-1 max-w-full overflow-x-auto border p-1.5 font-mono text-xs break-all whitespace-pre-wrap">
+                {ent.axioms.map((a) => a.turtle).join('\n')}
+              </pre>
+            </details>
+          )}
+        </Section>
+      )}
       {ent.type === 'Class' && (
         <Section
           label={t('inspector.instances')}

@@ -8,6 +8,15 @@ it('boots with both locales and switches live', async () => {
   await i18n.changeLanguage('zh')
 })
 
+it('carries the axiom panel keys in both languages (OWL 2 M1)', () => {
+  for (const key of ['inspector.axioms.structured', 'inspector.axioms.raw']) {
+    const zh = i18n.t(key, { lng: 'zh' })
+    const en = i18n.t(key, { lng: 'en' })
+    expect(zh, key).not.toBe(key)
+    expect(en, key).not.toBe(key)
+  }
+})
+
 it('maps every error code in both languages', () => {
   const codes = [
     'AUTH_REQUIRED',

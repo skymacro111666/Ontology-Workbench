@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
@@ -265,6 +265,36 @@ describe('InspectorPanel', () => {
     expect(fetchMock.mock.calls.map(([u]) => String(u)).some((u) => u.endsWith('/instances'))).toBe(
       false,
     )
+  })
+
+  it('renders structured manchester axioms with a collapsible raw Turtle fallback', async () => {
+    const ent = { ...entity(), manchester: ['Dog SubClassOf Animal', 'Dog HasKey owner'] }
+    renderPanel(stubFetch(ent))
+    // Structured section: monospace rows, count in the title (panel convention).
+    expect(await screen.findByText('公理(结构化) (2)')).toBeTruthy()
+    expect(screen.getByText('Dog SubClassOf Animal').className).toContain('font-mono')
+    expect(screen.getByText('Dog HasKey owner').className).toContain('font-mono')
+    // Raw Turtle rides below in a <details> block: closed by default, opens
+    // on click — the readable list is the surface, the Turtle is the safety net.
+    const raw = screen.getByText('原始 Turtle')
+    const details = raw.closest('details') as HTMLDetailsElement
+    expect(details).toBeTruthy()
+    expect(details.open).toBe(false)
+    await userEvent.click(raw)
+    expect(details.open).toBe(true)
+    // The Turtle text rides inside the details block (exact match: the URI
+    // block's example.org also contains an "x").
+    expect(within(details).getByText('x')).toBeTruthy()
+  })
+
+  it('shows no axiom section when manchester is null (degradation = status quo)', async () => {
+    const ent = { ...entity(), manchester: null }
+    renderPanel(stubFetch(ent))
+    await screen.findByTitle('pizza:Dog')
+    expect(screen.queryByText(/公理/)).toBeNull()
+    expect(screen.queryByText('原始 Turtle')).toBeNull()
+    // The raw Turtle payload never leaks onto the page on its own.
+    expect(screen.queryByText('x')).toBeNull()
   })
 
   it('truncates long comments to two lines', async () => {

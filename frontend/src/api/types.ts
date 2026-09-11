@@ -69,6 +69,9 @@ export interface EntityIR {
   properties: PropRef[]
   referencedBy: ReferencedRef[]
   axioms: { turtle: string }[]
+  /** Manchester rendering (lazy per request, OWL 2 M1): null = bridge
+   *  failure or no axioms — the panel then shows no axiom section at all. */
+  manchester?: string[] | null
   stats: EntityStats
   kind?: 'entity'
 }

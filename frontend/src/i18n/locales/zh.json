@@ -132,7 +132,11 @@
     "referencedBy": "被引用",
     "instances": "实例",
     "properties": "属性",
-    "inheritedFrom": "继承自"
+    "inheritedFrom": "继承自",
+    "axioms": {
+      "structured": "公理(结构化)",
+      "raw": "原始 Turtle"
+    }
   },
   "instance": {
     "badge": "实例",
