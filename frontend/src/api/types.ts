@@ -54,7 +54,13 @@ export interface EntityStats {
 export interface EntityIR {
   eid: string
   curie: string
-  type: 'Class' | 'ObjectProperty' | 'DatatypeProperty' | 'Property' | string
+  type:
+    | 'Class'
+    | 'ObjectProperty'
+    | 'DatatypeProperty'
+    | 'AnnotationProperty'
+    | 'Property'
+    | string
   label: LocalizedLabels
   comment: string | null
   deprecated: boolean

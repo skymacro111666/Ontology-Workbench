@@ -73,7 +73,7 @@ class EntityIR(BaseModel):
 
     eid: str
     curie: str
-    type: str  # Class | ObjectProperty | DatatypeProperty | Property
+    type: str  # Class | ObjectProperty | DatatypeProperty | AnnotationProperty | Property
     label: dict[str, str] = {}
     comment: str | None = None
     deprecated: bool = False
@@ -225,10 +225,11 @@ def _ox_is_class(store: ox.Store, uri: str) -> bool:
 
 
 def _ox_ptype_of(store: ox.Store, uri: str) -> str:
-    """ObjectProperty / DatatypeProperty / Property for a property entity."""
+    """ObjectProperty / DatatypeProperty / AnnotationProperty / Property for a property entity."""
     for rdf_type, name in (
         (terms.OWL_OBJECTPROPERTY, "ObjectProperty"),
         (terms.OWL_DATATYPEPROPERTY, "DatatypeProperty"),
+        (terms.OWL_ANNOTATIONPROPERTY, "AnnotationProperty"),
     ):
         if _ox_has(store, uri, terms.RDF_TYPE, rdf_type):
             return name
@@ -380,6 +381,10 @@ class _WalkCtx:
     classes: set[str]
     object_props: set[str]
     datatype_props: set[str]
+    # Fourth kind (OWL 2 M1): annotation properties are entities (sidebar/
+    # detail/docs surfaces) but stay out of the domain/range link tables —
+    # annotations are not structural links, so the canvas never draws them.
+    annotation_props: set[str]
     # Declared entities (own classes and properties): the far ends the UI
     # may link into; everything else is external vocabulary.
     declared: set[str]
@@ -396,12 +401,17 @@ def _build_ctx(store: ox.Store) -> _WalkCtx:
     )
     object_props: set[str] = set()
     datatype_props: set[str] = set()
+    annotation_props: set[str] = set()
     for s in _ox_subjects(store, terms.RDF_TYPE, terms.OWL_OBJECTPROPERTY):
         if isinstance(s, ox.NamedNode):
             object_props.add(s.value)
     for s in _ox_subjects(store, terms.RDF_TYPE, terms.OWL_DATATYPEPROPERTY):
         if isinstance(s, ox.NamedNode):
             datatype_props.add(s.value)
+    for s in _ox_subjects(store, terms.RDF_TYPE, terms.OWL_ANNOTATIONPROPERTY):
+        if isinstance(s, ox.NamedNode):
+            annotation_props.add(s.value)
+    # Domain/range links are structural: object/data properties only.
     props = sorted(object_props | datatype_props)
 
     # Domain/range links walked once: props by class and classes by prop.
@@ -421,7 +431,8 @@ def _build_ctx(store: ox.Store) -> _WalkCtx:
         classes=set(classes),
         object_props=object_props,
         datatype_props=datatype_props,
-        declared=set(classes) | set(props),
+        annotation_props=annotation_props,
+        declared=set(classes) | set(props) | annotation_props,
         props_by_class=props_by_class,
         classes_by_prop=classes_by_prop,
     )
@@ -511,6 +522,11 @@ def _entity_ir(
         (c.value for c in _ox_objects(store, uri, terms.RDFS_COMMENT) if isinstance(c, ox.Literal)),
         None,
     )
+    axiom_blocks = [Axiom(turtle=_ox_turtle_block(store, prefixes, uri, cc))]
+    if etype == "AnnotationProperty":
+        usage = _annotation_usage_block(store, prefixes, uri, cc)
+        if usage:
+            axiom_blocks.append(Axiom(turtle=usage))
     return EntityIR(
         eid=uri,
         curie=_ox_curie(prefixes, uri, cc),
@@ -522,9 +538,34 @@ def _entity_ir(
         children=children,
         properties=properties,
         referenced_by=_referenced(store, prefixes, uri, is_class, children, ctx, cc),
-        axioms=[Axiom(turtle=_ox_turtle_block(store, prefixes, uri, cc))],
+        axioms=axiom_blocks,
         stats=Stats(direct_children=len(children)),
     )
+
+
+def _annotation_usage_block(
+    store: ox.Store, prefixes: PrefixMap, uri: str, cc: _OxCurieCache | None = None
+) -> str:
+    """Annotation usages (uri as predicate), one Turtle block, 50-line cap.
+
+    属性实体的主语象限声明已由 _ox_turtle_block 覆盖;标注属性的「用法」
+    (作谓语的断言)是它的核心内容,单列一块(带截断计数,防大本体爆页).
+    """
+    lines: list[str] = []
+    total = 0
+    pred_curie = _ox_curie(prefixes, uri, cc)
+    for q in store.quads_for_pattern(None, ox.NamedNode(uri), None, ox.DefaultGraph()):
+        total += 1
+        if len(lines) >= 50:
+            continue
+        subj = _ox_ttl_term(prefixes, q.subject, None, None, cc)
+        obj = _ox_ttl_term(prefixes, q.object, None, None, cc)
+        lines.append(f"{subj} {pred_curie} {obj} .")
+    if not lines:
+        return ""
+    if total > len(lines):
+        lines.append(f"# … {total - len(lines)} more uses truncated")
+    return "\n".join(lines)
 
 
 def _individual_ir(
@@ -598,7 +639,9 @@ def build_ir_store(store: ox.Store, prefixes: PrefixMap) -> IRBundle:
     """
     ctx = _build_ctx(store)
     classes = sorted(ctx.classes)
-    props = sorted(ctx.object_props | ctx.datatype_props)
+    # property_count covers every non-class entity kind (sidebar's props
+    # tab lists exactly these): object + datatype + annotation.
+    props = sorted(ctx.object_props | ctx.datatype_props | ctx.annotation_props)
 
     entities: dict[str, EntityIR] = {}
     # One curie memo for the whole walk: entity curies, refs and axiom

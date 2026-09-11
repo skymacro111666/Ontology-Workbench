@@ -223,6 +223,7 @@
       "Property": "Property",
       "ObjectProperty": "Object property",
       "DatatypeProperty": "Data property",
+      "AnnotationProperty": "Annotation property",
       "Instance": "Instance"
     }
   },

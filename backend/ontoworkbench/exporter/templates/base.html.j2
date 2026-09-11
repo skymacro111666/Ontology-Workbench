@@ -63,6 +63,16 @@
             </ul>
           </section>
           {% endif %}
+          {% if props.annotation %}
+          <section class="prop-group">
+            <h3>Annotation Properties <span class="count">{{ props.annotation | length }}</span></h3>
+            <ul class="tree">
+              {% for p in props.annotation %}
+              <li><a href="{{ root }}{{ p.file }}">{{ p.curie }}</a></li>
+              {% endfor %}
+            </ul>
+          </section>
+          {% endif %}
         </div>
       </div>
     </nav>

@@ -64,6 +64,30 @@ def built_instanced():
     return ir, build_indexes(ir)
 
 
+# Fourth kind surface: annotation property page + sidebar group (OWL 2 M1).
+ANNOTATED = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:A a owl:Class ; rdfs:label "A"@en .
+ex:likes a owl:ObjectProperty ; rdfs:domain ex:A ; rdfs:range ex:A .
+ex:difficulty a owl:AnnotationProperty ; rdfs:label "difficulty" .
+ex:A ex:difficulty "moderate" .
+"""
+
+
+def test_annotation_property_page_and_sidebar_group(tmp_path: Path) -> None:
+    """AnnotationProperty 得到实体页;侧栏第三组归档(OWL 2 M1)."""
+    ir = _ir(ANNOTATED)
+    ix = build_indexes(ir)
+    export_site(ir, ix, tmp_path, title="Annotated")
+    page = page_of(tmp_path, "http://example.org/difficulty")
+    assert "AnnotationProperty" in page
+    assert "moderate" in page  # 用法断言进页面
+    base = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "Annotation Properties" in base
+    assert "ex:difficulty" in base
+
+
 def page_of(tmp_path: Path, eid: str) -> str:
     """Rendered HTML of one entity page, looked up by entity IRI."""
     return (tmp_path / file_of(eid)).read_text(encoding="utf-8")

@@ -223,6 +223,7 @@
       "Property": "属性",
       "ObjectProperty": "对象属性",
       "DatatypeProperty": "数据属性",
+      "AnnotationProperty": "标注属性",
       "Instance": "实例"
     }
   },

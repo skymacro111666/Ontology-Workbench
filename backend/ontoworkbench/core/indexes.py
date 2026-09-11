@@ -605,7 +605,8 @@ class Indexes:
             stack.extend(p.eid for p in self._ir.entities[eid].parents)
         out: dict[str, SchemaProp] = {}
         for e in sorted(list(self._ir.entities.values()), key=lambda x: x.curie):
-            if e.type == "Class":
+            # Class 不是断言属性;AnnotationProperty 只展示不编辑(OWL 2 M1 spec)
+            if e.type == "Class" or e.type == "AnnotationProperty":
                 continue
             domains = [r for r in e.referenced_by if r.relation == "rdfs:domain"]
             if domains:

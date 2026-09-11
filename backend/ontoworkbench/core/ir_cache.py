@@ -27,7 +27,7 @@ from ontoworkbench.core.ir import IRBundle
 # v4: prefixes 不再把空前缀改名 "base",直接透出 ""(meta/前端按 ":" 渲染,
 # iri_for("") 天然命中);旧 v3 pkl 的 "base" 键属旧口径,按版本不匹配
 # miss、下次导入/浏览重建。
-IR_SCHEMA_VERSION = 4  # IRBundle 结构或 build_ir_store 语义变更时必须 bump
+IR_SCHEMA_VERSION = 5  # IRBundle 结构或 build_ir_store 语义变更时必须 bump
 CACHE_FILENAME = "index.pkl"
 
 _log = structlog.get_logger("ow.cache")

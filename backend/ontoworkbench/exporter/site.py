@@ -82,17 +82,19 @@ def _sidebar_tree(indexes: Indexes) -> list[dict]:
 
 
 def _sidebar_props(ir: IRBundle) -> dict[str, list[dict]]:
-    """Sidebar property groups (object above data): curie/file per entry.
+    """Sidebar property groups (object above data, annotations last): curie/file per entry.
 
-    Only explicitly typed properties ever become entities, so two groups
-    cover everything - there is no third bucket to fill.
+    Only explicitly typed properties ever become entities; annotation
+    properties are the third group (OWL 2 M1: fourth entity kind).
     """
-    groups: dict[str, list[dict]] = {"object": [], "data": []}
+    groups: dict[str, list[dict]] = {"object": [], "data": [], "annotation": []}
     for e in ir.entities.values():
         if e.type == "ObjectProperty":
             groups["object"].append({"curie": e.curie, "file": file_of(e.eid)})
         elif e.type == "DatatypeProperty":
             groups["data"].append({"curie": e.curie, "file": file_of(e.eid)})
+        elif e.type == "AnnotationProperty":
+            groups["annotation"].append({"curie": e.curie, "file": file_of(e.eid)})
     return groups
 
 
@@ -144,7 +146,7 @@ def export_site(
     props = _sidebar_props(ir)
     tab_counts = {
         "classes": ir.counts.class_count,
-        "properties": len(props["object"]) + len(props["data"]),
+        "properties": len(props["object"]) + len(props["data"]) + len(props["annotation"]),
     }
     # Footer provenance shared by every page (base.html.j2).
     footer = {
