@@ -24,6 +24,7 @@
 - **集成源码编辑** —— 内置编辑器,搜索替换功能全覆盖
 - **内置 SPARQL 查询台** —— 浏览页第三视图,只读查询引擎级强制(UPDATE 一律拒绝),SELECT/ASK/CONSTRUCT 三形态结果,IRI 自动缩写为 curie
 - **SHACL 校验** —— 加载内置或自定义 SHACL shapes,对本体运行标准一致性校验,三档严重度报告
+- **OWL 2 compatible & profile-aware** —— Manchester 公理渲染与 EL/QL/RL/DL profile 检测(词表级近似)
 - **连续编辑零重解析** —— 同一文件版本上的连续编辑复用内存中的同一 Store,零重复解析(由测试 `backend/tests/api/test_edit_store_cache.py` 锁定)
 - **离线文档导出** —— 生成完全零外部依赖的静态站点
 
