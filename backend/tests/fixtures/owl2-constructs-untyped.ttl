@@ -1,0 +1,144 @@
+@prefix : <http://example.org/owl2-spike#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/owl2-spike> a owl:Ontology ;
+    rdfs:label "OWL 2 Spike Corpus"@en .
+
+#################################################################
+# 基础实体(类/属性/个体,供构造挂靠)
+#################################################################
+
+:Person a owl:Class ; rdfs:label "Person"@en .
+:Student a owl:Class ; rdfs:subClassOf :Person .
+:Course a owl:Class .
+:University a owl:Class .
+:Textbook a owl:Class .
+:Chapter a owl:Class .
+
+:enrolledIn a owl:ObjectProperty .
+:locatedIn a owl:ObjectProperty .
+:partOf a owl:ObjectProperty .
+:shelfIn a owl:ObjectProperty .
+:knows a owl:ObjectProperty .
+:parentOf a owl:ObjectProperty .
+:hasPageCount a owl:DatatypeProperty .
+
+:alice a :Student .
+:bob a :Person .
+:carol a :Student .
+
+#################################################################
+# 构造 1:属性链(property chain)—— EL 允许
+# shelfIn ∘ partOf ⊑ locatedIn
+#################################################################
+
+:locatedIn owl:propertyChainAxiom ( :shelfIn :partOf ) .
+
+#################################################################
+# 构造 2:限定基数(qualified cardinality)—— EL/QL 禁
+# Student ⊑ enrolledIn exactly 1 Course
+#################################################################
+
+:Student rdfs:subClassOf [
+    a owl:Restriction ;
+    owl:onProperty :enrolledIn ;
+    owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ;
+    owl:onClass :Course
+] .
+
+#################################################################
+# 构造 3:disjointUnionOf —— EL 禁
+#################################################################
+
+:University owl:disjointUnionOf ( :Person :Course ) .
+
+#################################################################
+# 构造 4:hasKey —— EL 允许
+#################################################################
+
+:Person owl:hasKey ( :parentOf ) .
+
+#################################################################
+# 构造 5:自反属性 —— EL 禁(OWL 2 EL 无 ReflexiveProperty)
+#################################################################
+
+:knows a owl:ReflexiveProperty .
+
+#################################################################
+# 构造 6:不对称属性 —— EL 禁
+#################################################################
+
+:parentOf a owl:AsymmetricProperty .
+
+#################################################################
+# 构造 7:否定属性断言 —— EL 禁
+#################################################################
+
+[
+    a owl:NegativePropertyAssertion ;
+    owl:sourceIndividual :alice ;
+    owl:assertionProperty :parentOf ;
+    owl:targetIndividual :bob
+] .
+
+#################################################################
+# 构造 8:AnnotationProperty(含公理上的注解)
+#################################################################
+
+:difficulty a owl:AnnotationProperty .
+:Student :difficulty "moderate" .
+:Textbook rdfs:subClassOf :Chapter ;
+    :difficulty "trivial" .
+
+[] a owl:Axiom ;
+    owl:annotatedSource :Student ;
+    owl:annotatedProperty rdfs:subClassOf ;
+    owl:annotatedTarget :Person ;
+    :difficulty "basic" .
+
+#################################################################
+# 构造 9:punning—— :Genius 同时是类和个体
+#################################################################
+
+:Genius a owl:Class ; rdfs:subClassOf :Person .
+:Genius a :Person ; rdfs:label "The Genius"@en .
+
+#################################################################
+# Manchester 渲染素材:常见类表达式形态
+#################################################################
+
+# someValuesFrom + unionOf
+:Undergrad a owl:Class ; owl:equivalentClass [
+    owl:intersectionOf (
+        :Student
+        [ owl:unionOf ( [ owl:onProperty :enrolledIn ; owl:someValuesFrom :Course ] :Person ) ]
+    )
+] .
+
+# allValuesFrom + hasValue
+:Course rdfs:subClassOf [
+    owl:onProperty :locatedIn ;
+    owl:allValuesFrom :University
+] .
+
+# min/maxQualifiedCardinality
+:Textbook rdfs:subClassOf [
+    owl:onProperty :partOf ;
+    owl:minQualifiedCardinality "2"^^xsd:nonNegativeInteger ;
+    owl:onClass :Chapter
+] , [
+    owl:onProperty :hasPageCount ;
+    owl:maxCardinality "5000"^^xsd:nonNegativeInteger
+] .
+
+# oneOf + complementOf
+:Reviewer a owl:Class ;
+    owl:equivalentClass [ owl:oneOf ( :alice :bob ) ] .
+:NonReviewer a owl:Class ;
+    owl:equivalentClass [ owl:complementOf :Reviewer ] .
+
+# 自反限制 self
+:SelfAware a owl:Class ; rdfs:subClassOf [ owl:onProperty :knows ; owl:someValuesFrom owl:Thing ] .
+:Confident a owl:Class ; rdfs:subClassOf [ owl:onProperty :knows ; owl:hasSelf "true"^^xsd:boolean ] .
