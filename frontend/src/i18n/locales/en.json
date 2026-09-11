@@ -50,6 +50,7 @@
     "samplesFoaf": "FOAF: the classic vocabulary for people and social links",
     "samplesLibrary": "Bilingual library ontology: three-level hierarchy with instance data",
     "samplesHr": "HR ontology: role modelling, procurement documents and disjointness axioms",
+    "samplesOwl2": "OWL 2 teaching sampler: restrictions, boolean connectives, punning and property chains, each noted with its profile",
     "listLoadingSr": "Loading the ontology list",
     "countOntology": "ontologies",
     "countClass": "classes",

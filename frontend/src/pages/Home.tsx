@@ -38,6 +38,7 @@ const SAMPLES: { name: string; title: string; descKey: string }[] = [
   { name: 'foaf', title: 'FOAF', descKey: 'home.samplesFoaf' },
   { name: 'library', title: 'Library', descKey: 'home.samplesLibrary' },
   { name: 'human-resources-v1', title: 'Human Resources', descKey: 'home.samplesHr' },
+  { name: 'owl2', title: 'OWL 2 Constructs', descKey: 'home.samplesOwl2' },
 ]
 
 /** Home (工作台): stat tiles, builtin samples, ontology list cards. */

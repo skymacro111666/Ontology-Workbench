@@ -50,6 +50,7 @@
     "samplesFoaf": "FOAF：描述人与社会关系的经典词表",
     "samplesLibrary": "双语图书馆本体：三层层级与实例数据",
     "samplesHr": "人力资源本体：角色建模、采购文档与不相交公理示范",
+    "samplesOwl2": "OWL 2 构造教学样例：限制、布尔组合、punning、属性链，逐条注明 profile 归属",
     "listLoadingSr": "本体列表加载中",
     "countOntology": "本体",
     "countClass": "类",

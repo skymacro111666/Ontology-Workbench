@@ -99,21 +99,21 @@ describe('Home', () => {
 
   it('appends tagged sample cards after the real list and loads the picked one', async () => {
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      if (String(url) === '/api/samples/human-resources-v1') {
+      if (String(url) === '/api/samples/owl2') {
         expect(init?.method).toBe('POST')
-        return ok({ id: 'hr-oid', filename: 'human-resources-v1.ttl', format: 'turtle' })
+        return ok({ id: 'owl2-oid', filename: 'owl2.ttl', format: 'turtle' })
       }
       return ok({ items: [summary('oid-1', { title: 'My Work' })], total: 1 })
     })
     vi.stubGlobal('fetch', fetchMock)
     renderHome()
 
-    // All five bundled samples surface behind the user's own card.
+    // All six bundled samples surface behind the user's own card.
     await screen.findByText('My Work')
-    for (const title of ['Pizza', 'Wine', 'FOAF', 'Library', 'Human Resources']) {
+    for (const title of ['Pizza', 'Wine', 'FOAF', 'Library', 'Human Resources', 'OWL 2 Constructs']) {
       expect(screen.getByText(title)).toBeTruthy()
     }
-    expect(screen.getAllByText('示例')).toHaveLength(5)
+    expect(screen.getAllByText('示例')).toHaveLength(6)
     expect(screen.getByText(/人力资源本体/)).toBeTruthy()
     // User data first: the real card precedes every sample card.
     const real = screen.getByText('My Work')
@@ -122,11 +122,11 @@ describe('Home', () => {
 
     // Load goes through POST /api/samples/{name} and opens the result.
     const loadButtons = screen.getAllByRole('button', { name: '载入' })
-    expect(loadButtons).toHaveLength(5)
-    await userEvent.click(loadButtons[4]) // Human Resources — last in SAMPLES order
-    expect(await screen.findByText('browse:hr-oid')).toBeTruthy()
+    expect(loadButtons).toHaveLength(6)
+    await userEvent.click(loadButtons[5]) // OWL 2 Constructs — last in SAMPLES order
+    expect(await screen.findByText('browse:owl2-oid')).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/samples/human-resources-v1',
+      '/api/samples/owl2',
       expect.objectContaining({ method: 'POST' }),
     )
   })
@@ -153,8 +153,8 @@ describe('Home', () => {
     expect(within(realPizza).getByText('示例')).toBeTruthy()
     const mine = screen.getByRole('button', { name: '打开 Mine' })
     expect(within(mine).queryByText('示例')).toBeNull()
-    // The pizza placeholder is deduped away; the other four remain.
-    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(4)
+    // The pizza placeholder is deduped away; the other five remain.
+    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(5)
   })
 
   it('hides a sample card once its ontology is imported', async () => {
@@ -171,7 +171,7 @@ describe('Home', () => {
 
     expect(await screen.findByText('HR')).toBeTruthy()
     expect(screen.queryByText('Human Resources')).toBeNull()
-    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(4)
+    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(5)
   })
 
   it('empty list keeps the samples and a one-line hint instead of the old box', async () => {
@@ -183,7 +183,7 @@ describe('Home', () => {
 
     expect(await screen.findByText(/载入内置示例快速体验/)).toBeTruthy()
     expect(screen.queryByText('还没有本体')).toBeNull()
-    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(5)
+    expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(6)
   })
 
   it('deletes only after the AlertDialog confirmation', async () => {
