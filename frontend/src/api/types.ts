@@ -220,6 +220,8 @@ export interface OntologySummary {
 export interface ProfileViolation {
   axiom: string
   bans: string[]
+  /** Offending triple's subject (absent for older payloads). */
+  subject?: string | null
 }
 
 /** OWL 2 profile verdict carried by GET /meta (vocabulary-level approximation). */

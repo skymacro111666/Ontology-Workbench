@@ -261,7 +261,8 @@
       "orphan-class": "孤类",
       "unused-property": "未使用属性",
       "undeclared-ref": "未声明引用",
-      "duplicate-label": "重复标签"
+      "duplicate-label": "重复标签",
+      "profile-exit": "profile 出界"
     },
     "rule": {
       "disjoint-parents": "父类 {{parent1}} 与 {{parent2}} 互不相交",
@@ -272,7 +273,8 @@
       "orphan-class": "孤类：无父、无子、无实例、无引用",
       "unused-property": "声明后从未使用",
       "undeclared-ref": "引用了未声明的 {{ref}}",
-      "duplicate-label": "标签「{{label}}」（{{lang}}）被 {{count}} 个实体共用"
+      "duplicate-label": "标签「{{label}}」（{{lang}}）被 {{count}} 个实体共用",
+      "profile-exit": "超出 OWL 2 {{profile}} profile 的公理：{{axiom}}"
     },
     "enabled": "启用",
     "actions": "操作"

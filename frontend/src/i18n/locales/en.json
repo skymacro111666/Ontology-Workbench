@@ -261,7 +261,8 @@
       "orphan-class": "Orphan class",
       "unused-property": "Unused property",
       "undeclared-ref": "Undeclared reference",
-      "duplicate-label": "Duplicate label"
+      "duplicate-label": "Duplicate label",
+      "profile-exit": "Profile exit"
     },
     "rule": {
       "disjoint-parents": "parents {{parent1}} and {{parent2}} are disjoint",
@@ -272,7 +273,8 @@
       "orphan-class": "orphan: no parents/children/instances/references",
       "unused-property": "declared but never used",
       "undeclared-ref": "references undeclared {{ref}}",
-      "duplicate-label": "label \"{{label}}\" ({{lang}}) shared by {{count}}"
+      "duplicate-label": "label \"{{label}}\" ({{lang}}) shared by {{count}}",
+      "profile-exit": "Axiom outside the OWL 2 {{profile}} profile: {{axiom}}"
     },
     "enabled": "Enabled",
     "actions": "Actions"

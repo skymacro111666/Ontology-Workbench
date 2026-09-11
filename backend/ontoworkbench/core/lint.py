@@ -14,6 +14,7 @@ import pyoxigraph as ox
 from pydantic import BaseModel
 
 from ontoworkbench.core.ir import IRBundle
+from ontoworkbench.core.owl2.profile import classify
 from ontoworkbench.core.terms import OWL_DISJOINTWITH, XSD_NS
 
 MAX_FINDINGS = 200
@@ -343,6 +344,28 @@ def _duplicate_label(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[
     for (lang, value), eids in sorted(groups.items()):
         if len(eids) > 1:
             yield sorted(eids)[0], {"label": value, "lang": lang, "count": str(len(eids))}
+
+
+@rule("profile-exit", "warning")
+def _profile_exit(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+    """Flag axioms whose vocabulary exits the OWL 2 profile the ontology misses.
+
+    口径(OWL 2 M1 T7):classify 的词表级判定,top 之外的落败 profile 的
+    每条违规证据转一条 finding——即「把本体装进更小 profile 的拦路公理」。
+    top=EL(全过)与 top=DL(三个全败,已在最大 profile,无处可退但证据
+    仍有指导意义)的差异:DL 同样列出证据,目标 profile 取 bans 并集。
+    subject 取违规三元组的主语(空节点/未声明 IRI 按现状回退本地名,
+    与自定义 SPARQL 规则同款兜底)。
+    """
+    verdict = classify(store, ir.prefixes)
+    for v in verdict["violations"]:
+        yield (
+            v.get("subject") or "",
+            {
+                "axiom": v["axiom"],
+                "profile": ", ".join(v["bans"]),
+            },
+        )
 
 
 class CustomRuleSpec(BaseModel):

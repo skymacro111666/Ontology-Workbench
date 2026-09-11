@@ -51,6 +51,7 @@ class ProfileViolation(CamelModel):
 
     axiom: str
     bans: list[str]
+    subject: str | None = None  # offending triple's subject (lint click-locate)
 
 
 class ProfileReport(CamelModel):

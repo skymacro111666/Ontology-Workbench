@@ -47,7 +47,13 @@ def test_symmetric_demotes_el_only() -> None:
     v = classify(_mini(text), {})
     assert v["top"] == "QL"
     # 裸 dict 前缀(测试态)→ 本地名缩写,与 render._c 口径一致
-    assert v["violations"] == [{"axiom": "knows a SymmetricProperty", "bans": ["EL"]}]
+    assert v["violations"] == [
+        {
+            "axiom": "knows a SymmetricProperty",
+            "bans": ["EL"],
+            "subject": "http://example.org/m#knows",
+        }
+    ]
 
 
 def test_transitive_stays_el() -> None:

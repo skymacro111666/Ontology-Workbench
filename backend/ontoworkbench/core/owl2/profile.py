@@ -106,20 +106,21 @@ def _val(term: Any) -> str:
 
 def classify(store: ox.Store, prefixes: Any) -> dict[str, Any]:
     """词表级判定:{"top", "approximate", "axiom_count", "violations"}."""
-    hits: list[tuple[str, str]] = []  # (三元组缩写, 命中的 OWL 本地名)
+    hits: list[tuple[str, str, str]] = []  # (三元组缩写, 命中本地名, 主语)
     functional: set[str] = set()
     axiom_count = 0
     for q in store.quads_for_pattern(None, None, None, None):
         axiom_count += 1
         # 注意 str(term) 是 N-Triples 形态(带 <>);统一走 _val
+        subj = _val(q.subject)
         p_local = _local(_val(q.predicate))
         if p_local in _ALL_BANNED:
-            hits.append((_fmt(q, prefixes), p_local))
+            hits.append((_fmt(q, prefixes), p_local, subj))
         o_local = _local(_val(q.object)) if isinstance(q.object, ox.NamedNode) else None
         if o_local in _ALL_BANNED:
-            hits.append((_fmt(q, prefixes), o_local))
+            hits.append((_fmt(q, prefixes), o_local, subj))
         if p_local == "FunctionalProperty" or o_local == "FunctionalProperty":
-            functional.add(_val(q.subject))
+            functional.add(subj)
     # EL 特例:函数型对象属性(或未标数据属性的函数型属性)出界
     el_functional: list[str] = []
     for s in sorted(functional):
@@ -134,7 +135,9 @@ def classify(store: ox.Store, prefixes: Any) -> dict[str, Any]:
     # 不能更小」——顺序中在 top 之前落败的 profile 的证据(top 之后的
     # 落败不影响判定,不进 violations)。
     def _fails(profile: str) -> bool:
-        return any(t in BANS[profile] for _, t in hits) or (profile == "EL" and bool(el_functional))
+        return any(t in BANS[profile] for _, t, _ in hits) or (
+            profile == "EL" and bool(el_functional)
+        )
 
     failed: list[str] = []
     top: str | None = None
@@ -149,16 +152,22 @@ def classify(store: ox.Store, prefixes: Any) -> dict[str, Any]:
 
     violations: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
-    for text, term in hits:
+    for text, term, subj in hits:
         bans = sorted(p for p in failed if term in BANS[p])
         if bans and (text, term) not in seen:
             seen.add((text, term))
-            violations.append({"axiom": text, "bans": bans})
+            violations.append({"axiom": text, "bans": bans, "subject": subj})
         if len(violations) >= _MAX_VIOLATIONS:
             break
     if "EL" in failed:
         for s in el_functional[: max(0, _MAX_VIOLATIONS - len(violations))]:
-            violations.append({"axiom": f"{_c(prefixes, s)} a FunctionalProperty", "bans": ["EL"]})
+            violations.append(
+                {
+                    "axiom": f"{_c(prefixes, s)} a FunctionalProperty",
+                    "bans": ["EL"],
+                    "subject": s,
+                }
+            )
     return {"top": top, "approximate": True, "axiom_count": axiom_count, "violations": violations}
 
 
