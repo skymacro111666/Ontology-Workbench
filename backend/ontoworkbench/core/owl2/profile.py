@@ -21,7 +21,7 @@ from typing import Any
 
 import pyoxigraph as ox
 
-from .render import _c
+from .render import _curie
 
 OWL = "http://www.w3.org/2002/07/owl#"
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
@@ -163,7 +163,7 @@ def classify(store: ox.Store, prefixes: Any) -> dict[str, Any]:
         for s in el_functional[: max(0, _MAX_VIOLATIONS - len(violations))]:
             violations.append(
                 {
-                    "axiom": f"{_c(prefixes, s)} a FunctionalProperty",
+                    "axiom": f"{_curie(prefixes, s)} a FunctionalProperty",
                     "bans": ["EL"],
                     "subject": s,
                 }
@@ -175,7 +175,7 @@ def _fmt(q: ox.Quad, prefixes: Any) -> str:
     """三元组缩写:rdf:type 行折成 "S a O",其余 "S P O"."""
 
     def c(t: Any) -> str:
-        return _c(prefixes, _val(t))
+        return _curie(prefixes, _val(t))
 
     if _val(q.predicate) == RDF_TYPE:
         return f"{c(q.subject)} a {c(q.object)}"

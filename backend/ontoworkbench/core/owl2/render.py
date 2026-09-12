@@ -43,7 +43,7 @@ _CARD_KW = {
 }
 
 
-def _c(prefixes: Any, v: Any) -> str:
+def _curie(prefixes: Any, v: Any) -> str:
     """NamedNode/Literal → curie 缩写(与实体页口径一致).
 
     PrefixMap → _ox_curie(仓库统一口径);裸 dict(测试态)→ 取本地名
@@ -65,7 +65,7 @@ def _expr(node: Any, prefixes: Any) -> str:
         return _expr(x, prefixes)
 
     if t in _NAMED:
-        return _c(prefixes, getattr(node, "iri", node))
+        return _curie(prefixes, getattr(node, "iri", node))
     if t in ("ObjectSomeValuesFrom", "ObjectAllValuesFrom"):
         kw = "some" if t.endswith("SomeValuesFrom") else "only"
         return f"{e(node.ope)} {kw} {e(node.bce)}"
@@ -81,7 +81,7 @@ def _expr(node: Any, prefixes: Any) -> str:
     if t == "ObjectComplementOf":
         return f"not {e(node.first)}"
     if t == "ObjectOneOf":
-        members = ", ".join(_c(prefixes, getattr(x, "iri", x)) for x in _as_list(node.first))
+        members = ", ".join(_curie(prefixes, getattr(x, "iri", x)) for x in _as_list(node.first))
         return "{" + members + "}"
     if t == "ObjectPropertyChain":
         return " ∘ ".join(e(x) for x in _as_list(node.first))
@@ -90,7 +90,7 @@ def _expr(node: Any, prefixes: Any) -> str:
 
 def _fallback(ax: Any, prefixes: Any) -> str:
     """未识别公理的函数语法兜底行:<IRI> 一律缩写(curie/本地名),禁全 IRI 墙."""
-    return _IRI_RE.sub(lambda m: _c(prefixes, m.group(1)), str(ax))
+    return _IRI_RE.sub(lambda m: _curie(prefixes, m.group(1)), str(ax))
 
 
 def _axiom(ax: Any, prefixes: Any) -> tuple[str, str] | None:
@@ -131,7 +131,7 @@ def _axiom(ax: Any, prefixes: Any) -> tuple[str, str] | None:
     if t == "ClassAssertion":
         return t, f"{e(ax.i)} Type {e(ax.ce)}"
     if t == "NegativeObjectPropertyAssertion":
-        return t, f"{_c(prefixes, ax.source)} not {e(ax.ope)} {_c(prefixes, ax.target)}"
+        return t, f"{_curie(prefixes, ax.source)} not {e(ax.ope)} {_curie(prefixes, ax.target)}"
     if t in (
         "ReflexiveObjectProperty",
         "IrreflexiveObjectProperty",
