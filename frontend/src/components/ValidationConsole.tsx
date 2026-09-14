@@ -7,11 +7,17 @@ import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language'
 import { turtle } from '@codemirror/legacy-modes/mode/turtle'
 import { tags as t } from '@lezer/highlight'
-import { Loader2Icon } from 'lucide-react'
+import { ChevronDownIcon, DownloadIcon, Loader2Icon } from 'lucide-react'
 import { api, ApiErr } from '../api/client'
 import type { OntologyMeta } from '../api/types'
 import { useBrowseStore } from '../stores/browseStore'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
 /** SHACL 校验 view (M1, spec 2026-09-08 §3): 上 shapes 编辑器、下归一化
@@ -37,6 +43,8 @@ export interface ValidationRunResult {
   elapsedMs: number
   afWarnings: string[]
   deprecatedFiltered: number
+  /** Kept-universe size (post-filter) — the honest "共 N 条" count. */
+  totalResults: number
 }
 
 interface Preset {
@@ -75,6 +83,7 @@ export default function ValidationConsole({ oid }: { oid: string }) {
   const runRef = useRef<() => void>(() => {})
   const [running, setRunning] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [result, setResult] = useState<ValidationRunResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [elapsed, setElapsed] = useState(0)
@@ -146,6 +155,29 @@ export default function ValidationConsole({ oid }: { oid: string }) {
       )
     } finally {
       setSaving(false)
+    }
+  }
+
+  // 全量导出(缓存命中秒出;与 run 同口径——编辑器当前内容+忽略废弃开关)。
+  const doExport = async (format: 'csv' | 'json') => {
+    if (exporting) return
+    setExporting(true)
+    setError(null)
+    try {
+      const name = await api.downloadBinary(
+        `/api/ontologies/${oid}/validation/export`,
+        `validation.${format}`,
+        { method: 'POST', body: { source: doc(), includeDeprecated: !ignoreDep, format } },
+      )
+      toast.success(tr('validationView.exported', { name }))
+    } catch (e) {
+      setError(
+        e instanceof ApiErr
+          ? [e.message, e.hint].filter(Boolean).join(' — ')
+          : tr('common.offline'),
+      )
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -272,25 +304,44 @@ export default function ValidationConsole({ oid }: { oid: string }) {
           />
           {tr('validationView.ignoreDeprecated')}
         </label>
-        <Button
-          size="sm"
-          className="ml-auto"
-          disabled={running}
-          onClick={() => runRef.current()}
-        >
-          {running ? (
-            <>
-              <Loader2Icon className="size-3.5 animate-spin" aria-hidden />
-              {tr('validationView.running')}
-              <span className="text-ink-3 font-normal">· {tr('validationView.elapsedS', { s: elapsed })}</span>
-            </>
-          ) : (
-            tr('validationView.run')
-          )}
-          <kbd className="border-ink-3/40 ml-1.5 rounded border px-1 font-mono text-[9.5px] font-normal opacity-80">
-            Ctrl ↵
-          </kbd>
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          {/* 导出 ▾(方案 1:与「运行」同组——都是执行动词;缓存 miss 会重跑) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" disabled={exporting}>
+                {exporting ? (
+                  <Loader2Icon className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <DownloadIcon className="size-3.5" aria-hidden />
+                )}
+                {tr('validationView.export')}
+                <ChevronDownIcon className="size-3 opacity-70" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => void doExport('csv')}>
+                {tr('validationView.exportCsv')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void doExport('json')}>
+                {tr('validationView.exportJson')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" disabled={running} onClick={() => runRef.current()}>
+            {running ? (
+              <>
+                <Loader2Icon className="size-3.5 animate-spin" aria-hidden />
+                {tr('validationView.running')}
+                <span className="text-ink-3 font-normal">· {tr('validationView.elapsedS', { s: elapsed })}</span>
+              </>
+            ) : (
+              tr('validationView.run')
+            )}
+            <kbd className="border-ink-3/40 ml-1.5 rounded border px-1 font-mono text-[9.5px] font-normal opacity-80">
+              Ctrl ↵
+            </kbd>
+          </Button>
+        </div>
       </div>
 
       {/* Big-ontology waiting notice (spec §2.2: waiting UX by design). */}
@@ -480,7 +531,10 @@ export default function ValidationConsole({ oid }: { oid: string }) {
         )}
         {!error && result?.truncated && (
           <p className="text-ink-3 px-3 py-1.5 text-xs">
-            {tr('validationView.truncatedNote', { count: Math.max(hidden, 0)})}
+            {tr('validationView.truncatedTotal', {
+              count: result.totalResults.toLocaleString(),
+              shown: result.results.length,
+            })}
           </p>
         )}
       </div>

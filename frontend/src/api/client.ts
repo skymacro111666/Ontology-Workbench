@@ -123,11 +123,21 @@ async function downloadFile(url: string, fallbackName: string): Promise<string> 
  *  docs-site zip). Errors still arrive as envelopes, so decode those;
  *  success streams a Blob and clicks a transient anchor. Content-
  * -Disposition wins for the filename. */
-async function downloadBinary(url: string, fallbackName: string): Promise<string> {
+async function downloadBinary(
+  url: string,
+  fallbackName: string,
+  opts?: { method?: string; body?: unknown },
+): Promise<string> {
   const token = localStorage.getItem(TOKEN_KEY)
-  const res = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
+  const headers: Record<string, string> = token
+    ? { Authorization: `Bearer ${token}` }
+    : {}
+  const init: RequestInit = { method: opts?.method ?? 'GET', headers }
+  if (opts?.body !== undefined) {
+    headers['Content-Type'] = 'application/json'
+    init.body = JSON.stringify(opts.body)
+  }
+  const res = await fetch(url, init)
   if (!res.ok) {
     const env = (await res.json()) as Envelope<null>
     throw new ApiErr(env.code, env.message, env.hint, env.request_id)

@@ -57,7 +57,11 @@ const RUN_OK = {
   elapsedMs: 12.5,
   afWarnings: [],
   deprecatedFiltered: 2,
+  totalResults: 2,
 }
+
+/** The payload the run stub serves this test (tests may swap it). */
+let runPayload: unknown = RUN_OK
 
 function env(data: unknown, code = 'OK') {
   return new Response(
@@ -68,17 +72,28 @@ function env(data: unknown, code = 'OK') {
 
 let posts: { url: string; body: Record<string, unknown> }[]
 let puts: { url: string; body: Record<string, unknown> }[]
+let exportsOut: { url: string; body: Record<string, unknown> }[]
 
 function stubFetch() {
   posts = []
   puts = []
+  exportsOut = []
   return vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     const m = init?.method ?? 'GET'
     const body = init?.body ? JSON.parse(String(init.body)) : {}
     if (m === 'POST') {
+      if (u.includes('/validation/export')) {
+        exportsOut.push({ url: u, body })
+        return new Response('csv-bytes', {
+          headers: {
+            'Content-Type': 'text/csv; charset=utf-8',
+            'Content-Disposition': 'attachment; filename="m-validation.csv"',
+          },
+        })
+      }
       posts.push({ url: u, body })
-      return env(RUN_OK)
+      return env(runPayload)
     }
     if (m === 'PUT') {
       puts.push({ url: u, body })
@@ -173,6 +188,31 @@ describe('ValidationConsole', () => {
     draw()
     expect(await screen.findByText(/耐心等待/)).toBeTruthy()
     META.classCount = 2
+  })
+
+  it('exports CSV via the dropdown with the current editor + filter', async () => {
+    draw()
+    await screen.findByLabelText(/shapes/i)
+    await screen.findByRole('option', { name: /最小/ }) // 预设异步落地
+    await userEvent.selectOptions(screen.getByLabelText(/预设/), 'minimal-label')
+    await userEvent.click(screen.getByRole('button', { name: /导出/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /导出 CSV/ }))
+    await waitFor(() => expect(exportsOut).toHaveLength(1))
+    expect(exportsOut[0].url).toContain(`/api/ontologies/${OID}/validation/export`)
+    expect(exportsOut[0].body).toMatchObject({
+      source: '# min',
+      includeDeprecated: false,
+      format: 'csv',
+    })
+  })
+
+  it('truncated runs show the true total, not just the rendered count', async () => {
+    runPayload = { ...RUN_OK, truncated: true, totalResults: 84823 }
+    draw()
+    await screen.findByLabelText(/shapes/i)
+    await userEvent.click(screen.getByRole('button', { name: /运行/ }))
+    expect(await screen.findByText(/共 84,823 条/)).toBeTruthy()
+    runPayload = RUN_OK
   })
 
   it('save PUTs the editor content', async () => {
