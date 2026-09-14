@@ -84,7 +84,7 @@ export default function ExportDialog() {
     if (!result || !oid) return
     setDownloading(true)
     try {
-      const name = await api.downloadBinary(
+      const { name } = await api.downloadBinary(
         `/api/ontologies/${oid}/export/site/archive?dir_path=${encodeURIComponent(result.outputDir)}`,
         'docs-site.zip',
       )

@@ -164,7 +164,7 @@ export default function ValidationConsole({ oid }: { oid: string }) {
     setExporting(true)
     setError(null)
     try {
-      const name = await api.downloadBinary(
+      const { name } = await api.downloadBinary(
         `/api/ontologies/${oid}/validation/export`,
         `validation.${format}`,
         { method: 'POST', body: { source: doc(), includeDeprecated: !ignoreDep, format } },

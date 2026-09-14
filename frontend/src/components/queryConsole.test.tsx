@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -43,10 +43,23 @@ const SELECT: QueryResult = {
 }
 
 let posted: { url: string; body: { qs: string } } | undefined
+let exported: { url: string; body: Record<string, unknown> } | undefined
+/** Extra headers the export stub serves (tests set X-Truncated here). */
+let exportHeaders: Record<string, string> = {}
 
 function stubFetch(result: () => Response = () => env(SELECT)) {
   return vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
+    if (u.endsWith('/query/export')) {
+      exported = { url: u, body: JSON.parse(String(init?.body)) }
+      return new Response('csv-bytes', {
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': 'attachment; filename="mini-query.csv"',
+          ...exportHeaders,
+        },
+      })
+    }
     if (u.endsWith('/query')) {
       posted = { url: u, body: JSON.parse(String(init?.body)) }
       return result()
@@ -87,6 +100,29 @@ describe('QueryConsole', () => {
     // Meta row reads the payload's numbers.
     expect(screen.getByText('2 行')).toBeTruthy()
     expect(screen.getByText('3.2 ms')).toBeTruthy()
+  })
+
+  it('exports the current editor query as CSV via the dropdown', async () => {
+    exported = undefined
+    exportHeaders = {}
+    renderConsole(stubFetch())
+    await userEvent.click(screen.getByRole('button', { name: /导出/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /导出 CSV/ }))
+    await waitFor(() => expect(exported).toBeDefined())
+    expect(exported!.url).toContain('/api/ontologies/oid-1/query/export')
+    expect(exported!.body.format).toBe('csv')
+    expect(String(exported!.body.qs)).toContain('SELECT ?class ?label')
+    // 未截断 → 不出现限制提示
+    expect(screen.queryByText(/导出被限制/)).toBeNull()
+  })
+
+  it('surfaces a persistent warning when the export was truncated', async () => {
+    exportHeaders = { 'X-Truncated': 'true' }
+    renderConsole(stubFetch())
+    await userEvent.click(screen.getByRole('button', { name: /导出/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: /导出 JSON/ }))
+    expect(await screen.findByText(/导出被限制/)).toBeTruthy()
+    expect(exported!.body.format).toBe('json')
   })
 
   it('renders ASK as a boolean verdict', async () => {

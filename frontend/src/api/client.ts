@@ -123,11 +123,14 @@ async function downloadFile(url: string, fallbackName: string): Promise<string> 
  *  docs-site zip). Errors still arrive as envelopes, so decode those;
  *  success streams a Blob and clicks a transient anchor. Content-
  * -Disposition wins for the filename. */
+/** A served file download: saved via a transient blob anchor. Returns the
+ *  resolved filename plus whether the server flagged truncation (X-Truncated
+ *  header — query exports cap at the 200k-row safety limit). */
 async function downloadBinary(
   url: string,
   fallbackName: string,
   opts?: { method?: string; body?: unknown },
-): Promise<string> {
+): Promise<{ name: string; truncated: boolean }> {
   const token = localStorage.getItem(TOKEN_KEY)
   const headers: Record<string, string> = token
     ? { Authorization: `Bearer ${token}` }
@@ -146,13 +149,14 @@ async function downloadBinary(
   const cd = res.headers.get('Content-Disposition') ?? ''
   const match = /filename="?([^";]+)"?/.exec(cd)
   const name = match?.[1] ?? fallbackName
+  const truncated = res.headers.get('X-Truncated') === 'true'
   const href = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = href
   a.download = name
   a.click()
   URL.revokeObjectURL(href)
-  return name
+  return { name, truncated }
 }
 
 export const api = {

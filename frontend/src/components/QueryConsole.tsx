@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language'
 import { sparql } from '@codemirror/legacy-modes/mode/sparql'
 import { tags as t } from '@lezer/highlight'
+import { ChevronDownIcon, DownloadIcon } from 'lucide-react'
 import { api, ApiErr } from '../api/client'
 import type { QueryCell, QueryResult } from '../api/types'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 /** SPARQL query console — the 查询 view (M1, spec 2026-09-07). Read-only
  *  queries over the pooled store; layout mirrors the accepted mockup:
@@ -21,6 +29,9 @@ export default function QueryConsole({ oid }: { oid: string }) {
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<QueryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  /** Last export hit the 200k safety cap — stay loud until the next action. */
+  const [exportTruncated, setExportTruncated] = useState(false)
 
   /** Built-in sample queries: generic (any ontology), never GO-bound. */
   const samples = [
@@ -35,6 +46,7 @@ export default function QueryConsole({ oid }: { oid: string }) {
     if (!qs.trim() || running) return
     setRunning(true)
     setError(null)
+    setExportTruncated(false)
     try {
       const data = await api.post<QueryResult>(`/api/ontologies/${oid}/query`, { qs })
       setResult(data)
@@ -49,6 +61,34 @@ export default function QueryConsole({ oid }: { oid: string }) {
       setRunning(false)
     }
   }
+  // 全量导出(重跑到 20 万行安全上限,不设 1000 页载上限);与执行同口径
+  // 发编辑器当前查询。截断必须让用户明确知道:内联警示行 + 文件内标记。
+  const doExport = async (format: 'csv' | 'json') => {
+    if (exporting) return
+    const qs = viewRef.current?.state.doc.toString() ?? ''
+    if (!qs.trim()) return
+    setExporting(true)
+    setError(null)
+    setExportTruncated(false)
+    try {
+      const { name, truncated } = await api.downloadBinary(
+        `/api/ontologies/${oid}/query/export`,
+        `query.${format}`,
+        { method: 'POST', body: { qs, format } },
+      )
+      toast.success(tr('query.exported', { name }))
+      setExportTruncated(truncated)
+    } catch (e) {
+      setError(
+        e instanceof ApiErr
+          ? [e.message, e.hint].filter(Boolean).join(' — ')
+          : tr('common.offline'),
+      )
+    } finally {
+      setExporting(false)
+    }
+  }
+
   // Latest-ref for the Mod-Enter keymap: reassigned after every render so
   // the closure always sees fresh state (refs must not be written in render).
   useEffect(() => {
@@ -131,18 +171,43 @@ export default function QueryConsole({ oid }: { oid: string }) {
         <span className={`border-line text-ink-3 border-dashed ${pill}`}>
           {tr('query.rowLimit', { n: 1000 })}
         </span>
-        <Button
-          size="sm"
-          className="ml-auto"
-          disabled={running}
-          onClick={() => runRef.current()}
-        >
-          {running ? tr('query.running') : tr('query.run')}
-          <kbd className="border-ink-3/40 ml-1.5 rounded border px-1 font-mono text-[9.5px] font-normal opacity-80">
-            Ctrl ↵
-          </kbd>
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          {/* 导出 ▾:与「执行」同组(执行动词;导出会重跑查询到安全上限) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" disabled={exporting}>
+                <DownloadIcon className="size-3.5" aria-hidden />
+                {tr('query.export')}
+                <ChevronDownIcon className="size-3 opacity-70" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => void doExport('csv')}>
+                {tr('query.exportCsv')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void doExport('json')}>
+                {tr('query.exportJson')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="sm" disabled={running} onClick={() => runRef.current()}>
+            {running ? tr('query.running') : tr('query.run')}
+            <kbd className="border-ink-3/40 ml-1.5 rounded border px-1 font-mono text-[9.5px] font-normal opacity-80">
+              Ctrl ↵
+            </kbd>
+          </Button>
+        </div>
       </div>
+
+      {/* Export hit the safety cap — the user must not miss it (2026-09-14). */}
+      {exportTruncated && (
+        <p
+          role="alert"
+          className="border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-b px-3 py-1 text-xs font-semibold"
+        >
+          {tr('query.exportTruncated', { n: 200000 })}
+        </p>
+      )}
 
       {/* Editor: 40% of the pane, scroller inside (mirrors SourceView's). */}
       <div
