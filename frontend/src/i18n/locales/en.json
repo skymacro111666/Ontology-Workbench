@@ -412,6 +412,8 @@
     "colMessage": "Message",
     "notRun": "Edit the shapes then Run validation, or press Ctrl/⌘ + Enter",
     "emptyFilter": "No results under this filter",
-    "errorTitle": "Validation failed"
+    "errorTitle": "Validation failed",
+    "ignoreDeprecated": "Ignore deprecated",
+    "deprecatedHidden": "{{n}} deprecated-focus results hidden"
   }
 }

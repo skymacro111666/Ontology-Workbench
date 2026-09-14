@@ -412,6 +412,8 @@
     "colMessage": "消息",
     "notRun": "编辑 shapes 后点「运行校验」,或按 Ctrl/⌘ + Enter",
     "emptyFilter": "当前过滤档无结果",
-    "errorTitle": "校验失败"
+    "errorTitle": "校验失败",
+    "ignoreDeprecated": "忽略已废弃",
+    "deprecatedHidden": "已忽略 {{n}} 条废弃焦点结果"
   }
 }

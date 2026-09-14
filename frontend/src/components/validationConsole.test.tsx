@@ -56,6 +56,7 @@ const RUN_OK = {
   engine: 'pyrudof',
   elapsedMs: 12.5,
   afWarnings: [],
+  deprecatedFiltered: 2,
 }
 
 function env(data: unknown, code = 'OK') {
@@ -145,6 +146,26 @@ describe('ValidationConsole', () => {
     // 焦点点击 → 实体详情(browseStore.selectedEid)。
     await userEvent.click(screen.getByText('ex:A'))
     expect(useBrowseStore.getState().selectedEid).toBe('http://example.org/A')
+  })
+
+  it('ignore-deprecated is on by default and the hidden count surfaces', async () => {
+    draw()
+    await screen.findByLabelText(/shapes/i)
+    const box = screen.getByRole('checkbox', { name: /忽略已废弃/ }) as HTMLInputElement
+    expect(box.checked).toBe(true)
+    await userEvent.click(screen.getByRole('button', { name: /运行/ }))
+    await waitFor(() => expect(posts).toHaveLength(1))
+    expect(posts[0].body).toMatchObject({ includeDeprecated: false })
+    expect(await screen.findByText(/已忽略 2 条废弃焦点/)).toBeTruthy()
+  })
+
+  it('unchecking ignore-deprecated sends includeDeprecated=true', async () => {
+    draw()
+    await screen.findByLabelText(/shapes/i)
+    await userEvent.click(screen.getByRole('checkbox', { name: /忽略已废弃/ }))
+    await userEvent.click(screen.getByRole('button', { name: /运行/ }))
+    await waitFor(() => expect(posts).toHaveLength(1))
+    expect(posts[0].body).toMatchObject({ includeDeprecated: true })
   })
 
   it('shows the slow-ontology hint for big ontologies', async () => {

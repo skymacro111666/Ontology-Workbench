@@ -36,6 +36,7 @@ export interface ValidationRunResult {
   engine: string
   elapsedMs: number
   afWarnings: string[]
+  deprecatedFiltered: number
 }
 
 interface Preset {
@@ -80,6 +81,9 @@ export default function ValidationConsole({ oid }: { oid: string }) {
   const [presetId, setPresetId] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [showAll, setShowAll] = useState(false)
+  /** M2 忽略已废弃: on by default — deprecated-focus rows are noise (GO's
+   * 13,894 parentless deprecated classes all fire the 孤立类 Info rule). */
+  const [ignoreDep, setIgnoreDep] = useState(true)
   /** Guard: fill the editor from stored shapes exactly once, then it's the
    *  user's (a preset selection overwrites it) — refetches must not clobber. */
   const filledRef = useRef(false)
@@ -106,7 +110,7 @@ export default function ValidationConsole({ oid }: { oid: string }) {
       // 恒带编辑器当前内容:未保存的 shapes 也能直接跑(inline shadows stored)。
       const data = await api.post<ValidationRunResult>(
         `/api/ontologies/${oid}/validation/run`,
-        { source: doc() },
+        { source: doc(), includeDeprecated: !ignoreDep },
       )
       setResult(data)
       setShowAll(false)
@@ -255,6 +259,19 @@ export default function ValidationConsole({ oid }: { oid: string }) {
         <span className={`border-line text-ink-3 border-dashed ${pill}`}>
           {tr('validationView.engine')} {result?.engine ?? 'pyrudof'}
         </span>
+        <label
+          htmlFor="vc-ignore-dep"
+          className="border-line text-ink-2 ml-1 flex cursor-pointer items-center gap-1.5 text-xs font-semibold"
+        >
+          <input
+            id="vc-ignore-dep"
+            type="checkbox"
+            checked={ignoreDep}
+            onChange={(e) => setIgnoreDep(e.target.checked)}
+            className="accent-primary size-3 cursor-pointer"
+          />
+          {tr('validationView.ignoreDeprecated')}
+        </label>
         <Button
           size="sm"
           className="ml-auto"
@@ -321,6 +338,11 @@ export default function ValidationConsole({ oid }: { oid: string }) {
                 {result.counts[s]}
               </span>
             ))}
+          {result.deprecatedFiltered > 0 && (
+            <span className="text-ink-3 text-[11.5px] font-normal">
+              {tr('validationView.deprecatedHidden', { n: result.deprecatedFiltered })}
+            </span>
+          )}
           <span className="text-ink-3 ml-auto text-[11.5px] font-normal">
             {tr('validationView.ms', { ms: result.elapsedMs })}
           </span>
