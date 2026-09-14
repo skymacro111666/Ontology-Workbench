@@ -15,6 +15,9 @@ ow_ir_cache_reads_total = Counter("ow_ir_cache_reads_total", "Disk IR cache read
 ow_autosave_total = Counter("ow_autosave_total", "Debounced autosave outcomes", ["result"])
 ow_validate_seconds = Histogram("ow_validate_seconds", "SHACL validation duration", ["engine"])
 ow_validate_runs_total = Counter("ow_validate_runs_total", "SHACL validation runs", ["conforms"])
+ow_validate_exports_total = Counter(
+    "ow_validate_exports_total", "SHACL validation exports", ["format"]
+)
 
 
 def configure_metrics(app: FastAPI) -> None:

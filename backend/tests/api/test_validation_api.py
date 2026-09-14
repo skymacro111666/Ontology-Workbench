@@ -130,6 +130,99 @@ def test_run_include_deprecated_keeps_all(client: TestClient) -> None:
     assert len(d["results"]) == 2
 
 
+def test_run_reports_total_results(client: TestClient) -> None:
+    """Run carries totalResults == the full (post-filter) result count."""
+    oid = _setup(client, DEP_TTL)
+    _save_shapes(client, oid, SHAPES_OK)
+    d = client.post(f"/api/ontologies/{oid}/validation/run", json={}).json()["data"]
+    assert d["totalResults"] == 1 and len(d["results"]) == 1
+
+
+# --- POST /validation/export (B·缓存上次报告) ----------------------------
+
+
+def _counting_engine(monkeypatch):
+    """Spy on the engine runner so tests can assert cache hits vs re-runs."""
+    import ontoworkbench.server.routers.validation as v
+
+    calls = {"n": 0}
+    real = v.run_validated
+
+    def _spy(*args, **kwargs):
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(v, "run_validated", _spy)
+    return calls
+
+
+def test_export_reuses_cached_report(client: TestClient, monkeypatch) -> None:
+    """Export after run hits the cache: engine ran once.
+
+    Filter and format toggles ride the same cached turtle without re-running.
+    """
+    calls = _counting_engine(monkeypatch)
+    oid = _setup(client, DEP_TTL)
+    _save_shapes(client, oid, SHAPES_OK)
+    assert client.post(f"/api/ontologies/{oid}/validation/run", json={}).status_code == 200
+    assert calls["n"] == 1
+
+    r1 = client.post(f"/api/ontologies/{oid}/validation/export", json={})
+    assert r1.status_code == 200 and calls["n"] == 1  # cache hit
+    assert r1.headers["content-type"].startswith("text/csv")
+    assert 'filename="m-validation.csv"' in r1.headers["content-disposition"]
+    assert r1.content.startswith(b"\xef\xbb\xbf")  # UTF-8 BOM
+    lines = r1.content.decode("utf-8").splitlines()
+    assert lines[0].endswith("severity,focus_iri,focus_curie,path,constraint,message,value")
+    assert len(lines) == 2  # header + ex:A (deprecated ex:Old filtered)
+
+    r2 = client.post(f"/api/ontologies/{oid}/validation/export", json={"includeDeprecated": True})
+    assert calls["n"] == 1 and len(r2.content.decode("utf-8").splitlines()) == 3
+
+    r3 = client.post(f"/api/ontologies/{oid}/validation/export", json={"format": "json"})
+    assert calls["n"] == 1
+    assert r3.headers["content-type"].startswith("application/json")
+    assert 'filename="m-validation.json"' in r3.headers["content-disposition"]
+    d = r3.json()  # 文件下载绕过 envelope,裸载荷
+    # 与 run 同口径:废弃警告被滤、剩 A 的 warning、无严重 → conforms 重判 True
+    assert d["conforms"] is True and d["totalResults"] == 1 and d["deprecatedFiltered"] == 1
+    assert d["counts"]["warning"] == 1 and d["engine"] == "pyrudof"
+
+
+def test_export_reruns_after_revision_bump(client: TestClient, monkeypatch) -> None:
+    """An edit bumps revision → the cached report is stale → export re-runs."""
+    calls = _counting_engine(monkeypatch)
+    oid = _setup(client)
+    _save_shapes(client, oid, SHAPES_OK)
+    assert client.post(f"/api/ontologies/{oid}/validation/run", json={}).status_code == 200
+    src = client.get(f"/api/ontologies/{oid}/source").json()["data"]
+    new_src = src["content"] + "ex:B a <http://www.w3.org/2002/07/owl#Class> .\n"
+    assert (
+        client.put(
+            f"/api/ontologies/{oid}/source",
+            json={"content": new_src, "baseFileHash": src["fileHash"]},
+        ).status_code
+        == 200
+    )
+    r = client.post(f"/api/ontologies/{oid}/validation/export", json={})
+    assert r.status_code == 200 and calls["n"] == 2  # run + stale re-run
+
+
+def test_export_without_shapes_is_400(client: TestClient) -> None:
+    """Neither stored shapes nor inline source: 400 SHAPES_REQUIRED."""
+    oid = _setup(client)
+    r = client.post(f"/api/ontologies/{oid}/validation/export", json={})
+    assert r.status_code == 400 and r.json()["code"] == "SHAPES_REQUIRED"
+
+
+def test_export_rejects_unknown_format(client: TestClient) -> None:
+    """Format is Literal[csv, json]: anything else is a 422."""
+    oid = _setup(client)
+    _save_shapes(client, oid, SHAPES_OK)
+    r = client.post(f"/api/ontologies/{oid}/validation/export", json={"format": "xml"})
+    assert r.status_code == 422
+
+
 def test_run_timeout_maps_504(client: TestClient, monkeypatch) -> None:
     """ValidationTimeout escapes as 504 VALIDATION_TIMEOUT."""
     oid = _setup(client)

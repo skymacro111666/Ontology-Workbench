@@ -7,8 +7,12 @@ is PyrudofEngine (spike report 2026-09-08: Core 98/98, GO 33s/300s).
 
 from __future__ import annotations
 
+import csv
+import io
 import tempfile
+import threading
 import time
+from collections import OrderedDict
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutTimeout
@@ -198,6 +202,62 @@ class NormalizedReport(BaseModel):
     # M2「忽略已废弃」: results whose focus node is owl:deprecated, dropped
     # from the payload (0 when the filter is off / nothing matched).
     deprecated_filtered: int = 0
+    # Kept-universe size: materialized results + those past the cap (post
+    # deprecated-filter) — i.e. exactly the row count an uncapped export
+    # with the same filter would produce. The honest "共 N 条" number.
+    total_results: int = 0
+
+
+class ReportEntry(BaseModel):
+    """One cached raw engine report — the export path's source of truth."""
+
+    revision: int
+    file_hash: str
+    shapes_hash: str
+    turtle: str
+    engine: str
+    elapsed_ms: float
+
+
+class ReportCache:
+    """LRU of last raw reports per oid, re-used by the export endpoint.
+
+    Filter and format are applied post-cache, so toggles never invalidate.
+    Bounded memory: a GO-grade turtle report is ~30MB, capacity 2 caps the
+    resident set at ~60MB. Staleness keys: revision (entity edits bump it
+    at commit, before autosave lands) + file_hash (source replacement
+    writes the file directly without touching revision) + shapes_hash.
+    """
+
+    def __init__(self, max_entries: int = 2) -> None:
+        """Bound the cache to max_entries most-recent oids."""
+        self._max = max_entries
+        self._entries: OrderedDict[str, ReportEntry] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def put(self, oid: str, entry: ReportEntry) -> None:
+        """Store/refresh one entry, evicting the least-recently used."""
+        with self._lock:
+            self._entries[oid] = entry
+            self._entries.move_to_end(oid)
+            while len(self._entries) > self._max:
+                self._entries.popitem(last=False)
+
+    def get(self, oid: str) -> ReportEntry | None:
+        """Fetch an entry, marking it most-recently used."""
+        with self._lock:
+            entry = self._entries.get(oid)
+            if entry is not None:
+                self._entries.move_to_end(oid)
+            return entry
+
+    def clear(self) -> None:
+        """Drop everything (tests)."""
+        with self._lock:
+            self._entries.clear()
+
+
+REPORT_CACHE = ReportCache()
 
 
 def af_terms_in(quads: Iterable[ox.Quad]) -> list[str]:
@@ -229,7 +289,7 @@ def _term_str(term: object) -> str | None:
 def normalize_report(
     report_turtle: str,
     prefixes: dict[str, str],
-    cap: int = MAX_VALIDATION_RESULTS,
+    cap: int | None = MAX_VALIDATION_RESULTS,
     drop_focus_iris: set[str] | None = None,
 ) -> NormalizedReport:
     """Engine RDF report → payload model (spec §2.3); curie via the ontology table.
@@ -259,11 +319,9 @@ def normalize_report(
     truncated = False
     drop = drop_focus_iris or ()
     deprecated_filtered = 0
+    total_results = 0
     result_type = ox.NamedNode(SH + "ValidationResult")
     for q in store.quads_for_pattern(None, RDF_TYPE, result_type, ox.DefaultGraph()):
-        if len(items) >= cap:
-            truncated = True
-            break
         node = q.subject
         severity: str = "violation"
         focus: str | None = None
@@ -288,6 +346,10 @@ def normalize_report(
                 value = _term_str(attr.object)
         if focus is not None and focus in drop:
             deprecated_filtered += 1
+            continue
+        total_results += 1
+        if cap is not None and len(items) >= cap:
+            truncated = True
             continue
         curie = None
         if focus:
@@ -324,7 +386,28 @@ def normalize_report(
         results=items,
         truncated=truncated,
         deprecated_filtered=deprecated_filtered,
+        total_results=total_results,
     )
+
+
+_CSV_COLUMNS = ("severity", "focus_iri", "focus_curie", "path", "constraint", "message", "value")
+
+
+def report_to_csv(report: NormalizedReport) -> str:
+    """Report → CSV text (export path).
+
+    UTF-8 BOM first so Excel opens the Chinese sh:messages without mojibake;
+    csv QUOTE_MINIMAL handles commas/quotes/newlines inside messages.
+    """
+    buf = io.StringIO()
+    buf.write("﻿")
+    writer = csv.writer(buf)
+    writer.writerow(_CSV_COLUMNS)
+    for i in report.results:
+        writer.writerow(
+            [i.severity, i.focus_iri, i.focus_curie, i.path, i.constraint, i.message, i.value]
+        )
+    return buf.getvalue()
 
 
 def _curie_str(pm: PrefixMap, uri: str | None) -> str | None:

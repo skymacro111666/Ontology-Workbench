@@ -6,8 +6,12 @@ from ontoworkbench.core.validation import (
     MAX_VALIDATION_RESULTS,
     PRESETS,
     PyrudofEngine,
+    ReportCache,
+    ReportEntry,
+    ValidationItem,
     af_terms_in,
     normalize_report,
+    report_to_csv,
     run_validated,
 )
 
@@ -90,6 +94,77 @@ def test_normalize_caps_at_max_and_marks_truncated() -> None:
     r = normalize_report(big, {"ex": "http://example.org/"})
     assert len(r.results) == MAX_VALIDATION_RESULTS
     assert r.truncated is True
+    assert r.total_results == MAX_VALIDATION_RESULTS + 3  # 全量计数:2 原有 + N+1 追加
+
+
+def test_normalize_total_is_post_filter_universe() -> None:
+    """total_results counts the kept universe (== export rows under the same filter).
+
+    Drops past the cap still count into deprecated_filtered.
+    """
+    item = "[ a sh:ValidationResult ; sh:severity sh:Info ; sh:focusNode ex:Old ] ,"
+    big = REPORT_TTL.replace("sh:result [", f"sh:result {item * 4} [", 1)
+    r = normalize_report(
+        big,
+        {"ex": "http://example.org/"},
+        cap=3,
+        drop_focus_iris={"http://example.org/Old"},
+    )
+    assert r.deprecated_filtered == 4  # cap 外的丢弃也计入
+    assert r.total_results == 2  # Bob + Calvin
+    assert len(r.results) == 2 and r.truncated is False
+
+
+def test_normalize_uncapped_returns_everything() -> None:
+    """cap=None (export path): every kept result materializes."""
+    item = "[ a sh:ValidationResult ; sh:severity sh:Info ; sh:focusNode ex:N ] ,"
+    big = REPORT_TTL.replace("sh:result [", f"sh:result {item * 4} [", 1)
+    r = normalize_report(big, {"ex": "http://example.org/"}, cap=None)
+    assert len(r.results) == 6
+    assert r.truncated is False and r.total_results == 6
+
+
+def test_report_cache_lru_eviction() -> None:
+    """Oldest entry evicts at capacity; a get() touch rescues the recent one."""
+    c = ReportCache(max_entries=2)
+
+    def _e(t: str) -> ReportEntry:
+        return ReportEntry(
+            revision=1, file_hash="f", shapes_hash="h", turtle=t, engine="pyrudof", elapsed_ms=1.0
+        )
+
+    c.put("o1", _e("t1"))
+    c.put("o2", _e("t2"))
+    assert c.get("o1") is not None and c.get("o1").turtle == "t1"  # touch o1
+    c.put("o3", _e("t3"))  # evicts o2 (least recently used)
+    assert c.get("o2") is None
+    assert c.get("o1") is not None and c.get("o3") is not None
+
+
+def test_report_csv_bom_header_and_quoting() -> None:
+    """CSV carries the BOM (Excel + Chinese), the pinned header, csv quoting.
+
+    Messages with commas/quotes come out csv-standard quoted.
+    """
+    rep = normalize_report(REPORT_TTL, {"ex": "http://example.org/"})
+    rep = rep.model_copy(
+        update={
+            "results": [
+                ValidationItem(
+                    severity="warning",
+                    focus_iri="http://example.org/A",
+                    focus_curie="ex:A",
+                    message='带,逗号 "引号" 消息',
+                )
+            ]
+        }
+    )
+    text = report_to_csv(rep)
+    assert text.startswith("﻿")
+    lines = text.splitlines()
+    assert lines[0] == "﻿severity,focus_iri,focus_curie,path,constraint,message,value"
+    assert len(lines) == 2
+    assert '"带,逗号 ""引号"" 消息"' in lines[1]
 
 
 def test_presets_carry_four_rules_and_zh_messages() -> None:
