@@ -140,6 +140,7 @@ describe('ValidationConsole', () => {
     draw()
     await screen.findByLabelText(/shapes/i)
     await screen.findByRole('option', { name: /OBO/ }) // 预设下拉等异步数据
+    expect(screen.queryByText(/运行校验/)).toBeNull() // 按钮统一为「运行」
     expect(puts).toHaveLength(0) // 选中预设 ≠ 保存
     await userEvent.selectOptions(screen.getByLabelText(/预设/), 'obo-integrity')
     await userEvent.click(screen.getByRole('button', { name: /运行/ }))

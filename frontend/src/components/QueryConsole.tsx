@@ -6,7 +6,7 @@ import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language'
 import { sparql } from '@codemirror/legacy-modes/mode/sparql'
 import { tags as t } from '@lezer/highlight'
-import { ChevronDownIcon, DownloadIcon } from 'lucide-react'
+import { ChevronDownIcon, DownloadIcon, Loader2Icon } from 'lucide-react'
 import { api, ApiErr } from '../api/client'
 import type { QueryCell, QueryResult } from '../api/types'
 import { Button } from '@/components/ui/button'
@@ -30,8 +30,9 @@ export default function QueryConsole({ oid }: { oid: string }) {
   const [result, setResult] = useState<QueryResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
-  /** Last export hit the 200k safety cap — stay loud until the next action. */
+  /** Last export hit the 500k safety cap — stay loud until the next action. */
   const [exportTruncated, setExportTruncated] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
 
   /** Built-in sample queries: generic (any ontology), never GO-bound. */
   const samples = [
@@ -47,6 +48,7 @@ export default function QueryConsole({ oid }: { oid: string }) {
     setRunning(true)
     setError(null)
     setExportTruncated(false)
+    setElapsed(0)
     try {
       const data = await api.post<QueryResult>(`/api/ontologies/${oid}/query`, { qs })
       setResult(data)
@@ -88,6 +90,15 @@ export default function QueryConsole({ oid }: { oid: string }) {
       setExporting(false)
     }
   }
+
+  // Waiting UX (mirrors the validation view): tick seconds while the query
+  // runs; clean up on end/unmount so no interval outlives the view.
+  useEffect(() => {
+    if (!running) return
+    const t0 = Date.now()
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [running])
 
   // Latest-ref for the Mod-Enter keymap: reassigned after every render so
   // the closure always sees fresh state (refs must not be written in render).
@@ -191,7 +202,15 @@ export default function QueryConsole({ oid }: { oid: string }) {
             </DropdownMenuContent>
           </DropdownMenu>
           <Button size="sm" disabled={running} onClick={() => runRef.current()}>
-            {running ? tr('query.running') : tr('query.run')}
+            {running ? (
+              <>
+                <Loader2Icon className="size-3.5 animate-spin" aria-hidden />
+                {tr('query.running')}
+                <span className="text-ink-3 font-normal">· {tr('query.elapsedS', { s: elapsed })}</span>
+              </>
+            ) : (
+              tr('query.run')
+            )}
             <kbd className="border-ink-3/40 ml-1.5 rounded border px-1 font-mono text-[9.5px] font-normal opacity-80">
               Ctrl ↵
             </kbd>
@@ -205,7 +224,7 @@ export default function QueryConsole({ oid }: { oid: string }) {
           role="alert"
           className="border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 border-b px-3 py-1 text-xs font-semibold"
         >
-          {tr('query.exportTruncated', { n: 200000 })}
+          {tr('query.exportTruncated', { n: 500000 })}
         </p>
       )}
 

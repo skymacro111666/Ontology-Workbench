@@ -47,7 +47,7 @@ let exported: { url: string; body: Record<string, unknown> } | undefined
 /** Extra headers the export stub serves (tests set X-Truncated here). */
 let exportHeaders: Record<string, string> = {}
 
-function stubFetch(result: () => Response = () => env(SELECT)) {
+function stubFetch(result: () => Response | Promise<Response> = () => env(SELECT)) {
   return vi.fn(async (url: string | URL, init?: RequestInit) => {
     const u = String(url)
     if (u.endsWith('/query/export')) {
@@ -62,7 +62,7 @@ function stubFetch(result: () => Response = () => env(SELECT)) {
     }
     if (u.endsWith('/query')) {
       posted = { url: u, body: JSON.parse(String(init?.body)) }
-      return result()
+      return await result()
     }
     throw new Error(`unexpected fetch: ${u}`)
   })
@@ -88,7 +88,7 @@ describe('QueryConsole', () => {
 
   it('posts the edited query and renders the SELECT table', async () => {
     renderConsole(stubFetch())
-    await userEvent.click(screen.getByRole('button', { name: /^执行/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^运行/ }))
     // Request shape: POST /query with the editor's doc as qs.
     expect(posted?.url).toContain('/api/ontologies/oid-1/query')
     expect(posted?.body.qs).toContain('SELECT ?class ?label')
@@ -125,11 +125,25 @@ describe('QueryConsole', () => {
     expect(exported!.body.format).toBe('json')
   })
 
+
+  it('ticks elapsed seconds while a query runs (mirrors the validation view)', async () => {
+    let resolve!: (r: Response) => void
+    const slow = new Promise<Response>((res) => {
+      resolve = res
+    })
+    renderConsole(stubFetch(() => slow))
+    await userEvent.click(screen.getByRole('button', { name: /^运行/ }))
+    expect(await screen.findByText(/运行中/)).toBeTruthy()
+    expect(await screen.findByText(/已耗时 1 秒/, undefined, { timeout: 3000 })).toBeTruthy()
+    resolve(env(SELECT))
+    expect(await screen.findByText('2 行')).toBeTruthy()
+  })
+
   it('renders ASK as a boolean verdict', async () => {
     renderConsole(
       stubFetch(() => env({ kind: 'ask', boolean: true, elapsedMs: 1 } satisfies QueryResult)),
     )
-    await userEvent.click(screen.getByRole('button', { name: /^执行/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^运行/ }))
     expect(await screen.findByText('真')).toBeTruthy()
   })
 
@@ -146,7 +160,7 @@ describe('QueryConsole', () => {
           } satisfies QueryResult),
       ),
     )
-    await userEvent.click(screen.getByRole('button', { name: /^执行/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^运行/ }))
     expect(
       await screen.findByText('<http://x/a> <http://x/b> <http://x/c> .'),
     ).toBeTruthy()
@@ -158,7 +172,7 @@ describe('QueryConsole', () => {
         env({ ...SELECT, rows: [], rowCount: 0 } satisfies QueryResult),
       ),
     )
-    await userEvent.click(screen.getByRole('button', { name: /^执行/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^运行/ }))
     expect(await screen.findByText('查询返回 0 行')).toBeTruthy()
   })
 
@@ -166,7 +180,7 @@ describe('QueryConsole', () => {
     renderConsole(
       stubFetch(() => errEnv('QUERY_INVALID', 'The query is not valid read-only SPARQL', 'error at 1:1')),
     )
-    await userEvent.click(screen.getByRole('button', { name: /^执行/ }))
+    await userEvent.click(screen.getByRole('button', { name: /^运行/ }))
     expect(await screen.findByText('查询失败')).toBeTruthy()
     expect(screen.getByText(/error at 1:1/)).toBeTruthy()
   })
