@@ -38,11 +38,12 @@ router = APIRouter(prefix="/api/ontologies", tags=["query"])
 # timeout, accepted for the single-admin self-hosted deployment.
 MAX_QUERY_ROWS = 1000
 
-# Export safety cap (2026-09-14): unlike a SHACL report (~85k results at GO
-# scale), a SELECT can project the whole store (GO ≈ 1.4M triples → 100MB+
-# CSV). Over the cap every channel says so — JSON truncated/rowLimit, a
-# trailing CSV marker line, the X-Truncated header, a frontend notice.
-MAX_QUERY_EXPORT_ROWS = 200_000
+# Export safety cap (2026-09-14, user-set 500k): unlike a SHACL report
+# (~85k results at GO scale), a SELECT can project the whole store
+# (GO ≈ 1.4M triples → 100MB+ CSV). Over the cap every channel says so —
+# JSON truncated/rowLimit, a trailing CSV marker line, the X-Truncated
+# header, a frontend notice.
+MAX_QUERY_EXPORT_ROWS = 500_000
 
 
 class QueryIn(BaseModel):

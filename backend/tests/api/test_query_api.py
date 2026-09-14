@@ -159,7 +159,7 @@ def test_export_select_json_rich_cells(client: TestClient) -> None:
     assert 'filename="mini-query.json"' in r.headers["content-disposition"]
     d = r.json()  # 文件下载绕过 envelope
     assert d["kind"] == "select" and d["columns"] == ["s", "p", "o"]
-    assert d["rowCount"] == 7 and d["truncated"] is False and d["rowLimit"] == 200000
+    assert d["rowCount"] == 7 and d["truncated"] is False and d["rowLimit"] == 500000
     cell = next(row["s"] for row in d["rows"] if row["s"] and row["s"].get("curie") == "ex:Animal")
     assert cell["type"] == "iri" and cell["value"] == "http://example.org/Animal"
 
