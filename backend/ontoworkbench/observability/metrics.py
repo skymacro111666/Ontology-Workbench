@@ -18,6 +18,7 @@ ow_validate_runs_total = Counter("ow_validate_runs_total", "SHACL validation run
 ow_validate_exports_total = Counter(
     "ow_validate_exports_total", "SHACL validation exports", ["format"]
 )
+ow_query_exports_total = Counter("ow_query_exports_total", "SPARQL query exports", ["format"])
 
 
 def configure_metrics(app: FastAPI) -> None:

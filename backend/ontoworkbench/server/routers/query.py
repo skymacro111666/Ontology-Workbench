@@ -11,11 +11,14 @@ reasoning; transitive subclass closure goes through property paths.
 
 from __future__ import annotations
 
+import csv
+import io
 import time
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
 
 import pyoxigraph as ox
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 from sqlalchemy.orm import Session
@@ -35,6 +38,12 @@ router = APIRouter(prefix="/api/ontologies", tags=["query"])
 # timeout, accepted for the single-admin self-hosted deployment.
 MAX_QUERY_ROWS = 1000
 
+# Export safety cap (2026-09-14): unlike a SHACL report (~85k results at GO
+# scale), a SELECT can project the whole store (GO ≈ 1.4M triples → 100MB+
+# CSV). Over the cap every channel says so — JSON truncated/rowLimit, a
+# trailing CSV marker line, the X-Truncated header, a frontend notice.
+MAX_QUERY_EXPORT_ROWS = 200_000
+
 
 class QueryIn(BaseModel):
     """One SPARQL query string (camelCase wire style, see envelope)."""
@@ -42,6 +51,12 @@ class QueryIn(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     qs: str
+
+
+class QueryExportIn(QueryIn):
+    """POST /query/export body: the query + the file format."""
+
+    format: Literal["csv", "json"] = "csv"
 
 
 def _term_json(
@@ -71,11 +86,10 @@ def _term_json(
     return lit
 
 
-def _run_query(qs: str, store: ox.Store, prefixes: PrefixMap) -> dict[str, Any]:
-    """Execute one query and shape the payload for the three result kinds."""
-    t0 = time.perf_counter()
+def _exec_query(qs: str, store: ox.Store):
+    """store.query with the shared parse/read-only error mapping."""
     try:
-        result = store.query(qs)
+        return store.query(qs)
     except SyntaxError as e:  # pyoxigraph raises the builtin on parse rejects
         # UPDATE statements and syntax garbage both land here: query() only
         # ever parses read-only SPARQL (engine-enforced, spec 2026-09-07).
@@ -84,6 +98,33 @@ def _run_query(qs: str, store: ox.Store, prefixes: PrefixMap) -> dict[str, Any]:
             "The query is not valid read-only SPARQL",
             hint=str(e).strip() or None,
         ) from e
+
+
+def _collect_select(
+    result, prefixes: PrefixMap, limit: int
+) -> tuple[list[str], list[dict[str, Any]], bool]:
+    """Drain a SELECT to `limit` rich-cell rows; (columns, rows, truncated)."""
+    columns = [str(v).lstrip("?") for v in result.variables]
+    rows: list[dict[str, Any]] = []
+    truncated = False
+    for solution in result:
+        if len(rows) >= limit:
+            truncated = True
+            break
+        row: dict[str, Any] = {}
+        for name in columns:
+            try:
+                row[name] = _term_json(solution[name], prefixes)
+            except KeyError:  # UNBOUND variable in this solution
+                row[name] = None
+        rows.append(row)
+    return columns, rows, truncated
+
+
+def _run_query(qs: str, store: ox.Store, prefixes: PrefixMap) -> dict[str, Any]:
+    """Execute one query and shape the payload for the three result kinds."""
+    t0 = time.perf_counter()
+    result = _exec_query(qs, store)
     elapsed = round((time.perf_counter() - t0) * 1000, 1)
     if isinstance(result, ox.QueryBoolean):
         return {"kind": "ask", "boolean": bool(result), "elapsedMs": elapsed}
@@ -102,20 +143,7 @@ def _run_query(qs: str, store: ox.Store, prefixes: PrefixMap) -> dict[str, Any]:
             "elapsedMs": elapsed,
         }
     # SELECT: column order from the solutions' declared variables.
-    columns = [str(v).lstrip("?") for v in result.variables]
-    rows: list[dict[str, Any]] = []
-    truncated = False
-    for solution in result:
-        if len(rows) >= MAX_QUERY_ROWS:
-            truncated = True
-            break
-        row: dict[str, Any] = {}
-        for name in columns:
-            try:
-                row[name] = _term_json(solution[name], prefixes)
-            except KeyError:  # UNBOUND variable in this solution
-                row[name] = None
-        rows.append(row)
+    columns, rows, truncated = _collect_select(result, prefixes, MAX_QUERY_ROWS)
     return {
         "kind": "select",
         "columns": columns,
@@ -147,3 +175,79 @@ def query(
     row, _ = _owned(request, user, ontology_id, session)
     store, prefixes = request.app.state.cache.store_for(row, load_store)
     return respond(_camel(_run_query(body.qs, store, prefixes)))
+
+
+def _flat_cell(cell: dict[str, Any] | None) -> str:
+    """Rich cell → flat CSV value: full IRI / lexical literal / _:bnode."""
+    if cell is None:
+        return ""
+    if cell["type"] == "bnode":
+        return "_:" + cell["value"]
+    return cell["value"]
+
+
+def _select_csv(columns: list[str], rows: list[dict[str, Any]], limit: int) -> str:
+    """SELECT rows → CSV text (BOM for Excel; truncation marker line last)."""
+    buf = io.StringIO()
+    buf.write("﻿")
+    writer = csv.writer(buf)
+    writer.writerow(columns)
+    for row in rows:
+        writer.writerow([_flat_cell(row[name]) for name in columns])
+    if len(rows) >= limit:
+        buf.write(f"#TRUNCATED:已达导出上限 {limit} 行,结果被截断\n")
+    return buf.getvalue()
+
+
+@router.post("/{ontology_id}/query/export")
+def query_export(
+    ontology_id: str,
+    body: QueryExportIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    """Full-result SELECT export as CSV/JSON, bypassing the JSON envelope.
+
+    Re-runs the query uncapped-to-limit — SPARQL re-runs are cheap (warm
+    Store pool, no engine restart), so no report cache like validation's.
+    ASK/CONSTRUCT have no spreadsheet shape: 400 EXPORT_SELECT_ONLY.
+    """
+    import json
+
+    from ontoworkbench.observability.metrics import ow_query_exports_total
+
+    row, _ = _owned(request, user, ontology_id, session)
+    store, prefixes = request.app.state.cache.store_for(row, load_store)
+    result = _exec_query(body.qs, store)
+    if isinstance(result, (ox.QueryBoolean, ox.QueryTriples)):
+        raise ApiError(
+            ErrorCode.EXPORT_SELECT_ONLY,
+            "Only SELECT queries can be exported",
+            "仅 SELECT 查询结果支持导出",
+        )
+    columns, rows, truncated = _collect_select(result, prefixes, MAX_QUERY_EXPORT_ROWS)
+    ow_query_exports_total.labels(body.format).inc()
+    stem = Path(row.filename).stem
+    headers = {"Content-Disposition": f'attachment; filename="{stem}-query.{body.format}"'}
+    if truncated:
+        headers["X-Truncated"] = "true"
+    if body.format == "csv":
+        return Response(
+            content=_select_csv(columns, rows, MAX_QUERY_EXPORT_ROWS),
+            media_type="text/csv; charset=utf-8",
+            headers=headers,
+        )
+    payload = {
+        "kind": "select",
+        "columns": columns,
+        "rows": rows,
+        "rowCount": len(rows),
+        "truncated": truncated,
+        "rowLimit": MAX_QUERY_EXPORT_ROWS,
+    }
+    return Response(
+        content=json.dumps(payload, ensure_ascii=False),
+        media_type="application/json; charset=utf-8",
+        headers=headers,
+    )
