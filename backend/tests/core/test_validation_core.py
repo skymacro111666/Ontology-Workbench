@@ -59,6 +59,30 @@ def test_normalize_three_severities_and_curie() -> None:
     assert first.severity == "violation"
 
 
+def test_normalize_drops_deprecated_focus_and_recomputes() -> None:
+    """drop_focus_iris filters deprecated-focus results before the cap.
+
+    counts/focus_count recompute and conforms flips true when no violation
+    remains (the whole point of ignoring deprecated noise).
+    """
+    r = normalize_report(
+        REPORT_TTL, {"ex": "http://example.org/"}, drop_focus_iris={"http://example.org/Bob"}
+    )
+    assert r.deprecated_filtered == 1
+    assert r.counts == {"violation": 0, "warning": 1, "info": 0}
+    assert r.focus_count == 1
+    assert r.conforms is True
+    assert all(i.focus_curie != "ex:Bob" for i in r.results)
+
+
+def test_normalize_without_drop_keeps_engine_verdict() -> None:
+    """No drop set: payload identical to M1 (deprecated_filtered=0, engine conforms)."""
+    r = normalize_report(REPORT_TTL, {"ex": "http://example.org/"})
+    assert r.deprecated_filtered == 0
+    assert r.conforms is False and r.focus_count == 2
+    assert r.counts == {"violation": 1, "warning": 1, "info": 0}
+
+
 def test_normalize_caps_at_max_and_marks_truncated() -> None:
     """Results beyond the cap are dropped and flagged with truncated=True."""
     item = "[ a sh:ValidationResult ; sh:severity sh:Info ; sh:focusNode ex:N ] ,"

@@ -6,10 +6,18 @@ from fastapi.testclient import TestClient
 
 TTL = b"@prefix ex: <http://example.org/> .\nex:A a <http://www.w3.org/2002/07/owl#Class> .\n"
 
+# M2 忽略已废弃: ex:Old carries owl:deprecated true, ex:A does not.
+DEP_TTL = (
+    b"@prefix ex: <http://example.org/> .\n"
+    b"@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+    b"ex:A a owl:Class .\n"
+    b"ex:Old a owl:Class ; owl:deprecated true .\n"
+)
 
-def _setup(client: TestClient) -> str:
+
+def _setup(client: TestClient, ttl: bytes = TTL) -> str:
     """Upload a tiny ontology and return its id."""
-    r = client.post("/api/ontologies", files={"file": ("m.ttl", io.BytesIO(TTL), "text/turtle")})
+    r = client.post("/api/ontologies", files={"file": ("m.ttl", io.BytesIO(ttl), "text/turtle")})
     assert r.status_code == 201
     return r.json()["data"]["id"]
 
@@ -98,6 +106,28 @@ def test_run_inline_source_beats_stored(client: TestClient) -> None:
     r = client.post(f"/api/ontologies/{oid}/validation/run", json={"source": inline})
     assert r.status_code == 200
     assert r.json()["data"]["conforms"] is True
+
+
+def test_run_drops_deprecated_focus_by_default(client: TestClient) -> None:
+    """M2 忽略已废弃 default-on: deprecated-focus results vanish, count rides along."""
+    oid = _setup(client, DEP_TTL)
+    _save_shapes(client, oid, SHAPES_OK)
+    r = client.post(f"/api/ontologies/{oid}/validation/run", json={})
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["deprecatedFiltered"] == 1
+    assert [x["focusIri"] for x in d["results"]] == ["http://example.org/A"]
+
+
+def test_run_include_deprecated_keeps_all(client: TestClient) -> None:
+    """includeDeprecated=true opts back into the raw engine report."""
+    oid = _setup(client, DEP_TTL)
+    _save_shapes(client, oid, SHAPES_OK)
+    r = client.post(f"/api/ontologies/{oid}/validation/run", json={"includeDeprecated": True})
+    assert r.status_code == 200, r.text
+    d = r.json()["data"]
+    assert d["deprecatedFiltered"] == 0
+    assert len(d["results"]) == 2
 
 
 def test_run_timeout_maps_504(client: TestClient, monkeypatch) -> None:

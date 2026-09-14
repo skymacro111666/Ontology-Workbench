@@ -195,6 +195,9 @@ class NormalizedReport(BaseModel):
     counts: dict[str, int]
     results: list[ValidationItem]
     truncated: bool
+    # M2「忽略已废弃」: results whose focus node is owl:deprecated, dropped
+    # from the payload (0 when the filter is off / nothing matched).
+    deprecated_filtered: int = 0
 
 
 def af_terms_in(quads: Iterable[ox.Quad]) -> list[str]:
@@ -224,7 +227,10 @@ def _term_str(term: object) -> str | None:
 
 
 def normalize_report(
-    report_turtle: str, prefixes: dict[str, str], cap: int = MAX_VALIDATION_RESULTS
+    report_turtle: str,
+    prefixes: dict[str, str],
+    cap: int = MAX_VALIDATION_RESULTS,
+    drop_focus_iris: set[str] | None = None,
 ) -> NormalizedReport:
     """Engine RDF report → payload model (spec §2.3); curie via the ontology table.
 
@@ -234,6 +240,11 @@ def normalize_report(
     shorthand sh:severity. Results are sorted severity-first (pyrudof's own
     order — the ox store shuffles it via random blank-node ids), then by
     focus/path, so the payload is deterministic.
+
+    drop_focus_iris (M2 忽略已废弃) drops results whose focus node is in the
+    set — before the cap, so the kept 1000 are post-filter — and recounts
+    counts/focus_count. When anything was dropped, conforms is recomputed as
+    "no violation remains" (the engine verdict reflects the unfiltered run).
     """
     store = ox.Store()
     store.load(bytes(report_turtle, "utf-8"), format=ox.RdfFormat.TURTLE)
@@ -246,6 +257,8 @@ def normalize_report(
     items: list[ValidationItem] = []
     focus_iris: set[str] = set()
     truncated = False
+    drop = drop_focus_iris or ()
+    deprecated_filtered = 0
     result_type = ox.NamedNode(SH + "ValidationResult")
     for q in store.quads_for_pattern(None, RDF_TYPE, result_type, ox.DefaultGraph()):
         if len(items) >= cap:
@@ -273,6 +286,9 @@ def normalize_report(
                 message = _term_str(attr.object)
             elif pred == SH + "value":
                 value = _term_str(attr.object)
+        if focus is not None and focus in drop:
+            deprecated_filtered += 1
+            continue
         curie = None
         if focus:
             focus_iris.add(focus)
@@ -290,6 +306,8 @@ def normalize_report(
             )
         )
     counts = {k: sum(1 for i in items if i.severity == k) for k in ("violation", "warning", "info")}
+    if deprecated_filtered:
+        conforms = conforms or not any(i.severity == "violation" for i in items)
     items.sort(
         key=lambda i: (
             _SEVERITY_ORDER.get(i.severity, 3),
@@ -305,6 +323,7 @@ def normalize_report(
         counts=counts,
         results=items,
         truncated=truncated,
+        deprecated_filtered=deprecated_filtered,
     )
 
 

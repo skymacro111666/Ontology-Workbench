@@ -102,6 +102,9 @@ class RunIn(CamelModel):
     """POST body: optional inline shapes shadowing the saved source."""
 
     source: str | None = None
+    # M2 忽略已废弃: default false = deprecated-focus results are dropped
+    # (mirrors browse's includeDeprecated convention).
+    include_deprecated: bool = False
 
 
 @router.post("/{ontology_id}/validation/run")
@@ -150,7 +153,15 @@ def run_validation(
             raise ApiError(
                 ErrorCode.VALIDATION_ENGINE, "Validation engine failed", str(exc)[:300]
             ) from exc
-    report = normalize_report(turtle, ix.ir.prefixes)
+    report = normalize_report(
+        turtle,
+        ix.ir.prefixes,
+        drop_focus_iris=(
+            None
+            if body.include_deprecated
+            else {eid for eid, e in ix.ir.entities.items() if e.deprecated}
+        ),
+    )
     af = _parse_or_422(source)  # PUT 已校验过;run 的内联 source 也要提示
     ow_validate_runs_total.labels(str(report.conforms).lower()).inc()
     return respond(
