@@ -27,6 +27,9 @@ def audit(name: str, fn: Callable) -> Callable:
         except LoopbackError as exc:
             code = exc.code
             raise to_tool_error(exc) from None
+        except Exception:
+            code = "INTERNAL_ERROR"
+            raise
         finally:
             _tool_log.info(
                 "mcp.tool",

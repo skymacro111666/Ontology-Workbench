@@ -36,7 +36,10 @@ class Loopback:
             headers["Authorization"] = f"Bearer {bearer}"
         async with AsyncClient(transport=ASGITransport(app=self._app), base_url="http://ow") as c:
             r = await c.request(method, path, params=params, json=json_body, headers=headers)
-        env = r.json()
+        try:
+            env = r.json()
+        except ValueError as exc:
+            raise LoopbackError("INTERNAL_ERROR", f"non-JSON response from {path}", None) from exc
         if env.get("code") != "OK":
             raise LoopbackError(
                 env.get("code", "INTERNAL_ERROR"), env.get("message", ""), env.get("hint")
