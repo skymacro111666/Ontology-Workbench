@@ -148,6 +148,18 @@ def serve(
     from ontoworkbench.server.app import create_app, default_spa_dist
 
     settings = _settings(_serve_cli(host, port, data_dir, log_dir))
+    if not settings.jwt_secret:
+        # Fail fastest (spec §9.3): an unauthenticated-capable API must not
+        # boot. ensure_env_file normally injects a secret into a bare .env,
+        # so an empty resolved secret means explicit misconfiguration: an
+        # OW_JWT_SECRET="" in the environment or an empty secret file.
+        typer.echo(
+            "refusing to serve: OW_JWT_SECRET resolved to empty — add "
+            "OW_JWT_SECRET=<hex> to backend/.env, or point OW_JWT_SECRET_FILE "
+            "at a file containing the secret",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     # JSON sinks must exist before migrations run, or alembic's INFO lines
     # hit a handler-less root logger and vanish (lastResort shows WARNING+).

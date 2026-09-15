@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     log_dir: Path = _PACKAGE_ROOT / "logs"
     db_url: str = ""  # resolved in load(): sqlite under data_dir
     jwt_secret: str = ""
+    # Docker-secrets style (spec §9.2): read the JWT secret from a file
+    # instead of the env; an explicit OW_JWT_SECRET still wins.
+    jwt_secret_file: str = ""
     log_level: str = "INFO"
     # Export site: by default the API only writes under {data_dir}/exports/
     # (the force flag clears the target dir, so an unrestricted out_dir is a
@@ -41,6 +44,15 @@ class Settings(BaseSettings):
     def load(cls, cli: dict | None = None) -> Settings:
         """Build settings with precedence CLI > env > defaults."""
         s = cls(**(cli or {}))
+        # _FILE mode (spec §9.2): explicit value always wins; content stripped.
+        if not s.jwt_secret and s.jwt_secret_file:
+            path = Path(s.jwt_secret_file)
+            if not path.is_file():
+                raise SystemExit(
+                    f"OW_JWT_SECRET_FILE points to a missing file: {path} "
+                    "(fix the path, or set OW_JWT_SECRET instead)"
+                )
+            s.jwt_secret = path.read_text(encoding="utf-8").strip()
         # Handle empty string env vars that should use defaults
         if not s.data_dir.name:
             s.data_dir = _PACKAGE_ROOT / "data"
@@ -60,3 +72,6 @@ def ensure_env_file(env_path: Path) -> None:
     if "OW_JWT_SECRET=" in text and not text.split("OW_JWT_SECRET=")[1].splitlines()[0].strip():
         text = text.replace("OW_JWT_SECRET=", f"OW_JWT_SECRET={secrets.token_hex(32)}", 1)
         env_path.write_text(text, encoding="utf-8")
+    # Secret material on disk: tighten to 0600 on every path (create or
+    # inject), independent of umask (spec §9.1); chmod is idempotent.
+    env_path.chmod(0o600)

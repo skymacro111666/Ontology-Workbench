@@ -125,3 +125,25 @@ def test_non_loopback_warning_is_a_json_log_event() -> None:
             "log_level": "warning",
         }
     ]
+
+
+def test_serve_refuses_empty_jwt_secret(tmp_path, monkeypatch, capsys) -> None:
+    """Serve exits 1 with remediation text before any startup work (spec §9.3).
+
+    Empty-string env vars beat the CWD .env in pydantic precedence, and the
+    chdir keeps the repo's real backend/.env (non-empty secret) out of the
+    dotenv search path — both make the empty resolution unambiguous.
+    """
+    from typer.testing import CliRunner
+
+    from ontoworkbench.cli import app as cli_app
+
+    db = tmp_path / "ow.db"
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OW_DB_URL", f"sqlite:///{db}")
+    monkeypatch.setenv("OW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("OW_JWT_SECRET", "")
+    monkeypatch.setenv("OW_JWT_SECRET_FILE", "")
+    result = CliRunner().invoke(cli_app, ["serve", "--no-browser"])
+    assert result.exit_code == 1
+    assert "OW_JWT_SECRET" in result.output or "OW_JWT_SECRET" in capsys.readouterr().err
