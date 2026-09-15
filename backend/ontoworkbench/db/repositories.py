@@ -457,11 +457,17 @@ class AgentTokenRepository:
         return True
 
     def touch(self, row: AgentToken) -> None:
-        """Update last_used_at at most once per minute (audit, not auth)."""
+        """Update last_used_at at most once per minute (audit, not auth).
+
+        A tz-naive stored timestamp (SQLite drops the offset on read) is
+        re-anchored to UTC before the throttle comparison.
+        """
         now = _now_utc()
-        if row.last_used_at is not None and (now - row.last_used_at).total_seconds() < (
-            self._TOUCH_THROTTLE_S
-        ):
-            return
+        last = row.last_used_at
+        if last is not None:
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=UTC)  # stored wall-clock is UTC
+            if (now - last).total_seconds() < self._TOUCH_THROTTLE_S:
+                return
         row.last_used_at = now
         self._s.commit()

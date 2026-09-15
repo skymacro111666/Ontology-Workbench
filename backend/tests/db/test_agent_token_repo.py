@@ -70,3 +70,42 @@ def test_touch_throttles_within_60s(session: Session) -> None:
     before = row.last_used_at
     repo.touch(row)
     assert row.last_used_at is not None and row.last_used_at > before
+
+
+def test_touch_after_fresh_session_reload(session: Session) -> None:
+    """Touch must not raise on a row reloaded in a new session (SQLite naive read).
+
+    Regression: SQLite drops tzinfo when last_used_at is read back, so the
+    second authenticated request (fresh session, non-NULL last_used_at)
+    hit an aware-minus-naive TypeError inside touch().
+    """
+    u = _user(session)
+    repo = AgentTokenRepository(session)
+    row = repo.create(u.id, "claude", "ab" * 32, "owag_cla")
+    session.commit()
+    repo.touch(row)  # NULL path: seeds last_used_at
+
+    fresh = Session(session.bind, expire_on_commit=False)
+    try:
+        reloaded = AgentTokenRepository(fresh).get_by_hash("ab" * 32)
+        assert reloaded is not None and reloaded.last_used_at is not None
+        fresh_repo = AgentTokenRepository(fresh)
+        current = reloaded.last_used_at
+        fresh_repo.touch(reloaded)  # reloaded row, within window: no raise, no write
+        assert reloaded.last_used_at == current
+
+        # Seed a stale timestamp while the row is still attached, for the
+        # elapsed-window leg below (detached mutations never reach the DB).
+        reloaded.last_used_at = datetime.now(UTC) - timedelta(seconds=120)
+        fresh.commit()
+    finally:
+        fresh.close()
+
+    fresh2 = Session(session.bind, expire_on_commit=False)
+    try:
+        stale_row = AgentTokenRepository(fresh2).get_by_hash("ab" * 32)
+        assert stale_row is not None
+        AgentTokenRepository(fresh2).touch(stale_row)  # reloaded, window elapsed: writes
+        assert stale_row.last_used_at is not None and stale_row.last_used_at > reloaded.last_used_at
+    finally:
+        fresh2.close()
