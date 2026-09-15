@@ -27,6 +27,7 @@ from ontoworkbench.observability.middleware import (
 from ontoworkbench.server.autosave import AutosaveManager
 from ontoworkbench.server.cache import OntologyCache
 from ontoworkbench.server.envelope import HTTP_OF, ApiError, ErrorCode, error_body, respond
+from ontoworkbench.server.routers import agent_tokens as agent_tokens_router
 from ontoworkbench.server.routers import auth as auth_router
 from ontoworkbench.server.routers import browse as browse_router
 from ontoworkbench.server.routers import entities as entities_router
@@ -110,6 +111,7 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     app.include_router(query_router.router)
     app.include_router(validation_router.router)
     app.include_router(export_router.router)
+    app.include_router(agent_tokens_router.router)
     configure_metrics(app)
 
     @app.exception_handler(ApiError)

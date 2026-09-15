@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # SHACL validation: escape-hatch bound, waiting UX by design (spec
     # §2.2 — spike measured go.owl at ~33s end to end).
     validate_timeout_s: float = 300.0
+    # One-shot seeding source for agent tokens (spec D12): insert-only at
+    # boot, then the DB is authoritative — revocation goes through the API.
+    agent_tokens: str = ""
 
     @classmethod
     def load(cls, cli: dict | None = None) -> Settings:

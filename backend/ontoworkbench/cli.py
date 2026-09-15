@@ -154,6 +154,12 @@ def serve(
     setup_logging(settings.log_dir, settings.log_level)
     _migrate(settings.db_url, settings.data_dir)
     init_engine(settings.db_url)
+    if settings.agent_tokens.strip():
+        from ontoworkbench.auth import agent_tokens as _at
+        from ontoworkbench.db.session import sessionmaker_or_fail
+
+        with sessionmaker_or_fail()() as _session:
+            _at.seed_from_env(_session, settings.agent_tokens)
 
     try:
         serve_port = resolve_serve_port(settings.host, settings.port)
