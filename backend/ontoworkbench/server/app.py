@@ -57,8 +57,17 @@ def default_spa_dist() -> Path:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Flush pending autosaves on shutdown (graceful exit, zero loss)."""
-    yield
+    """Flush pending autosaves on shutdown (graceful exit, zero loss).
+
+    Mounts do not propagate lifespans, so the MCP sub-app's session manager
+    runs chained under this one whenever the mount exists.
+    """
+    mcp_asgi = getattr(app.state, "mcp_asgi", None)
+    if mcp_asgi is not None:
+        async with mcp_asgi.router.lifespan_context(mcp_asgi):
+            yield
+    else:
+        yield
     app.state.autosave.flush_all()
 
 
@@ -113,6 +122,11 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     app.include_router(export_router.router)
     app.include_router(agent_tokens_router.router)
     configure_metrics(app)
+
+    # Inline import per spec §4: keeps the SDK out of no-token boots.
+    from ontoworkbench.server.mcp import maybe_mount_mcp
+
+    maybe_mount_mcp(app)
 
     @app.exception_handler(ApiError)
     async def on_api_error(request: Request, exc: ApiError) -> JSONResponse:

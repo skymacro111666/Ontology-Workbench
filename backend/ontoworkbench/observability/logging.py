@@ -104,7 +104,9 @@ def setup_logging(log_dir: Path, level: str = "INFO") -> None:
     logging.basicConfig(level=level.upper(), handlers=[stream, rotating], force=True)
     # Our JSON access log replaces these libraries' own request logging;
     # keep their non-request chatter below INFO so stdout stays clean.
-    for noisy in ("httpx", "httpcore", "uvicorn.access"):
+    # httpx2/httpcore2: starlette's TestClient (and the MCP SDK) moved to the
+    # httpx2 fork — same one-line-per-request INFO chatter, new logger names.
+    for noisy in ("httpx", "httpcore", "httpx2", "httpcore2", "uvicorn.access"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     structlog.configure(
         processors=[

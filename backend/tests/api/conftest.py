@@ -21,7 +21,7 @@ def build_app(tmp_path: Path) -> FastAPI:
     Base.metadata.create_all(engine)
     # A minimal fake SPA dist so every test exercises the mounted app shape.
     dist = tmp_path / "dist"
-    (dist / "assets").mkdir(parents=True)
+    (dist / "assets").mkdir(parents=True, exist_ok=True)
     (dist / "index.html").write_text("<html><body>ow-spa-marker</body></html>")
     (dist / "assets" / "app.js").write_text("console.log('ow')")
     return create_app(
