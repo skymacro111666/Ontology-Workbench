@@ -57,5 +57,7 @@ async def access_log_middleware(request, call_next):
         user_agent=user_agent[:_USER_AGENT_MAX] if user_agent else None,
         request_id=request_id_ctx.get(),
         user_id=getattr(request.state, "user_id", None) or "anonymous",
+        agent_label=getattr(request.state, "agent_label", None),
+        credential=getattr(request.state, "credential", None),
     )
     return response
