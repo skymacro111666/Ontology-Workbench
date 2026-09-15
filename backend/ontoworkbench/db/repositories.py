@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ontoworkbench.db.models import (
+    AgentToken,
     LintRule,
     Ontology,
     OntologyLayout,
     OntologyValidationShape,
     User,
 )
+
+
+def _now_utc() -> datetime:
+    """Return the current timezone-aware UTC timestamp."""
+    return datetime.now(UTC)
 
 
 class UserRepository:
@@ -357,3 +364,104 @@ class ValidationShapesRepository:
             self._s.add(row)
         self._s.commit()
         return row
+
+
+class AgentTokenRepository:
+    """Access to agent_tokens (machine credentials, spec D12)."""
+
+    _TOUCH_THROTTLE_S = 60
+
+    def __init__(self, session: Session) -> None:
+        """Initialize the repository with a SQLAlchemy session.
+
+        Args:
+            session: SQLAlchemy database session.
+        """
+        self._s = session
+
+    def count_any(self) -> int:
+        """Total rows across users — the MCP mount condition."""
+        return len(self._s.scalars(select(AgentToken.id)).all())
+
+    def get_by_label(self, user_id: UUID, label: str) -> AgentToken | None:
+        """Get an agent token by owner and label.
+
+        Args:
+            user_id: UUID of the owning user.
+            label: Credential label, unique per user.
+
+        Returns:
+            AgentToken if found, None otherwise.
+        """
+        return self._s.scalar(
+            select(AgentToken).where(AgentToken.user_id == user_id, AgentToken.label == label)
+        )
+
+    def get_by_hash(self, token_hash: str) -> AgentToken | None:
+        """Get an agent token by hash (the request-auth lookup).
+
+        Args:
+            token_hash: SHA-256 hex digest, globally unique.
+
+        Returns:
+            AgentToken if found, None otherwise.
+        """
+        return self._s.scalar(select(AgentToken).where(AgentToken.token_hash == token_hash))
+
+    def list_by_user(self, user_id: UUID) -> list[AgentToken]:
+        """List a user's agent tokens, oldest first.
+
+        Args:
+            user_id: UUID of the owning user.
+
+        Returns:
+            List of the user's AgentToken rows.
+        """
+        stmt = (
+            select(AgentToken).where(AgentToken.user_id == user_id).order_by(AgentToken.created_at)
+        )
+        return list(self._s.scalars(stmt).all())
+
+    def create(self, user_id: UUID, label: str, token_hash: str, token_prefix: str) -> AgentToken:
+        """Stage a new agent token row (committed by the caller).
+
+        Args:
+            user_id: UUID of the owning user.
+            label: Credential label, unique per user.
+            token_hash: SHA-256 hex digest of the minted token.
+            token_prefix: Display prefix for the credential list.
+
+        Returns:
+            The staged AgentToken instance.
+        """
+        row = AgentToken(
+            user_id=user_id, label=label, token_hash=token_hash, token_prefix=token_prefix
+        )
+        self._s.add(row)
+        return row
+
+    def delete(self, user_id: UUID, token_id: UUID) -> bool:
+        """Delete an agent token only if it belongs to the given user.
+
+        Args:
+            user_id: UUID of the requesting user.
+            token_id: UUID of the token to delete.
+
+        Returns:
+            True if a row was deleted, False when unknown or foreign.
+        """
+        row = self._s.get(AgentToken, token_id)
+        if row is None or row.user_id != user_id:
+            return False
+        self._s.delete(row)
+        return True
+
+    def touch(self, row: AgentToken) -> None:
+        """Update last_used_at at most once per minute (audit, not auth)."""
+        now = _now_utc()
+        if row.last_used_at is not None and (now - row.last_used_at).total_seconds() < (
+            self._TOUCH_THROTTLE_S
+        ):
+            return
+        row.last_used_at = now
+        self._s.commit()

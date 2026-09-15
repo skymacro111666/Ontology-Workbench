@@ -158,3 +158,26 @@ class OntologyValidationShape(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTimeTZ, server_default=func.now(), onupdate=_now
     )
+
+
+class AgentToken(Base):
+    """An account's machine credential (spec D11/D12): label + SHA-256 hash.
+
+    The token itself exists only at mint time; the row stores its hash and
+    a display prefix. Owner-scoped like every other asset: (user_id, label)
+    unique, token_hash globally unique (the lookup key).
+    """
+
+    __tablename__ = "agent_tokens"
+    __table_args__ = (
+        UniqueConstraint("user_id", "label", name="uq_agent_tokens_user_id_label"),
+        Index("ix_agent_tokens_user_id", "user_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    label: Mapped[str] = mapped_column(String(64))
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    token_prefix: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTimeTZ)
