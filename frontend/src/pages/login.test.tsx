@@ -48,15 +48,15 @@ describe('Login', () => {
     expect(await screen.findByText('用户名至少 3 个字符')).toBeTruthy()
     expect(screen.getByText('密码至少 8 位')).toBeTruthy()
     // Client-side rejection must not touch the login endpoint.
-    expect(calledUrls(fetchMock).some((u) => u.includes('/api/auth/login'))).toBe(false)
+    expect(calledUrls(fetchMock).some((u) => u.includes('/api/v1/auth/login'))).toBe(false)
   })
 
   it('logs in and navigates to / on success', async () => {
     // Typed so the recorded call tuple carries `init` for the body assertion.
     const fetchMock = vi.fn<(url: string | URL, init?: RequestInit) => Promise<Response>>(
       async (url) => {
-        if (String(url) === '/api/auth/login') return ok({ token: 'tok-1' })
-        // /api/auth/status probe and the post-login /api/auth/me lookup
+        if (String(url) === '/api/v1/auth/login') return ok({ token: 'tok-1' })
+        // /api/v1/auth/status probe and the post-login /api/v1/auth/me lookup
         return ok({ need_setup: false })
       },
     )
@@ -68,7 +68,7 @@ describe('Login', () => {
     await userEvent.click(screen.getByRole('button', { name: '登录' }))
 
     expect(await screen.findByText('home-route')).toBeTruthy()
-    const loginCall = fetchMock.mock.calls.find(([u]) => String(u) === '/api/auth/login')
+    const loginCall = fetchMock.mock.calls.find(([u]) => String(u) === '/api/v1/auth/login')
     expect(loginCall).toBeTruthy()
     expect(JSON.parse(String(loginCall?.[1]?.body))).toEqual({
       username: 'admin',
@@ -79,7 +79,7 @@ describe('Login', () => {
 
   it('maps AUTH_INVALID_CREDENTIALS to the dedicated copy', async () => {
     const fetchMock = vi.fn(async (url: string | URL) => {
-      if (String(url) === '/api/auth/login')
+      if (String(url) === '/api/v1/auth/login')
         return err('AUTH_INVALID_CREDENTIALS', 'server-side message')
       return ok({ need_setup: false })
     })

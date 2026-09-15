@@ -32,22 +32,22 @@ DOG = f"{EX}Dog"
 
 
 def _upload(client: TestClient, data: bytes = MINI, name: str = "mini.ttl") -> tuple[str, Any]:
-    r = client.post("/api/ontologies", files={"file": (name, io.BytesIO(data), "text/turtle")})
+    r = client.post("/api/v1/ontologies", files={"file": (name, io.BytesIO(data), "text/turtle")})
     assert r.status_code == 201
     return r.json()["data"]["id"], r.json()["data"]
 
 
 def _meta(client: TestClient, oid: str) -> dict[str, Any]:
-    return client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    return client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
 
 
 def _source(client: TestClient, oid: str) -> str:
-    return client.get(f"/api/ontologies/{oid}/source").json()["data"]["content"]
+    return client.get(f"/api/v1/ontologies/{oid}/source").json()["data"]["content"]
 
 
 def _create_class(client: TestClient, oid: str, name: str, base: int):  # noqa: ANN001
     return client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={"name": name, "prefix": "ex", "parents": [], "baseRevision": base},
     )
 
@@ -105,7 +105,7 @@ def test_external_write_invalidates(
 
     meta2 = _meta(client, oid)
     r = client.put(
-        f"/api/ontologies/{oid}/source",
+        f"/api/v1/ontologies/{oid}/source",
         json={"content": MINI2.decode(), "baseFileHash": meta2["fileHash"]},
     )
     assert r.status_code == 200
@@ -218,7 +218,7 @@ def test_rejected_entity_update_never_lands_via_next_edit(
     """
     oid, meta = _upload(client)
     r = client.put(
-        f"/api/ontologies/{oid}/entities/{DOG}",
+        f"/api/v1/ontologies/{oid}/entities/{DOG}",
         json={
             "comment": "entity-leak-marker",
             "parents": ["not an iri"],  # 422 after the comment already applied
@@ -229,7 +229,7 @@ def test_rejected_entity_update_never_lands_via_next_edit(
 
     rev = _meta(client, oid)["revision"]  # refusals bump nothing
     r2 = client.put(
-        f"/api/ontologies/{oid}/entities/{DOG}",
+        f"/api/v1/ontologies/{oid}/entities/{DOG}",
         json={"parents": [f"{EX}Thing"], "baseRevision": rev},  # legal, leaves comment alone
     )
     assert r2.status_code == 200
@@ -254,7 +254,7 @@ def test_rejected_update_after_pending_edit_neither_leaks_nor_loses(
     r1 = _create_class(client, oid, "Cat", meta["revision"])  # pending, un-landed
     assert r1.status_code == 200
     r = client.put(
-        f"/api/ontologies/{oid}/entities/{DOG}",
+        f"/api/v1/ontologies/{oid}/entities/{DOG}",
         json={
             "comment": "leak-marker",
             "parents": ["not an iri"],  # 422 while the Cat save is still pending
@@ -282,7 +282,7 @@ def test_rejected_instance_update_never_lands_via_next_edit(
     """
     oid, meta = _upload(client)
     r = client.post(
-        f"/api/ontologies/{oid}/instances",
+        f"/api/v1/ontologies/{oid}/instances",
         json={
             "name": "ThreeBody",
             "prefix": "ex",
@@ -294,7 +294,7 @@ def test_rejected_instance_update_never_lands_via_next_edit(
     rev = _meta(client, oid)["revision"]
 
     r = client.put(
-        f"/api/ontologies/{oid}/instances/{EX}ThreeBody",
+        f"/api/v1/ontologies/{oid}/instances/{EX}ThreeBody",
         json={
             "comment": "instance-leak-marker",
             "classes": [f"{EX}Nope"],  # undeclared → 422 after the comment applied
@@ -305,7 +305,7 @@ def test_rejected_instance_update_never_lands_via_next_edit(
 
     rev2 = _meta(client, oid)["revision"]  # refusals bump nothing
     r2 = client.put(
-        f"/api/ontologies/{oid}/instances/{EX}ThreeBody",
+        f"/api/v1/ontologies/{oid}/instances/{EX}ThreeBody",
         json={"classes": [f"{EX}Thing"], "baseRevision": rev2},  # legal, leaves comment alone
     )
     assert r2.status_code == 200

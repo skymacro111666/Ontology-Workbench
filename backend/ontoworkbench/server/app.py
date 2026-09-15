@@ -83,7 +83,7 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     dynamically stay mount-free by default.
     """
     setup_logging(settings.log_dir, settings.log_level)
-    app = FastAPI(title="Ontology Workbench", docs_url="/api/docs", lifespan=_lifespan)
+    app = FastAPI(title="Ontology Workbench", docs_url="/api/v1/docs", lifespan=_lifespan)
     app.state.settings = settings
     app.state.store = LocalUserDirStore(settings.data_dir)
     app.state.cache = OntologyCache()
@@ -188,7 +188,7 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
         response.headers["X-Request-ID"] = request_id_ctx.get()
         return response
 
-    @app.get("/api/health")
+    @app.get("/api/v1/health")
     async def health() -> dict:
         return respond({"status": "up"})
 

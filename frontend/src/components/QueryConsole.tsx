@@ -50,7 +50,7 @@ export default function QueryConsole({ oid }: { oid: string }) {
     setExportTruncated(false)
     setElapsed(0)
     try {
-      const data = await api.post<QueryResult>(`/api/ontologies/${oid}/query`, { qs })
+      const data = await api.post<QueryResult>(`/api/v1/ontologies/${oid}/query`, { qs })
       setResult(data)
     } catch (e) {
       setResult(null)
@@ -74,7 +74,7 @@ export default function QueryConsole({ oid }: { oid: string }) {
     setExportTruncated(false)
     try {
       const { name, truncated } = await api.downloadBinary(
-        `/api/ontologies/${oid}/query/export`,
+        `/api/v1/ontologies/${oid}/query/export`,
         `query.${format}`,
         { method: 'POST', body: { qs, format } },
       )

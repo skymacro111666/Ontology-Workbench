@@ -30,7 +30,7 @@ def test_static_assets_are_served(client: TestClient) -> None:
 
 def test_unknown_api_path_is_json_404(client: TestClient) -> None:
     """Unmatched /api paths never hit the SPA fallback: JSON envelope 404."""
-    r = client.get("/api/nope")
+    r = client.get("/api/v1/nope")
     assert r.status_code == 404
     assert r.headers["content-type"].startswith("application/json")
     body = r.json()

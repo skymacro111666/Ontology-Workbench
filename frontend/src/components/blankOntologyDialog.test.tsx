@@ -46,7 +46,7 @@ afterEach(() => {
 
 it('creates from the name and jumps into the new workspace', async () => {
   const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
-    expect(String(url)).toBe('/api/ontologies/blank')
+    expect(String(url)).toBe('/api/v1/ontologies/blank')
     expect(JSON.parse(String(init?.body))).toEqual({ name: 'My Domain' })
     return ok({ id: 'blank-1', title: 'My Domain', filename: 'my-domain.ttl', source: 'created' })
   })

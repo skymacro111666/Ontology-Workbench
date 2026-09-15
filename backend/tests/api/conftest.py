@@ -32,8 +32,8 @@ def build_app(tmp_path: Path) -> FastAPI:
 
 def auth(client: TestClient) -> None:
     """Create the admin account and arm the client's bearer token."""
-    client.post("/api/auth/setup", json={"username": "admin", "password": "long-enough-pw"})
-    r = client.post("/api/auth/login", json={"username": "admin", "password": "long-enough-pw"})
+    client.post("/api/v1/auth/setup", json={"username": "admin", "password": "long-enough-pw"})
+    r = client.post("/api/v1/auth/login", json={"username": "admin", "password": "long-enough-pw"})
     client.headers["Authorization"] = f"Bearer {r.json()['data']['token']}"
 
 

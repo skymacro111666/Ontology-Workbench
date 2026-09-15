@@ -1,5 +1,5 @@
 {
-  "_comment": "Sample: GET /api/ontologies/{id}/entities/{eid} for a named individual (lib:ThreeBody of the bundled library sample) -> 200. Instance payloads dispatch by eid (IndividualIR, spec 2026-08-30 §2): classes / objectAssertions / dataAssertions carry Ref-shaped far ends; camelCase per the browse data contract.",
+  "_comment": "Sample: GET /api/v1/ontologies/{id}/entities/{eid} for a named individual (lib:ThreeBody of the bundled library sample) -> 200. Instance payloads dispatch by eid (IndividualIR, spec 2026-08-30 §2): classes / objectAssertions / dataAssertions carry Ref-shaped far ends; camelCase per the browse data contract.",
   "code": "OK",
   "message": "success",
   "data": {

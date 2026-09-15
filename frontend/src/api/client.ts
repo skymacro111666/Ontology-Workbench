@@ -38,7 +38,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const data = unwrap(env)
   useRequestStore.getState().set({
     method: init?.method ?? 'GET',
-    path: url.replace(/^\/api/, ''),
+    path: url.replace(/^\/api(\/v1)?/, ''),
     ms: performance.now() - startedAt,
     requestId: env.request_id,
   })
@@ -55,7 +55,7 @@ function settle<T>(env: Envelope<T>, url: string, startedAt: number): T {
   const data = unwrap(env)
   useRequestStore.getState().set({
     method: 'POST',
-    path: url.replace(/^\/api/, ''),
+    path: url.replace(/^\/api(\/v1)?/, ''),
     ms: performance.now() - startedAt,
     requestId: env.request_id,
   })
@@ -175,7 +175,7 @@ export const api = {
     }),
   del: <T>(url: string) => request<T>(url, { method: 'DELETE' }),
   upload: <T>(file: File, onProgress?: (loaded: number, total: number) => void) =>
-    uploadXHR<T>('/api/ontologies', file, onProgress),
+    uploadXHR<T>('/api/v1/ontologies', file, onProgress),
   download: downloadFile,
   downloadBinary,
 }

@@ -32,7 +32,7 @@ from ontoworkbench.server.cache import OntologyCache, load_store
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
-router = APIRouter(prefix="/api", tags=["ontologies"])
+router = APIRouter(prefix="/api/v1", tags=["ontologies"])
 
 MAX_UPLOAD = 150 * 1024 * 1024
 

@@ -65,7 +65,7 @@ describe('ExportDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: '导出' }))
 
     await waitFor(() => expect(exportBodies(fetchMock)).toHaveLength(1))
-    expect(fetchMock).toHaveBeenCalledWith('/api/ontologies/oid-1/export/site', expect.anything())
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/ontologies/oid-1/export/site', expect.anything())
     // Blank means default on the server; trailing space is trimmed away.
     expect(exportBodies(fetchMock)[0]).toEqual({ outDir: '/tmp/my-site', force: true })
   })
@@ -179,7 +179,7 @@ describe('ExportDialog', () => {
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        `/api/ontologies/oid-1/export/site/archive?dir_path=${encodeURIComponent(OUT_DIR)}`,
+        `/api/v1/ontologies/oid-1/export/site/archive?dir_path=${encodeURIComponent(OUT_DIR)}`,
         // Binary download still carries the bearer header.
         expect.objectContaining({ headers: { Authorization: 'Bearer tok' } }),
       ),

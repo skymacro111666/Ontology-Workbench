@@ -105,7 +105,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
     }
     try {
       const name = await api.download(
-        `/api/ontologies/${last}/export/file?format=${format}`,
+        `/api/v1/ontologies/${last}/export/file?format=${format}`,
         'ontology',
       )
       toast.success(t('shell.exportedToast', { name }))

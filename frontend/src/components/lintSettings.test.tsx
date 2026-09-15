@@ -120,7 +120,7 @@ describe('LintSettingsDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: /保存/ }))
     await waitFor(() => expect(puts).toHaveLength(1))
     expect(puts[0].body.disabled).toContain('missing-label')
-    expect(puts[0].url).toBe(`/api/ontologies/${OID}/lint/config`)
+    expect(puts[0].url).toBe(`/api/v1/ontologies/${OID}/lint/config`)
   })
 
   it('creates and tests a custom SPARQL rule without saving first', async () => {

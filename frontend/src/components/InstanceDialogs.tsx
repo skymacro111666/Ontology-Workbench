@@ -36,12 +36,12 @@ export default function InstanceDialogs({ oid }: { oid: string }) {
 
   const { data: meta } = useQuery({
     queryKey: ['ontology', oid],
-    queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
+    queryFn: () => api.get<OntologyMeta>(`/api/v1/ontologies/${oid}/meta`),
     enabled: !!dialog,
   })
   const { data: overview } = useQuery({
     queryKey: ['overview', oid],
-    queryFn: () => api.get<NodesEdges>(`/api/ontologies/${oid}/overview`),
+    queryFn: () => api.get<NodesEdges>(`/api/v1/ontologies/${oid}/overview`),
     enabled: dialog?.mode === 'create',
   })
   const classes = (overview?.nodes ?? []).filter((n) => n.kind === 'class')
@@ -74,7 +74,7 @@ export default function InstanceDialogs({ oid }: { oid: string }) {
     mutationFn: async () => {
       const revision = meta?.revision ?? 0
       if (dialog?.mode === 'create') {
-        return api.post<{ entity: { eid: string } }>(`/api/ontologies/${oid}/instances`, {
+        return api.post<{ entity: { eid: string } }>(`/api/v1/ontologies/${oid}/instances`, {
           name: name.trim(),
           prefix,
           comment: comment.trim() === '' ? null : comment.trim(),
@@ -83,7 +83,7 @@ export default function InstanceDialogs({ oid }: { oid: string }) {
         })
       }
       return api.del(
-        `/api/ontologies/${oid}/instances/${encodeURIComponent(dialog?.eid ?? '')}` +
+        `/api/v1/ontologies/${oid}/instances/${encodeURIComponent(dialog?.eid ?? '')}` +
           `?baseRevision=${revision}`,
       )
     },

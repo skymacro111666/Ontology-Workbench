@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     api
-      .get<{ need_setup: boolean }>('/api/auth/status')
+      .get<{ need_setup: boolean }>('/api/v1/auth/status')
       .then((data) => {
         setNeedSetup(data.need_setup)
         setProbeError(false)
@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token) return
     api
-      .get<AuthUser>('/api/auth/me')
+      .get<AuthUser>('/api/v1/auth/me')
       .then((me) => setUser({ id: me.id, username: me.username }))
       .catch(() => {
         /* 401-class codes already clear the token and redirect via the client */
@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [token])
 
   const login = useCallback(async (username: string, password: string) => {
-    const data = await api.post<{ token: string }>('/api/auth/login', { username, password })
+    const data = await api.post<{ token: string }>('/api/v1/auth/login', { username, password })
     localStorage.setItem(TOKEN_KEY, data.token)
     setToken(data.token)
   }, [])

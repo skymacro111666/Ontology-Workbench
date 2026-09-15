@@ -30,7 +30,7 @@ export default function Setup() {
   const onSubmit = async (values: Credentials) => {
     setFormError(null)
     try {
-      await api.post('/api/auth/setup', values)
+      await api.post('/api/v1/auth/setup', values)
       await login(values.username, values.password)
       navigate('/')
     } catch (err) {

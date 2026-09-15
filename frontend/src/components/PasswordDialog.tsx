@@ -48,7 +48,7 @@ export default function PasswordDialog({ open, onClose }: { open: boolean; onClo
     }
     setBusy(true)
     try {
-      await api.put('/api/auth/password', { currentPassword: current, newPassword: next })
+      await api.put('/api/v1/auth/password', { currentPassword: current, newPassword: next })
       toast.success(t('pwd.changed'))
       close()
     } catch (e) {

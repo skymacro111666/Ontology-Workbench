@@ -60,7 +60,7 @@ export default function BlankOntologyDialog() {
       body.namespace = ns.endsWith('#') || ns.endsWith('/') ? ns : `${ns}#`
     }
     try {
-      const meta = await api.post<OntologyMeta>('/api/ontologies/blank', body)
+      const meta = await api.post<OntologyMeta>('/api/v1/ontologies/blank', body)
       toast.success(t('blankDialog.created', { name: trimmed }))
       void queryClient.invalidateQueries({ queryKey: ['ontologies'] })
       localStorage.setItem(LAST_OID_KEY, meta.id)

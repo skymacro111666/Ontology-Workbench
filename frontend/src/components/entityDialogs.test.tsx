@@ -139,7 +139,7 @@ describe('EntityDialogs', () => {
 
     await waitFor(() => expect(calls.post).toHaveLength(1))
     const { url, body } = calls.post[0]
-    expect(url).toBe(`/api/ontologies/${OID}/classes`)
+    expect(url).toBe(`/api/v1/ontologies/${OID}/classes`)
     expect(body).toMatchObject({
       name: 'Cat',
       prefix: 'ex',
@@ -198,7 +198,7 @@ describe('EntityDialogs', () => {
     await userEvent.click(screen.getByRole('button', { name: /创建|保存/ }))
     await waitFor(() => expect(calls.put).toHaveLength(1))
     expect(calls.put[0].url).toBe(
-      `/api/ontologies/${OID}/entities/${encodeURIComponent(DOG)}`,
+      `/api/v1/ontologies/${OID}/entities/${encodeURIComponent(DOG)}`,
     )
     expect(calls.put[0].body).toMatchObject({ baseRevision: 3, comment: 'Good dog.' })
     // No label row: the request must not carry a label key at all.
@@ -259,7 +259,7 @@ describe('EntityDialogs', () => {
     await screen.findByText('删除实体')
     await userEvent.click(screen.getByRole('button', { name: '删除' }))
     await waitFor(() => expect(calls.del).toHaveLength(1))
-    expect(calls.del[0]).toContain(`/api/ontologies/${OID}/entities/${encodeURIComponent(DOG)}`)
+    expect(calls.del[0]).toContain(`/api/v1/ontologies/${OID}/entities/${encodeURIComponent(DOG)}`)
     expect(calls.del[0]).toContain('baseRevision=3')
     expect(calls.del[0]).toContain('prune=true')
     await waitFor(() => expect(useUiStore.getState().entityDialog).toBeNull())

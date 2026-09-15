@@ -25,7 +25,7 @@ from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 from ontoworkbench.server.routers.browse import _camel, _owned
 
-router = APIRouter(prefix="/api/ontologies", tags=["lint"])
+router = APIRouter(prefix="/api/v1/ontologies", tags=["lint"])
 
 
 class CamelModel(BaseModel):

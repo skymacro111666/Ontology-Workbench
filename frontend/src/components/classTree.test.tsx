@@ -101,7 +101,7 @@ describe('ClassTree', () => {
     // Class rows carry no property-kind pill.
     expect(screen.queryByText('OP')).toBeNull()
     expect(screen.queryByText('DP')).toBeNull()
-    expect(fetchMock).toHaveBeenCalledWith('/api/ontologies/oid-1/tree', expect.anything())
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/ontologies/oid-1/tree', expect.anything())
   })
 
   it('shows local names (prefix stripped), full curie kept on the tooltip', async () => {
@@ -135,7 +135,7 @@ describe('ClassTree', () => {
 
     expect(await screen.findByText('Animal')).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith(
-      `/api/ontologies/oid-1/tree?parent=${encodeURIComponent(THING)}`,
+      `/api/v1/ontologies/oid-1/tree?parent=${encodeURIComponent(THING)}`,
       expect.anything(),
     )
 
@@ -236,7 +236,7 @@ describe('ClassTree', () => {
     expect(screen.getByText('OP').className).toContain('text-primary')
     expect(screen.getByText('DP').className).toContain('text-ink-2')
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/ontologies/oid-1/tree?parent=__props__',
+      '/api/v1/ontologies/oid-1/tree?parent=__props__',
       expect.anything(),
     )
   })
@@ -279,6 +279,6 @@ describe('ClassTree', () => {
 
     expect(await screen.findByText('owl')).toBeTruthy()
     expect(screen.getByText('http://www.w3.org/2002/07/owl#')).toBeTruthy()
-    expect(fetchMock).toHaveBeenCalledWith('/api/ontologies/oid-1/meta', expect.anything())
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/ontologies/oid-1/meta', expect.anything())
   })
 })

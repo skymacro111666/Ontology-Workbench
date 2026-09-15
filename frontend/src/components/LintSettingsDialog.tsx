@@ -96,7 +96,7 @@ export default function LintSettingsDialog({
     queryKey: ['lint-config', oid],
     queryFn: () =>
       api.get<{ disabled: string[]; custom: CustomDraft[] }>(
-        `/api/ontologies/${oid}/lint/config`,
+        `/api/v1/ontologies/${oid}/lint/config`,
       ),
     enabled: open,
   })
@@ -146,7 +146,7 @@ export default function LintSettingsDialog({
   const save = useMutation({
     mutationFn: (payload: ReturnType<typeof body>) =>
       api.put<{ disabled: string[]; custom: { id: string }[] }>(
-        `/api/ontologies/${oid}/lint/config`,
+        `/api/v1/ontologies/${oid}/lint/config`,
         payload,
       ),
     onSuccess: (echo) => {
@@ -160,11 +160,11 @@ export default function LintSettingsDialog({
     mutationFn: async (i: number) => {
       // 测试 saves first: the server assigns the id this run is keyed by.
       const echo = await api.put<{ custom: { id: string }[] }>(
-        `/api/ontologies/${oid}/lint/config`,
+        `/api/v1/ontologies/${oid}/lint/config`,
         body(),
       )
       const rid = echo.custom[i]?.id ?? ''
-      const report = await api.post<LintReportT>(`/api/ontologies/${oid}/lint/run`, {
+      const report = await api.post<LintReportT>(`/api/v1/ontologies/${oid}/lint/run`, {
         onlyRuleId: rid,
       })
       return { echo, report }

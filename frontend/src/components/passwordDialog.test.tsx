@@ -68,7 +68,7 @@ describe('PasswordDialog', () => {
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/auth/password',
+      '/api/v1/auth/password',
       expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({ currentPassword: 'long-enough-pw', newPassword: 'brand-new-long-pw' }),

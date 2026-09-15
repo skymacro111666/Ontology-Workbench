@@ -31,7 +31,7 @@ from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 from ontoworkbench.server.routers.browse import _camel, _owned
 
-router = APIRouter(prefix="/api/ontologies", tags=["query"])
+router = APIRouter(prefix="/api/v1/ontologies", tags=["query"])
 
 # Rows (SELECT) / triples (CONSTRUCT, DESCRIBE) served per run; the cap
 # guards payload size, not evaluation time — pyoxigraph exposes no query

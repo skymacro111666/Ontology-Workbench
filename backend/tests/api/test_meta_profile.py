@@ -11,7 +11,7 @@ FIX = Path("tests/fixtures/owl2-constructs.ttl")
 
 def _upload(client: TestClient) -> str:
     r = client.post(
-        "/api/ontologies",
+        "/api/v1/ontologies",
         files={"file": ("owl2.ttl", io.BytesIO(FIX.read_bytes()), "text/turtle")},
     )
     return r.json()["data"]["id"]
@@ -24,7 +24,7 @@ def _boom(*args: object, **kwargs: object) -> Any:
 def test_meta_carries_profile(client: TestClient) -> None:
     """owl2 fixture:profile.top == DL,证据与 camelCase 键齐备."""
     oid = _upload(client)
-    p = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["profile"]
+    p = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]["profile"]
     assert p is not None
     assert p["top"] == "DL"
     assert p["approximate"] is True
@@ -37,9 +37,9 @@ def test_profile_cached_in_stats_json(client: TestClient, monkeypatch: Any) -> N
     import ontoworkbench.server.routers.ontologies as om
 
     oid = _upload(client)
-    assert client.get(f"/api/ontologies/{oid}/meta").json()["data"]["profile"]["top"] == "DL"
+    assert client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]["profile"]["top"] == "DL"
     monkeypatch.setattr(om, "classify", _boom)
-    assert client.get(f"/api/ontologies/{oid}/meta").json()["data"]["profile"]["top"] == "DL"
+    assert client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]["profile"]["top"] == "DL"
 
 
 def test_classify_failure_degrades_to_null(client: TestClient, monkeypatch: Any) -> None:
@@ -48,7 +48,7 @@ def test_classify_failure_degrades_to_null(client: TestClient, monkeypatch: Any)
 
     oid = _upload(client)
     monkeypatch.setattr(om, "classify", _boom)
-    data = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    data = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
     assert data["profile"] is None
     assert data["filename"] == "owl2.ttl"
 
@@ -61,19 +61,19 @@ def test_oversize_skips_compute(client: TestClient, monkeypatch: Any) -> None:
     monkeypatch.setattr(om, "_PROFILE_MAX_ENTITIES", 0)
     called: list[int] = []
     monkeypatch.setattr(om, "classify", lambda *a, **k: called.append(1) or {})
-    assert client.get(f"/api/ontologies/{oid}/meta").json()["data"]["profile"] is None
+    assert client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]["profile"] is None
     assert not called
 
 
 def test_save_invalidates_cached_profile(client: TestClient) -> None:
     """保存重写 stats_json → 旧 profile 失效,重新现算."""
     oid = _upload(client)
-    assert client.get(f"/api/ontologies/{oid}/meta").json()["data"]["profile"] is not None
-    src = client.get(f"/api/ontologies/{oid}/source").json()["data"]
+    assert client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]["profile"] is not None
+    src = client.get(f"/api/v1/ontologies/{oid}/source").json()["data"]
     put = client.put(
-        f"/api/ontologies/{oid}/source",
+        f"/api/v1/ontologies/{oid}/source",
         json={"content": src["content"], "baseFileHash": src["fileHash"]},
     )
     assert put.status_code == 200
-    p = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["profile"]
+    p = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]["profile"]
     assert p is not None and p["top"] == "DL"

@@ -21,12 +21,12 @@ export function useLint(oid: string, onOpenSettings?: () => void) {
   const [open, setOpen] = useState(true)
   const { data: meta } = useQuery({
     queryKey: ['ontology', oid],
-    queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
+    queryFn: () => api.get<OntologyMeta>(`/api/v1/ontologies/${oid}/meta`),
   })
   const stale = report !== null && meta !== undefined && report.fileHash !== meta.fileHash
 
   const run = useMutation({
-    mutationFn: () => api.post<LintReportT>(`/api/ontologies/${oid}/lint/run`, {}),
+    mutationFn: () => api.post<LintReportT>(`/api/v1/ontologies/${oid}/lint/run`, {}),
     onSuccess: (r) => {
       setReport(r)
       setOpen(true)

@@ -30,7 +30,7 @@ function InstancePickerRow({ oid, onPick }: { oid: string; onPick: (eid: string)
     queryKey: ['inst-search', oid, q],
     queryFn: () =>
       api.get<SearchHit[]>(
-        `/api/ontologies/${oid}/search?type=instance&q=${encodeURIComponent(q)}`,
+        `/api/v1/ontologies/${oid}/search?type=instance&q=${encodeURIComponent(q)}`,
       ),
   })
   return (
@@ -259,12 +259,12 @@ export default function InstanceDetail({ oid, eid, inst }: { oid: string; eid: s
   const { data: meta } = useQuery({
     enabled: editing,
     queryKey: ['ontology', oid],
-    queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
+    queryFn: () => api.get<OntologyMeta>(`/api/v1/ontologies/${oid}/meta`),
   })
   const { data: overview } = useQuery({
     enabled: editing,
     queryKey: ['overview', oid],
-    queryFn: () => api.get<NodesEdges>(`/api/ontologies/${oid}/overview`),
+    queryFn: () => api.get<NodesEdges>(`/api/v1/ontologies/${oid}/overview`),
   })
   const allClasses = useMemo(
     () => (overview?.nodes ?? []).filter((n) => n.kind === 'class'),
@@ -275,13 +275,13 @@ export default function InstanceDetail({ oid, eid, inst }: { oid: string; eid: s
     queryKey: ['assertion-schema', oid, [...classes].sort().join(',')],
     queryFn: () =>
       api.get<SchemaProp[]>(
-        `/api/ontologies/${oid}/assertion-schema?classes=${classes.map(encodeURIComponent).join(',')}`,
+        `/api/v1/ontologies/${oid}/assertion-schema?classes=${classes.map(encodeURIComponent).join(',')}`,
       ),
   })
 
   const save = useMutation({
     mutationFn: () =>
-      api.put(`/api/ontologies/${oid}/instances/${encodeURIComponent(eid)}`, {
+      api.put(`/api/v1/ontologies/${oid}/instances/${encodeURIComponent(eid)}`, {
         comment: comment.trim() === '' ? null : comment.trim(),
         classes,
         // Half-filled rows (property picked, no value yet) never submit —

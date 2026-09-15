@@ -132,7 +132,7 @@ describe('LintPanel', () => {
     expect(chip.title).toBe('lib:ScienceFiction')
     await userEvent.click(chip)
     expect(useBrowseStore.getState().selectedEid).toBe(SF)
-    expect(calls.post[0].url).toBe(`/api/ontologies/${OID}/lint/run`)
+    expect(calls.post[0].url).toBe(`/api/v1/ontologies/${OID}/lint/run`)
   })
 
   it('marks results stale after the fileHash moves on', async () => {

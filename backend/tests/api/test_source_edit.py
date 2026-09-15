@@ -16,14 +16,14 @@ ex:Dog a owl:Class ; rdfs:subClassOf ex:Animal .
 
 def _upload(client: TestClient, data: bytes = MINI, name: str = "mini.ttl") -> tuple[str, dict]:
     """Upload bytes and return (oid, upload meta)."""
-    r = client.post("/api/ontologies", files={"file": (name, io.BytesIO(data), "text/turtle")})
+    r = client.post("/api/v1/ontologies", files={"file": (name, io.BytesIO(data), "text/turtle")})
     return r.json()["data"]["id"], r.json()["data"]
 
 
 def test_source_returns_file_hash(client: TestClient) -> None:
     """GET /source carries the row's fileHash — the edit baseline."""
     oid, meta = _upload(client)
-    src = client.get(f"/api/ontologies/{oid}/source").json()["data"]
+    src = client.get(f"/api/v1/ontologies/{oid}/source").json()["data"]
     assert src["fileHash"] == meta["fileHash"]
     assert src["content"].encode() == MINI
 
@@ -33,7 +33,7 @@ MINI2 = MINI + b"ex:Cat a owl:Class ; rdfs:subClassOf ex:Animal .\n"
 
 def _put(client: TestClient, oid: str, content: bytes, base: str):
     return client.put(
-        f"/api/ontologies/{oid}/source",
+        f"/api/v1/ontologies/{oid}/source",
         json={"content": content.decode(), "baseFileHash": base},
     )
 
@@ -48,13 +48,13 @@ def test_put_source_happy_path(client: TestClient) -> None:
     assert new_hash != meta["fileHash"]
     assert body["data"]["classCount"] == 4  # +ex:Cat
 
-    src = client.get(f"/api/ontologies/{oid}/source").json()["data"]
+    src = client.get(f"/api/v1/ontologies/{oid}/source").json()["data"]
     assert src["content"].encode() == MINI2 and src["fileHash"] == new_hash
     # Row counts refreshed.
-    assert client.get(f"/api/ontologies/{oid}/meta").json()["data"]["classCount"] == 4
+    assert client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]["classCount"] == 4
     # Cache is fresh: the new class shows up in the tree immediately.
     kids = client.get(
-        f"/api/ontologies/{oid}/tree", params={"parent": "http://example.org/Animal"}
+        f"/api/v1/ontologies/{oid}/tree", params={"parent": "http://example.org/Animal"}
     ).json()["data"]
     assert "ex:Cat" in [k["curie"] for k in kids]
 
@@ -64,7 +64,7 @@ def test_put_source_parse_failure_keeps_file(client: TestClient) -> None:
     oid, meta = _upload(client)
     r = _put(client, oid, b"this is { not turtle", meta["fileHash"])
     assert r.status_code == 400 and r.json()["code"] == "PARSE_FAILED"
-    src = client.get(f"/api/ontologies/{oid}/source").json()["data"]
+    src = client.get(f"/api/v1/ontologies/{oid}/source").json()["data"]
     assert src["content"].encode() == MINI and src["fileHash"] == meta["fileHash"]
 
 
@@ -73,13 +73,13 @@ def test_put_source_stale_hash_conflicts(client: TestClient) -> None:
     oid, meta = _upload(client)
     r = _put(client, oid, MINI2, "0" * 64)
     assert r.status_code == 409 and r.json()["code"] == "EDIT_CONFLICT"
-    assert client.get(f"/api/ontologies/{oid}/source").json()["data"]["content"].encode() == MINI
+    assert client.get(f"/api/v1/ontologies/{oid}/source").json()["data"]["content"].encode() == MINI
 
 
 def test_put_source_not_found(client: TestClient) -> None:
     """Unknown and malformed ids are uniform 404s."""
     r = client.put(
-        f"/api/ontologies/{uuid.uuid4()}/source",
+        f"/api/v1/ontologies/{uuid.uuid4()}/source",
         json={"content": "", "baseFileHash": "x"},
     )
     assert r.status_code == 404 and r.json()["code"] == "NOT_FOUND"
@@ -90,7 +90,7 @@ def test_put_source_not_found(client: TestClient) -> None:
 def test_put_source_validation_and_size(client: TestClient, monkeypatch) -> None:
     """Missing baseFileHash 422s; oversized content 413s (cap patched small)."""
     oid, meta = _upload(client)
-    r = client.put(f"/api/ontologies/{oid}/source", json={"content": MINI2.decode()})
+    r = client.put(f"/api/v1/ontologies/{oid}/source", json={"content": MINI2.decode()})
     assert r.status_code == 422 and r.json()["code"] == "VALIDATION_ERROR"
 
     from ontoworkbench.server.routers import ontologies as ontologies_router
@@ -129,5 +129,5 @@ def test_source_put_refreshes_disk_ir_cache(client: TestClient, monkeypatch) -> 
         return real(data, fmt)
 
     monkeypatch.setattr(browse_mod, "timed_parse_store", spy)
-    assert client.get(f"/api/ontologies/{oid}/tree").status_code == 200
+    assert client.get(f"/api/v1/ontologies/{oid}/tree").status_code == 200
     assert calls == []

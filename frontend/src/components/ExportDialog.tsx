@@ -59,7 +59,7 @@ export default function ExportDialog() {
     setError(null)
     try {
       setResult(
-        await api.post<ExportSiteResult>(`/api/ontologies/${oid}/export/site`, {
+        await api.post<ExportSiteResult>(`/api/v1/ontologies/${oid}/export/site`, {
           outDir: outDir.trim() || undefined,
           force,
         }),
@@ -85,7 +85,7 @@ export default function ExportDialog() {
     setDownloading(true)
     try {
       const { name } = await api.downloadBinary(
-        `/api/ontologies/${oid}/export/site/archive?dir_path=${encodeURIComponent(result.outputDir)}`,
+        `/api/v1/ontologies/${oid}/export/site/archive?dir_path=${encodeURIComponent(result.outputDir)}`,
         'docs-site.zip',
       )
       toast.success(t('exportDialog.downloaded', { name }))

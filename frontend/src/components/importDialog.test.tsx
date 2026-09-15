@@ -69,7 +69,7 @@ it('uploads a chosen file and closes on success', async () => {
   const input = document.querySelector('input[type=file]') as HTMLInputElement
   await userEvent.upload(input, file)
   const xhr = xhrInstances.at(-1)!
-  expect(xhr.opened).toEqual(['POST', '/api/ontologies'])
+  expect(xhr.opened).toEqual(['POST', '/api/v1/ontologies'])
   xhr.responseText = OK_ENV
   await act(async () => {
     xhr.onload?.()

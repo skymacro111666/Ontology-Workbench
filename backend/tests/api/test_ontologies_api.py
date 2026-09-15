@@ -29,8 +29,8 @@ def client(tmp_path: Path) -> TestClient:
         Settings.load({"jwt_secret": "t" * 32, "db_url": db_url, "data_dir": tmp_path})
     )
     c = TestClient(app)
-    c.post("/api/auth/setup", json={"username": "admin", "password": "long-enough-pw"})
-    r = c.post("/api/auth/login", json={"username": "admin", "password": "long-enough-pw"})
+    c.post("/api/v1/auth/setup", json={"username": "admin", "password": "long-enough-pw"})
+    r = c.post("/api/v1/auth/login", json={"username": "admin", "password": "long-enough-pw"})
     c.headers["Authorization"] = f"Bearer {r.json()['data']['token']}"
     return c
 
@@ -38,7 +38,7 @@ def client(tmp_path: Path) -> TestClient:
 def test_upload_list_delete(client: TestClient) -> None:
     """Upload → 201 camelCase meta; duplicate 409; list; delete → data null."""
     up = client.post(
-        "/api/ontologies", files={"file": ("mini.ttl", io.BytesIO(TTL), "text/turtle")}
+        "/api/v1/ontologies", files={"file": ("mini.ttl", io.BytesIO(TTL), "text/turtle")}
     )
     body = up.json()
     assert up.status_code == 201 and body["code"] == "OK"
@@ -58,20 +58,20 @@ def test_upload_list_delete(client: TestClient) -> None:
     }
 
     dup = client.post(
-        "/api/ontologies", files={"file": ("mini.ttl", io.BytesIO(TTL), "text/turtle")}
+        "/api/v1/ontologies", files={"file": ("mini.ttl", io.BytesIO(TTL), "text/turtle")}
     )
     assert dup.status_code == 409
     assert dup.json()["code"] == "DUPLICATE_FILENAME"
 
-    lst = client.get("/api/ontologies").json()["data"]
+    lst = client.get("/api/v1/ontologies").json()["data"]
     assert lst["total"] == 1
     assert lst["items"][0]["filename"] == "mini.ttl"
 
-    gone = client.delete(f"/api/ontologies/{meta['id']}")
+    gone = client.delete(f"/api/v1/ontologies/{meta['id']}")
     assert gone.status_code == 200
     assert gone.json()["data"] is None
-    assert client.get("/api/ontologies").json()["data"]["total"] == 0
-    assert client.delete(f"/api/ontologies/{meta['id']}").json()["code"] == "NOT_FOUND"
+    assert client.get("/api/v1/ontologies").json()["data"]["total"] == 0
+    assert client.delete(f"/api/v1/ontologies/{meta['id']}").json()["code"] == "NOT_FOUND"
 
 
 TTL_INST = (
@@ -86,24 +86,24 @@ ex:buddy a owl:NamedIndividual , ex:B .
 def test_upload_meta_reports_instance_count(client: TestClient) -> None:
     """Upload and /meta carry the distinct-individual count (footer 实例数)."""
     up = client.post(
-        "/api/ontologies",
+        "/api/v1/ontologies",
         files={"file": ("inst.ttl", io.BytesIO(TTL_INST), "text/turtle")},
     )
     meta = up.json()["data"]
     assert meta["instanceCount"] == 2
 
     oid = meta["id"]
-    again = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    again = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
     assert again["instanceCount"] == 2
 
-    listed = client.get("/api/ontologies").json()["data"]["items"]
+    listed = client.get("/api/v1/ontologies").json()["data"]["items"]
     assert listed[0]["instanceCount"] == 2
 
 
 def test_upload_rejects_garbage(client: TestClient) -> None:
     """Binary garbage is rejected as UNSUPPORTED_FORMAT, not 500."""
     bad = client.post(
-        "/api/ontologies",
+        "/api/v1/ontologies",
         files={"file": ("x.bin", io.BytesIO(b"\x00\x01"), "application/octet-stream")},
     )
     assert bad.status_code == 415
@@ -118,7 +118,7 @@ def test_upload_requires_auth(tmp_path: Path) -> None:
     app = create_app(Settings.load({"jwt_secret": "t" * 32, "db_url": db_url}))
     with TestClient(app) as c:
         r = c.post(
-            "/api/ontologies",
+            "/api/v1/ontologies",
             files={"file": ("mini.ttl", io.BytesIO(TTL), "text/turtle")},
         )
         assert r.status_code == 401
@@ -127,7 +127,7 @@ def test_upload_requires_auth(tmp_path: Path) -> None:
 
 def test_samples_idempotent(client: TestClient) -> None:
     """Importing a sample twice returns the SAME record (no duplicate)."""
-    r1 = client.post("/api/samples/does-not-exist")
+    r1 = client.post("/api/v1/samples/does-not-exist")
     assert r1.json()["code"] == "NOT_FOUND"
 
 
@@ -138,11 +138,11 @@ def test_source_distinguishes_samples_from_uploads(client: TestClient) -> None:
     distinction lives in the row, not in filename guessing.
     """
     up = client.post(
-        "/api/ontologies", files={"file": ("mini.ttl", io.BytesIO(TTL), "text/turtle")}
+        "/api/v1/ontologies", files={"file": ("mini.ttl", io.BytesIO(TTL), "text/turtle")}
     )
     assert up.json()["data"]["source"] == "upload"
-    assert client.post("/api/samples/pizza").status_code == 201
-    items = client.get("/api/ontologies").json()["data"]["items"]
+    assert client.post("/api/v1/samples/pizza").status_code == 201
+    items = client.get("/api/v1/ontologies").json()["data"]["items"]
     by_file = {i["filename"]: i["source"] for i in items}
     assert by_file["mini.ttl"] == "upload"
     assert by_file["pizza.ttl"] == "sample"
@@ -154,7 +154,7 @@ def test_create_blank_ontology(client: TestClient) -> None:
     Ontology header + label + one prefix + one class + one property,
     registered as created.
     """
-    r = client.post("/api/ontologies/blank", json={"name": "My Domain"})
+    r = client.post("/api/v1/ontologies/blank", json={"name": "My Domain"})
     assert r.status_code == 201
     meta = r.json()["data"]
     assert meta["source"] == "created"
@@ -163,7 +163,7 @@ def test_create_blank_ontology(client: TestClient) -> None:
     assert meta["classCount"] == 1
     assert meta["propertyCount"] == 1
 
-    dup = client.post("/api/ontologies/blank", json={"name": "My Domain"})
+    dup = client.post("/api/v1/ontologies/blank", json={"name": "My Domain"})
     assert dup.status_code == 409
     assert dup.json()["code"] == "DUPLICATE_FILENAME"
 
@@ -175,25 +175,25 @@ def test_create_blank_namespace_and_fallbacks(client: TestClient) -> None:
     filename slug; whitespace namespaces are rejected.
     """
     r = client.post(
-        "/api/ontologies/blank",
+        "/api/v1/ontologies/blank",
         json={"name": "知识图谱", "namespace": "https://example.org/kg#"},
     )
     assert r.status_code == 201
     meta = r.json()["data"]
     assert meta["filename"] == "ontology.ttl"  # non-ASCII name → fallback slug
-    src = client.get(f"/api/ontologies/{meta['id']}/source").json()["data"]["content"]
+    src = client.get(f"/api/v1/ontologies/{meta['id']}/source").json()["data"]["content"]
     assert "https://example.org/kg#" in src
 
-    bad = client.post("/api/ontologies/blank", json={"name": "X", "namespace": "has space#"})
+    bad = client.post("/api/v1/ontologies/blank", json={"name": "X", "namespace": "has space#"})
     assert bad.status_code == 422
 
 
 def test_meta_carries_parse_ms(client: TestClient) -> None:
     """Upload meta and GET /meta expose parseMs (positive float, ms)."""
     up = client.post(
-        "/api/ontologies", files={"file": ("mini.ttl", io.BytesIO(TTL), "text/turtle")}
+        "/api/v1/ontologies", files={"file": ("mini.ttl", io.BytesIO(TTL), "text/turtle")}
     )
     oid = up.json()["data"]["id"]
     assert up.json()["data"]["parseMs"] > 0
-    meta = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    meta = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
     assert meta["parseMs"] > 0

@@ -65,7 +65,7 @@ from ontoworkbench.server.routers.ontologies import (
     title_of_store,
 )
 
-router = APIRouter(prefix="/api", tags=["entities"])
+router = APIRouter(prefix="/api/v1", tags=["entities"])
 
 _NAME_RE = re.compile(r"^[A-Za-z_][\w.-]*$")
 

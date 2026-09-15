@@ -60,7 +60,7 @@ describe('languageFor', () => {
 describe('SourceView', () => {
   it('fetches /source once mounted and renders the verbatim text with line numbers', async () => {
     const fetchMock = vi.fn(async (url: string | URL) => {
-      expect(String(url)).toBe('/api/ontologies/oid-1/source')
+      expect(String(url)).toBe('/api/v1/ontologies/oid-1/source')
       return ok(PAYLOAD)
     })
     const { container } = renderView(fetchMock)

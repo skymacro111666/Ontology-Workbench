@@ -150,17 +150,17 @@ export default function ClassTree({ oid }: { oid: string }) {
 
   const { data: roots } = useQuery({
     queryKey: ['tree', oid, 'roots'],
-    queryFn: () => api.get<TreeNode[]>(`/api/ontologies/${oid}/tree`),
+    queryFn: () => api.get<TreeNode[]>(`/api/v1/ontologies/${oid}/tree`),
   })
   // Lazy like the old tab contents: fetch only once the tab is opened.
   const { data: propNodes } = useQuery({
     queryKey: ['tree', oid, '__props__'],
-    queryFn: () => api.get<TreeNode[]>(`/api/ontologies/${oid}/tree?parent=__props__`),
+    queryFn: () => api.get<TreeNode[]>(`/api/v1/ontologies/${oid}/tree?parent=__props__`),
     enabled: tab === 'props',
   })
   const { data: meta } = useQuery({
     queryKey: ['ontology', oid],
-    queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
+    queryFn: () => api.get<OntologyMeta>(`/api/v1/ontologies/${oid}/meta`),
     enabled: tab === 'prefixes',
   })
 
@@ -169,7 +169,7 @@ export default function ClassTree({ oid }: { oid: string }) {
       const parent = encodeURIComponent(parentEid)
       const kids = await queryClient.fetchQuery({
         queryKey: ['tree-children', oid, parentEid],
-        queryFn: () => api.get<TreeNode[]>(`/api/ontologies/${oid}/tree?parent=${parent}`),
+        queryFn: () => api.get<TreeNode[]>(`/api/v1/ontologies/${oid}/tree?parent=${parent}`),
       })
       setChildMap((m) => ({ ...m, [parentEid]: kids }))
       return kids
@@ -198,7 +198,7 @@ export default function ClassTree({ oid }: { oid: string }) {
         .fetchQuery({
           queryKey: ['entity', oid, eid],
           queryFn: () =>
-            api.get<EntityIR>(`/api/ontologies/${oid}/entities/${encodeURIComponent(eid)}`),
+            api.get<EntityIR>(`/api/v1/ontologies/${oid}/entities/${encodeURIComponent(eid)}`),
         })
         .catch(() => null)
 

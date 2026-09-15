@@ -36,7 +36,7 @@ from ontoworkbench.server.routers.entities import (
 )
 from ontoworkbench.server.routers.ontologies import meta_with_state
 
-router = APIRouter(prefix="/api", tags=["instances"])
+router = APIRouter(prefix="/api/v1", tags=["instances"])
 
 
 class InstanceCreate(CamelModel):

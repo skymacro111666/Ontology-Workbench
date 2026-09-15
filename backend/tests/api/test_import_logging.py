@@ -21,7 +21,7 @@ def test_upload_success_logs_import_event(client: TestClient, caplog: logging.Lo
     """A successful upload logs ontology.import with file, timing and counts."""
     with caplog.at_level(logging.INFO, logger="ow.imports"):
         r = client.post(
-            "/api/ontologies",
+            "/api/v1/ontologies",
             files={"file": ("ok.ttl", io.BytesIO(GOOD_TTL), "text/turtle")},
         )
     assert r.status_code == 201
@@ -38,9 +38,9 @@ def test_upload_success_logs_import_event(client: TestClient, caplog: logging.Lo
 def test_duplicate_upload_logs_import_failed(client: TestClient, caplog: logging.Logger) -> None:
     """A rejected import (duplicate filename) logs ontology.import_failed with the code."""
     files = {"file": ("dup.ttl", io.BytesIO(GOOD_TTL), "text/turtle")}
-    client.post("/api/ontologies", files=files)
+    client.post("/api/v1/ontologies", files=files)
     with caplog.at_level(logging.WARNING, logger="ow.imports"):
-        r = client.post("/api/ontologies", files=files)
+        r = client.post("/api/v1/ontologies", files=files)
     assert r.status_code == 409
     logged = " ".join(rec.getMessage() for rec in caplog.records)
     assert '"ontology.import_failed"' in logged
@@ -52,7 +52,7 @@ def test_parse_failure_logs_import_failed(client: TestClient, caplog: logging.Lo
     """A parse-rejected upload logs ontology.import_failed with PARSE_FAILED."""
     with caplog.at_level(logging.WARNING, logger="ow.imports"):
         r = client.post(
-            "/api/ontologies",
+            "/api/v1/ontologies",
             files={"file": ("bad.ttl", io.BytesIO(BAD_TTL), "text/turtle")},
         )
     assert r.status_code == 400

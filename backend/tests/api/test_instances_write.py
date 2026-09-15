@@ -44,25 +44,25 @@ ex:ThreeBody a owl:NamedIndividual , ex:Novel ; rdfs:label "ThreeBody" .
 
 def _upload(client: TestClient, data: bytes = MINI_INST) -> tuple[str, dict[str, Any]]:
     r = client.post(
-        "/api/ontologies", files={"file": ("mini.ttl", io.BytesIO(data), "text/turtle")}
+        "/api/v1/ontologies", files={"file": ("mini.ttl", io.BytesIO(data), "text/turtle")}
     )
     assert r.status_code == 201
     return r.json()["data"]["id"], r.json()["data"]
 
 
 def _source(client: TestClient, oid: str) -> str:
-    return client.get(f"/api/ontologies/{oid}/source").json()["data"]["content"]
+    return client.get(f"/api/v1/ontologies/{oid}/source").json()["data"]["content"]
 
 
 def _revision(client: TestClient, oid: str) -> int:
-    return client.get(f"/api/ontologies/{oid}/meta").json()["data"]["revision"]
+    return client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]["revision"]
 
 
 def test_create_instance_lands_types_and_label(client: TestClient, autosave_debounce_50ms) -> None:
     """Create instance with types and label, verify persistence."""
     oid, meta = _upload(client)
     r = client.post(
-        f"/api/ontologies/{oid}/instances",
+        f"/api/v1/ontologies/{oid}/instances",
         json={
             "name": "BallLightning",
             "prefix": "ex",
@@ -78,7 +78,7 @@ def test_create_instance_lands_types_and_label(client: TestClient, autosave_debo
     assert d["meta"]["revision"] == 1
     # 读路径立即可见(补丁后的 IR,字节尚未落盘)
     got = client.get(
-        f"/api/ontologies/{oid}/entities/http%3A%2F%2Fexample.org%2FBallLightning"
+        f"/api/v1/ontologies/{oid}/entities/http%3A%2F%2Fexample.org%2FBallLightning"
     ).json()["data"]
     assert got["kind"] == "instance"
     assert got["label"] == {"en": "BallLightning"}
@@ -94,7 +94,7 @@ def test_create_instance_guards(client: TestClient, autosave_debounce_50ms) -> N
     oid, meta = _upload(client)
     # 未声明类 → 422
     r = client.post(
-        f"/api/ontologies/{oid}/instances",
+        f"/api/v1/ontologies/{oid}/instances",
         json={
             "name": "X",
             "prefix": "ex",
@@ -105,7 +105,7 @@ def test_create_instance_guards(client: TestClient, autosave_debounce_50ms) -> N
     assert r.status_code == 422
     # 重复 IRI → DUPLICATE_ENTITY 409
     r = client.post(
-        f"/api/ontologies/{oid}/instances",
+        f"/api/v1/ontologies/{oid}/instances",
         json={
             "name": "ThreeBody",
             "prefix": "ex",
@@ -124,12 +124,12 @@ def test_delete_instance_removes_assertions_both_ends(
     # ThreeBody: 自引用(subject) + 被 FanSequel 引用(object)
     # 删除后: FanSequel ex:inspiredBy ex:ThreeBody 应被删除,但 ex:knows(非声明属性)应保留
     r = client.delete(
-        f"/api/ontologies/{oid}/instances/{TB}", params={"baseRevision": meta["revision"]}
+        f"/api/v1/ontologies/{oid}/instances/{TB}", params={"baseRevision": meta["revision"]}
     )
     assert r.status_code == 200
     assert r.json()["data"]["meta"]["revision"] == 1
     # 读路径立即 404(实例从 IR 摘除)
-    assert client.get(f"/api/ontologies/{oid}/entities/{TB}").status_code == 404
+    assert client.get(f"/api/v1/ontologies/{oid}/entities/{TB}").status_code == 404
     _wait_landed(client, oid)
     # 移除数: ThreeBody 的 type×2 + label + inspiredBy 自引用 + FanSequel 的 inspiredBy(object端)
     assert r.json()["data"]["removed"] >= 5
@@ -148,7 +148,7 @@ def test_delete_instance_removes_assertions_both_ends(
 def _put(client: TestClient, oid: str, eid: str, body: dict) -> dict:
     from urllib.parse import quote
 
-    r = client.put(f"/api/ontologies/{oid}/instances/{quote(eid, safe='')}", json=body)
+    r = client.put(f"/api/v1/ontologies/{oid}/instances/{quote(eid, safe='')}", json=body)
     return r  # type: ignore[return-value]
 
 
@@ -174,7 +174,7 @@ def test_update_instance_replaces_assertions(client: TestClient, autosave_deboun
         },
     )
     assert r.status_code == 200
-    got = client.get(f"/api/ontologies/{oid}/entities/{TB}").json()["data"]
+    got = client.get(f"/api/v1/ontologies/{oid}/entities/{TB}").json()["data"]
     assert got["comment"] == "updated"
     assert [c["curie"] for c in got["classes"]] == ["ex:FanFic"]
     assert len(got["objectAssertions"]) == 1
@@ -209,7 +209,7 @@ def test_update_instance_data_assertion_string_roundtrip(
         },
     )
     assert r.status_code == 200
-    got = client.get(f"/api/ontologies/{oid}/entities/{TB}").json()["data"]
+    got = client.get(f"/api/v1/ontologies/{oid}/entities/{TB}").json()["data"]
     assert [(a["property"]["curie"], a["value"], a["datatype"]) for a in got["dataAssertions"]] == [
         ("ex:rating", "5 stars", "http://www.w3.org/2001/XMLSchema#string")
     ]
@@ -240,7 +240,7 @@ def test_update_instance_clears_all_assertions(client: TestClient, autosave_debo
     oid, meta = _upload(client)
     r = _put(client, oid, TB, {"assertions": [], "baseRevision": meta["revision"]})
     assert r.status_code == 200
-    got = client.get(f"/api/ontologies/{oid}/entities/{TB}").json()["data"]
+    got = client.get(f"/api/v1/ontologies/{oid}/entities/{TB}").json()["data"]
     # All declared assertions cleared
     assert got["objectAssertions"] == []
     assert got["dataAssertions"] == []
@@ -336,7 +336,7 @@ def test_update_instance_untouched_keys_stay(client: TestClient, autosave_deboun
     oid, meta = _upload(client)
     r = _put(client, oid, TB, {"baseRevision": meta["revision"]})
     assert r.status_code == 200
-    got = client.get(f"/api/ontologies/{oid}/entities/{TB}").json()["data"]
+    got = client.get(f"/api/v1/ontologies/{oid}/entities/{TB}").json()["data"]
     assert got["label"] == {"en": "ThreeBody"}  # label 永不动
     r = _put(client, oid, TB, {"comment": "x", "baseRevision": meta["revision"] + 7})
     assert r.status_code == 409
@@ -356,7 +356,7 @@ def test_instance_create_visible_immediately_and_regroups_on_retype(
     oid, meta = _upload(client)
     assert meta["revision"] == 0
     r = client.post(
-        f"/api/ontologies/{oid}/instances",
+        f"/api/v1/ontologies/{oid}/instances",
         json={
             "name": "james",
             "prefix": "ex",
@@ -371,12 +371,12 @@ def test_instance_create_visible_immediately_and_regroups_on_retype(
     james = "http://example.org/james"
 
     # 读路径立即可见:实例页 + 类 badge 归组(FanFic 1 个、Novel 仍只有 ThreeBody)
-    inst = client.get(f"/api/ontologies/{oid}/entities/{quote(james, safe='')}").json()["data"]
+    inst = client.get(f"/api/v1/ontologies/{oid}/entities/{quote(james, safe='')}").json()["data"]
     assert inst["kind"] == "instance"
     assert [c["eid"] for c in inst["classes"]] == [FANFIC]
-    fanfic = client.get(f"/api/ontologies/{oid}/entities/{FANFIC}/instances").json()["data"]
+    fanfic = client.get(f"/api/v1/ontologies/{oid}/entities/{FANFIC}/instances").json()["data"]
     assert [n["id"] for n in fanfic["nodes"]] == ["http://example.org/FanSequel", james]
-    novel = client.get(f"/api/ontologies/{oid}/entities/{NOVEL}/instances").json()["data"]
+    novel = client.get(f"/api/v1/ontologies/{oid}/entities/{NOVEL}/instances").json()["data"]
     assert [n["id"] for n in novel["nodes"]] == [TB]
 
     # retype:james 换到 Novel → 新类含它、旧类不含(个体行归位)
@@ -387,13 +387,13 @@ def test_instance_create_visible_immediately_and_regroups_on_retype(
         {"classes": [NOVEL], "baseRevision": _revision(client, oid)},
     )
     assert r.status_code == 200
-    inst = client.get(f"/api/ontologies/{oid}/entities/{quote(james, safe='')}").json()["data"]
+    inst = client.get(f"/api/v1/ontologies/{oid}/entities/{quote(james, safe='')}").json()["data"]
     assert [c["eid"] for c in inst["classes"]] == [NOVEL]
-    novel = client.get(f"/api/ontologies/{oid}/entities/{NOVEL}/instances").json()["data"]
+    novel = client.get(f"/api/v1/ontologies/{oid}/entities/{NOVEL}/instances").json()["data"]
     assert {n["id"] for n in novel["nodes"]} == {TB, james}
-    fanfic = client.get(f"/api/ontologies/{oid}/entities/{FANFIC}/instances").json()["data"]
+    fanfic = client.get(f"/api/v1/ontologies/{oid}/entities/{FANFIC}/instances").json()["data"]
     assert [n["id"] for n in fanfic["nodes"]] == ["http://example.org/FanSequel"]
     # 实例总数不动(retype 不产生/消灭个体;创建时已 +1)
-    meta2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    meta2 = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
     assert meta2["instanceCount"] == meta["instanceCount"] + 1
     assert meta2["revision"] == 2

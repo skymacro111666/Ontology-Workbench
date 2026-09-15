@@ -49,7 +49,7 @@ export default function CommandPalette() {
     queryKey: ['search', oid, debounced],
     queryFn: () =>
       api.get<SearchHit[]>(
-        `/api/ontologies/${oid as string}/search?q=${encodeURIComponent(debounced)}`,
+        `/api/v1/ontologies/${oid as string}/search?q=${encodeURIComponent(debounced)}`,
       ),
   })
 

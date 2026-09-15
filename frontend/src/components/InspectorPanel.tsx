@@ -139,7 +139,7 @@ function ClassPropSection({ oid, cls }: { oid: string; cls: string }) {
     queryKey: ['assertion-schema', oid, cls],
     queryFn: () =>
       api.get<SchemaProp[]>(
-        `/api/ontologies/${oid}/assertion-schema?classes=${encodeURIComponent(cls)}`,
+        `/api/v1/ontologies/${oid}/assertion-schema?classes=${encodeURIComponent(cls)}`,
       ),
   })
   if (!props?.length) return null
@@ -325,7 +325,7 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
     enabled: eid !== null,
     queryKey: ['entity', oid, eid],
     queryFn: () =>
-      api.get<EntityIR | InstanceIR>(`/api/ontologies/${oid}/entities/${encodeURIComponent(eid as string)}`),
+      api.get<EntityIR | InstanceIR>(`/api/v1/ontologies/${oid}/entities/${encodeURIComponent(eid as string)}`),
     retry: false,
   })
 
@@ -340,7 +340,7 @@ export default function InspectorPanel({ oid, eid }: { oid: string; eid: string 
     queryKey: ['instances', oid, eid],
     queryFn: () =>
       api.get<NodesEdges>(
-        `/api/ontologies/${oid}/entities/${encodeURIComponent(eid as string)}/instances`,
+        `/api/v1/ontologies/${oid}/entities/${encodeURIComponent(eid as string)}/instances`,
       ),
     retry: false,
   })

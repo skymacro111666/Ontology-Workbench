@@ -133,7 +133,7 @@ it('export menu downloads the current ontology in the picked RDF format', async 
 
   await waitFor(() =>
     expect(vi.mocked(api.download)).toHaveBeenCalledWith(
-      '/api/ontologies/oid-1/export/file?format=json-ld',
+      '/api/v1/ontologies/oid-1/export/file?format=json-ld',
       'ontology',
     ),
   )

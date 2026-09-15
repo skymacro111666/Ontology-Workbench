@@ -178,7 +178,7 @@ export default function GraphOverview({
   const { data, isError, error, refetch } = useQuery({
     queryKey: ['overview', oid, viewOverride],
     queryFn: () =>
-      api.get<NodesEdges>(`/api/ontologies/${oid}/overview?includeDeprecated=false&view=${viewOverride}`),
+      api.get<NodesEdges>(`/api/v1/ontologies/${oid}/overview?includeDeprecated=false&view=${viewOverride}`),
     retry: false,
     // Paused while anchored: the overview renders nothing then (base =
     // [anchor.self]), and mutation invalidations must not refetch a
@@ -192,7 +192,7 @@ export default function GraphOverview({
    *  the revision moves. Shares Browse's cache entry; no extra request. */
   const { data: meta } = useQuery({
     queryKey: ['ontology', oid],
-    queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
+    queryFn: () => api.get<OntologyMeta>(`/api/v1/ontologies/${oid}/meta`),
   })
   /** A focus outside a TRUNCATED overview used to degrade silently (backlog
    *  T12①); say so once per (oid, focus). Non-truncated overviews stay quiet —
@@ -212,12 +212,12 @@ export default function GraphOverview({
    *  would auto-layout first and then never rebuild onto the saved spots. */
   const { data: layoutData, isPending: layoutPending } = useQuery({
     queryKey: ['layout', oid],
-    queryFn: () => api.get<{ positions: Record<string, Pt> }>(`/api/ontologies/${oid}/layout`),
+    queryFn: () => api.get<{ positions: Record<string, Pt> }>(`/api/v1/ontologies/${oid}/layout`),
     retry: false,
   })
   const saveLayout = useMutation({
     mutationFn: (positions: Record<string, Pt>) =>
-      api.put(`/api/ontologies/${oid}/layout`, { positions }),
+      api.put(`/api/v1/ontologies/${oid}/layout`, { positions }),
     onError: () => toast.error(t('canvas.layoutSaveFailed')),
   })
   /** Remount nonce: bumping after 重排 forces GraphView back to the auto
@@ -225,7 +225,7 @@ export default function GraphOverview({
   const [layoutKey, setLayoutKey] = useState(0)
   const resetLayout = async () => {
     try {
-      await api.del(`/api/ontologies/${oid}/layout`)
+      await api.del(`/api/v1/ontologies/${oid}/layout`)
     } catch {
       // Reset is best-effort: an already-empty row is fine.
     }
@@ -247,7 +247,7 @@ export default function GraphOverview({
     setRevealed((m) => ({ ...m, [eid]: null }))
     try {
       const inst = await api.get<NodesEdges>(
-        `/api/ontologies/${oid}/entities/${encodeURIComponent(eid)}/instances`,
+        `/api/v1/ontologies/${oid}/entities/${encodeURIComponent(eid)}/instances`,
       )
       setRevealed((m) => ({ ...m, [eid]: inst }))
     } catch {
@@ -295,7 +295,7 @@ export default function GraphOverview({
     }
     try {
       const payload = await api.get<NodesEdges>(
-        `/api/ontologies/${oid}/entities/${encodeURIComponent(eid)}/expand`,
+        `/api/v1/ontologies/${oid}/entities/${encodeURIComponent(eid)}/expand`,
       )
       setExpanded((prev) => ({ ...prev, [eid]: payload }))
       const saved = layoutData?.positions ?? {}
@@ -332,10 +332,10 @@ export default function GraphOverview({
       try {
         const [ent, payload] = await Promise.all([
           api.get<EntityIR>(
-            `/api/ontologies/${oid}/entities/${encodeURIComponent(anchorEid)}`,
+            `/api/v1/ontologies/${oid}/entities/${encodeURIComponent(anchorEid)}`,
           ),
           api.get<NodesEdges>(
-            `/api/ontologies/${oid}/entities/${encodeURIComponent(anchorEid)}/expand`,
+            `/api/v1/ontologies/${oid}/entities/${encodeURIComponent(anchorEid)}/expand`,
           ),
         ]) as [EntityIR, NodesEdges]
         if (cancelled || ent.type !== 'Class') return
@@ -385,7 +385,7 @@ export default function GraphOverview({
       const fetchOne = async (eid: string, suffix: string) => {
         try {
           const payload = await api.get<NodesEdges>(
-            `/api/ontologies/${oid}/entities/${encodeURIComponent(eid)}${suffix}`,
+            `/api/v1/ontologies/${oid}/entities/${encodeURIComponent(eid)}${suffix}`,
           )
           return [eid, payload] as const
         } catch {
@@ -482,7 +482,7 @@ export default function GraphOverview({
     queryKey: ['assertion-edges', oid, edgeKey],
     queryFn: () =>
       api.get<AssertionEdgePayload>(
-        `/api/ontologies/${oid}/assertion-edges?eids=${revealedIds.map(encodeURIComponent).join(',')}`,
+        `/api/v1/ontologies/${oid}/assertion-edges?eids=${revealedIds.map(encodeURIComponent).join(',')}`,
       ),
     retry: false,
   })

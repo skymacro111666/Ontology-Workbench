@@ -39,7 +39,7 @@ ex:name a owl:DatatypeProperty ; rdfs:domain ex:Dog ; rdfs:range xsd:string .
 def _upload(client: TestClient) -> tuple[str, dict[str, Any]]:
     """Upload MINI and return (oid, meta)."""
     r = client.post(
-        "/api/ontologies", files={"file": ("mini.ttl", io.BytesIO(MINI), "text/turtle")}
+        "/api/v1/ontologies", files={"file": ("mini.ttl", io.BytesIO(MINI), "text/turtle")}
     )
     assert r.status_code == 201
     return r.json()["data"]["id"], r.json()["data"]
@@ -47,12 +47,12 @@ def _upload(client: TestClient) -> tuple[str, dict[str, Any]]:
 
 def _overview(client: TestClient, oid: str) -> dict[str, Any]:
     """Fetch the canvas overview payload."""
-    return client.get(f"/api/ontologies/{oid}/overview").json()["data"]
+    return client.get(f"/api/v1/ontologies/{oid}/overview").json()["data"]
 
 
 def _source(client: TestClient, oid: str) -> str:
     """Fetch the stored source text."""
-    return client.get(f"/api/ontologies/{oid}/source").json()["data"]["content"]
+    return client.get(f"/api/v1/ontologies/{oid}/source").json()["data"]["content"]
 
 
 def _wait_landed(client: TestClient, oid: str, timeout: float = 2.0) -> None:
@@ -79,7 +79,7 @@ def test_edit_returns_fast_and_file_lands_later(client: TestClient, autosave_deb
     oid, meta = _upload(client)
     t0 = time.perf_counter()
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={
             "name": "Fast",
             "prefix": "ex",
@@ -94,12 +94,12 @@ def test_edit_returns_fast_and_file_lands_later(client: TestClient, autosave_deb
     assert data["meta"]["saveState"] == "pending"
 
     # Read path sees the edit immediately (serves the patched IR).
-    ent = client.get(f"/api/ontologies/{oid}/entities/http%3A%2F%2Fexample.org%2FFast")
+    ent = client.get(f"/api/v1/ontologies/{oid}/entities/http%3A%2F%2Fexample.org%2FFast")
     assert ent.status_code == 200
     assert ent.json()["data"]["curie"].endswith("Fast")
 
     _wait_landed(client, oid)
-    meta2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    meta2 = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
     assert meta2["saveState"] == "idle"
     assert meta2["revision"] == 1
     assert "ex:Fast" in _source(client, oid)
@@ -109,26 +109,26 @@ def test_stale_revision_conflict(client: TestClient, autosave_debounce_50ms) -> 
     """A baseRevision that lags the row's revision is a 409 on every mutation."""
     oid, meta = _upload(client)
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={"name": "X", "prefix": "ex", "parents": [], "baseRevision": 7},
     )
     assert r.status_code == 409
     assert r.json()["code"] == "EDIT_CONFLICT"
 
     r = client.put(
-        f"/api/ontologies/{oid}/entities/{DOG}",
+        f"/api/v1/ontologies/{oid}/entities/{DOG}",
         json={"comment": "x", "baseRevision": 7},
     )
     assert r.status_code == 409
     assert r.json()["code"] == "EDIT_CONFLICT"
 
-    r = client.delete(f"/api/ontologies/{oid}/entities/{DOG}?baseRevision=7")
+    r = client.delete(f"/api/v1/ontologies/{oid}/entities/{DOG}?baseRevision=7")
     assert r.status_code == 409
     assert r.json()["code"] == "EDIT_CONFLICT"
 
     # The refused edits bumped nothing: revision 0 still admits a legal edit.
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={"name": "X", "prefix": "ex", "parents": [], "baseRevision": meta["revision"]},
     )
     assert r.status_code == 200
@@ -147,7 +147,7 @@ def test_shutdown_flushes_pending_edit(tmp_path: Path) -> None:
         auth(client)
         oid, meta = _upload(client)
         r = client.post(
-            f"/api/ontologies/{oid}/classes",
+            f"/api/v1/ontologies/{oid}/classes",
             json={
                 "name": "Fast",
                 "prefix": "ex",
@@ -171,7 +171,7 @@ def test_create_class_with_parent_and_label(client: TestClient, autosave_debounc
     """POST /classes lands the node, the subClassOf edge and a @zh label."""
     oid, meta = _upload(client)
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={
             "name": "Cat",
             "prefix": "ex",
@@ -191,7 +191,7 @@ def test_create_class_with_parent_and_label(client: TestClient, autosave_debounc
     cat = next(n["id"] for n in ov["nodes"] if n["curie"] == "ex:Cat")
     assert any(e["source"] == cat and e["target"] == ANIMAL for e in ov["edges"])
     # The label lands as a @zh literal and the comment survives round-trip.
-    ent = client.get(f"/api/ontologies/{oid}/entities/{cat}").json()["data"]
+    ent = client.get(f"/api/v1/ontologies/{oid}/entities/{cat}").json()["data"]
     assert ent["label"] == {"zh": "猫"}
     assert ent["comment"] == "A cat."
     _wait_landed(client, oid)
@@ -202,7 +202,7 @@ def test_create_object_and_datatype_properties(client: TestClient, autosave_debo
     """POST /properties wires domain/range edges for both property kinds."""
     oid, meta = _upload(client)
     r = client.post(
-        f"/api/ontologies/{oid}/properties",
+        f"/api/v1/ontologies/{oid}/properties",
         json={
             "name": "playsWith",
             "prefix": "ex",
@@ -225,9 +225,9 @@ def test_create_object_and_datatype_properties(client: TestClient, autosave_debo
     assert not any(n["curie"] == "ex:playsWith" for n in ov["nodes"])
 
     _wait_landed(client, oid)
-    meta2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    meta2 = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
     r = client.post(
-        f"/api/ontologies/{oid}/properties",
+        f"/api/v1/ontologies/{oid}/properties",
         json={
             "name": "age",
             "prefix": "ex",
@@ -254,26 +254,26 @@ def test_write_guards_conflict_duplicate_prefix_notfound(
         "parents": [],
         "baseRevision": meta["revision"],
     }
-    r = client.post(f"/api/ontologies/{oid}/classes", json=dup)
+    r = client.post(f"/api/v1/ontologies/{oid}/classes", json=dup)
     assert r.status_code == 409
     assert r.json()["code"] == "DUPLICATE_ENTITY"
 
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={"name": "X", "prefix": "nope", "parents": [], "baseRevision": meta["revision"]},
     )
     assert r.status_code == 422
     assert "ex" in (r.json()["hint"] or "")
 
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={"name": "X", "prefix": "ex", "parents": [], "baseRevision": 99},
     )
     assert r.status_code == 409
     assert r.json()["code"] == "EDIT_CONFLICT"
 
     r = client.post(
-        "/api/ontologies/00000000-0000-0000-0000-000000000000/classes",
+        "/api/v1/ontologies/00000000-0000-0000-0000-000000000000/classes",
         json={"name": "X", "prefix": "ex", "parents": [], "baseRevision": 0},
     )
     assert r.status_code == 404
@@ -291,7 +291,7 @@ def test_invalid_iri_refs_are_422_and_file_unchanged(
     before = _source(client, oid)
 
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={
             "name": "X",
             "prefix": "ex",
@@ -303,7 +303,7 @@ def test_invalid_iri_refs_are_422_and_file_unchanged(
     assert r.json()["code"] == "VALIDATION_ERROR"
 
     r = client.post(
-        f"/api/ontologies/{oid}/properties",
+        f"/api/v1/ontologies/{oid}/properties",
         json={
             "name": "p",
             "prefix": "ex",
@@ -316,7 +316,7 @@ def test_invalid_iri_refs_are_422_and_file_unchanged(
     assert r.status_code == 422
 
     r = client.put(
-        f"/api/ontologies/{oid}/entities/{DOG}",
+        f"/api/v1/ontologies/{oid}/entities/{DOG}",
         json={"parents": ["http://exa mple.org/A"], "baseRevision": meta["revision"]},
     )
     assert r.status_code == 422
@@ -324,10 +324,10 @@ def test_invalid_iri_refs_are_422_and_file_unchanged(
 
     # Refused everywhere: file untouched, revision still valid for the next write.
     assert _source(client, oid) == before
-    meta2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    meta2 = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
     assert meta2["revision"] == meta["revision"]
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={"name": "Y", "prefix": "ex", "parents": [], "baseRevision": meta2["revision"]},
     )
     assert r.status_code == 200
@@ -337,7 +337,7 @@ def test_update_entity_label_comment_parents(client: TestClient, autosave_deboun
     """PUT /entities rewrites label/comment/parents but keeps restrictions."""
     oid, meta = _upload(client)
     r = client.put(
-        f"/api/ontologies/{oid}/entities/{DOG}",
+        f"/api/v1/ontologies/{oid}/entities/{DOG}",
         json={
             "label": {"value": "狗", "lang": "zh"},
             "comment": "Good dog.",
@@ -346,7 +346,7 @@ def test_update_entity_label_comment_parents(client: TestClient, autosave_deboun
         },
     )
     assert r.status_code == 200
-    ent = client.get(f"/api/ontologies/{oid}/entities/{DOG}").json()["data"]
+    ent = client.get(f"/api/v1/ontologies/{oid}/entities/{DOG}").json()["data"]
     assert ent["label"] == {"zh": "狗"}
     assert ent["comment"] == "Good dog."
     assert [p["eid"] for p in ent["parents"]] == [THING]
@@ -360,18 +360,18 @@ def test_update_entity_clears_with_empty_and_404s_on_unknown(
 ) -> None:
     """parents: [] clears named parents; unknown eid is 404."""
     oid, meta = _upload(client)
-    meta2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    meta2 = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
     r = client.put(
-        f"/api/ontologies/{oid}/entities/{ANIMAL}",
+        f"/api/v1/ontologies/{oid}/entities/{ANIMAL}",
         json={"parents": [], "baseRevision": meta2["revision"]},
     )
     assert r.status_code == 200
-    ent = client.get(f"/api/ontologies/{oid}/entities/{ANIMAL}").json()["data"]
+    ent = client.get(f"/api/v1/ontologies/{oid}/entities/{ANIMAL}").json()["data"]
     assert ent["parents"] == []
 
-    meta3 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    meta3 = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
     r = client.put(
-        f"/api/ontologies/{oid}/entities/{'http://example.org/Ghost'}",
+        f"/api/v1/ontologies/{oid}/entities/{'http://example.org/Ghost'}",
         json={"comment": "x", "baseRevision": meta3["revision"]},
     )
     assert r.status_code == 404
@@ -383,7 +383,7 @@ def test_delete_entity_prunes_reverse_references(
     """DELETE removes the entity and (prune) every edge pointing at it."""
     oid, meta = _upload(client)
     r = client.delete(
-        f"/api/ontologies/{oid}/entities/{ANIMAL}?baseRevision={meta['revision']}&prune=true"
+        f"/api/v1/ontologies/{oid}/entities/{ANIMAL}?baseRevision={meta['revision']}&prune=true"
     )
     assert r.status_code == 200
     ov = _overview(client, oid)
@@ -399,7 +399,7 @@ def test_delete_keeps_dangling_references_without_prune(
     """prune=false leaves reverse triples in the file."""
     oid, meta = _upload(client)
     r = client.delete(
-        f"/api/ontologies/{oid}/entities/{ANIMAL}?baseRevision={meta['revision']}&prune=false"
+        f"/api/v1/ontologies/{oid}/entities/{ANIMAL}?baseRevision={meta['revision']}&prune=false"
     )
     assert r.status_code == 200
     _wait_landed(client, oid)
@@ -420,7 +420,7 @@ def test_entity_write_refreshes_disk_ir_cache(
 
     oid, meta = _upload(client)
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={
             "name": "Cat",
             "prefix": "ex",
@@ -440,7 +440,7 @@ def test_entity_write_refreshes_disk_ir_cache(
         return real(data, fmt)
 
     monkeypatch.setattr(browse_mod, "timed_parse_store", spy)
-    ov = client.get(f"/api/ontologies/{oid}/overview")
+    ov = client.get(f"/api/v1/ontologies/{oid}/overview")
     assert ov.status_code == 200
     assert ov.json()["data"]["totalCount"] == 7  # MINI 6 entities + Cat
     assert calls == []
@@ -469,7 +469,7 @@ def test_edit_parses_file_once_and_keeps_parse_ms(
 
     monkeypatch.setattr(cache_mod, "parse_store", spy)
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={
             "name": "Cat",
             "prefix": "ex",
@@ -481,7 +481,7 @@ def test_edit_parses_file_once_and_keeps_parse_ms(
     assert calls == [1]  # load_store only; patch + autosave never re-parse
 
     _wait_landed(client, oid)
-    after = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    after = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
     assert after["parseMs"] == meta["parseMs"]  # kept from the original parse
     with sessionmaker_or_fail()() as session:
         row = session.get(Ontology, UUID(oid))
@@ -514,14 +514,14 @@ def test_create_class_in_default_namespace(client: TestClient, autosave_debounce
     the empty prefix.
     """
     r = client.post(
-        "/api/ontologies",
+        "/api/v1/ontologies",
         files={"file": ("pizza.ttl", io.BytesIO(EMPTY_PREFIX_TTL), "text/turtle")},
     )
     assert r.status_code == 201
     oid, meta = r.json()["data"]["id"], r.json()["data"]
 
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={"name": "Cat", "prefix": "", "parents": [], "baseRevision": meta["revision"]},
     )
     assert r.status_code == 200, r.text
@@ -549,14 +549,14 @@ def test_edit_rdfxml_default_namespace_round_trips(
     namespace bound (2026-09-03 plan carry-in).
     """
     r = client.post(
-        "/api/ontologies",
+        "/api/v1/ontologies",
         files={"file": ("mini.rdf", io.BytesIO(RDFXML_DEFAULT_NS), "application/rdf+xml")},
     )
     assert r.status_code == 201
     oid, meta = r.json()["data"]["id"], r.json()["data"]
 
     r = client.put(
-        f"/api/ontologies/{oid}/entities/{THING}",
+        f"/api/v1/ontologies/{oid}/entities/{THING}",
         json={"comment": "root", "baseRevision": meta["revision"]},
     )
     assert r.status_code == 200, r.text
@@ -565,9 +565,9 @@ def test_edit_rdfxml_default_namespace_round_trips(
     src = _source(client, oid)
     assert 'xmlns="http://example.org/"' in src  # default namespace survives
     # The dumped file re-parses: a second edit on the refreshed revision works.
-    meta2 = client.get(f"/api/ontologies/{oid}/meta").json()["data"]
+    meta2 = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]
     r = client.put(
-        f"/api/ontologies/{oid}/entities/{ANIMAL}",
+        f"/api/v1/ontologies/{oid}/entities/{ANIMAL}",
         json={"comment": "child", "baseRevision": meta2["revision"]},
     )
     assert r.status_code == 200, r.text
@@ -588,14 +588,14 @@ JSONLD_CONTEXT = b"""{
 def test_edit_jsonld_round_trips(client: TestClient, autosave_debounce_50ms) -> None:
     """Creating a class in a jsonld ontology survives the dump + re-parse."""
     r = client.post(
-        "/api/ontologies",
+        "/api/v1/ontologies",
         files={"file": ("mini.jsonld", io.BytesIO(JSONLD_CONTEXT), "application/ld+json")},
     )
     assert r.status_code == 201
     oid, meta = r.json()["data"]["id"], r.json()["data"]
 
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={"name": "Cat", "prefix": "ex", "baseRevision": meta["revision"]},
     )
     assert r.status_code == 200, r.text
@@ -609,6 +609,6 @@ def test_edit_jsonld_round_trips(client: TestClient, autosave_debounce_50ms) -> 
     # The dumped file must carry @context — the same serializer backs the
     # autosave path, and a context-less dump would strip ex: on the next
     # cold parse (curies degrade to full IRIs).
-    content = client.get(f"/api/ontologies/{oid}/source").json()["data"]["content"]
+    content = client.get(f"/api/v1/ontologies/{oid}/source").json()["data"]["content"]
     assert '"@context"' in content
     assert '"ex"' in content

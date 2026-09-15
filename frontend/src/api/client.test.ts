@@ -82,7 +82,7 @@ describe('api request auth redirect', () => {
       ),
     )
 
-    await expect(api.get('/api/ontologies')).rejects.toThrow(ApiErr)
+    await expect(api.get('/api/v1/ontologies')).rejects.toThrow(ApiErr)
     expect(store['ow_token']).toBeUndefined()
     expect(fakeWindow.location.href).toBe('/login')
   })
@@ -112,7 +112,7 @@ describe('last request tracking', () => {
       ),
     )
 
-    await api.post('/api/ping', {})
+    await api.post('/api/v1/ping', {})
 
     const last = useRequestStore.getState().lastRequest
     expect(last?.method).toBe('POST')
@@ -140,7 +140,7 @@ describe('last request tracking', () => {
       ),
     )
 
-    await expect(api.get('/api/none')).rejects.toThrow(ApiErr)
+    await expect(api.get('/api/v1/none')).rejects.toThrow(ApiErr)
     expect(useRequestStore.getState().lastRequest).toBeNull()
   })
 })

@@ -1,5 +1,5 @@
 {
-  "_comment": "Sample: GET /api/ontologies/{oid}/assertion-schema?classes={ScienceFiction} -> 200. Usable assertion properties for inline instance editing (spec §4.1): declared properties whose domain lies in the classes superclass closure (inherited=true, via=pulling class curie) united with domainless properties; target.kind datatype marks xsd ranges (declared null), class marks declared range classes. Bounded, unordered-equivalent list sorted by curie.",
+  "_comment": "Sample: GET /api/v1/ontologies/{oid}/assertion-schema?classes={ScienceFiction} -> 200. Usable assertion properties for inline instance editing (spec §4.1): declared properties whose domain lies in the classes superclass closure (inherited=true, via=pulling class curie) united with domainless properties; target.kind datatype marks xsd ranges (declared null), class marks declared range classes. Bounded, unordered-equivalent list sorted by curie.",
   "code": "OK",
   "message": "success",
   "data": [

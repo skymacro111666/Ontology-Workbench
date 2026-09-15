@@ -60,7 +60,7 @@ function renderHome() {
 
 const deleteCalls = (fetchMock: Mock) =>
   fetchMock.mock.calls.filter(
-    ([url, init]) => String(url).includes('/api/ontologies/') && init?.method === 'DELETE',
+    ([url, init]) => String(url).includes('/api/v1/ontologies/') && init?.method === 'DELETE',
   )
 
 describe('Home', () => {
@@ -99,7 +99,7 @@ describe('Home', () => {
 
   it('appends tagged sample cards after the real list and loads the picked one', async () => {
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      if (String(url) === '/api/samples/owl2') {
+      if (String(url) === '/api/v1/samples/owl2') {
         expect(init?.method).toBe('POST')
         return ok({ id: 'owl2-oid', filename: 'owl2.ttl', format: 'turtle' })
       }
@@ -120,13 +120,13 @@ describe('Home', () => {
     const sample = screen.getByText('OWL 2 Constructs')
     expect(real.compareDocumentPosition(sample) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
-    // Load goes through POST /api/samples/{name} and opens the result.
+    // Load goes through POST /api/v1/samples/{name} and opens the result.
     const loadButtons = screen.getAllByRole('button', { name: '载入' })
     expect(loadButtons).toHaveLength(5)
     await userEvent.click(loadButtons[4]) // OWL 2 Constructs — last in SAMPLES order
     expect(await screen.findByText('browse:owl2-oid')).toBeTruthy()
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/samples/owl2',
+      '/api/v1/samples/owl2',
       expect.objectContaining({ method: 'POST' }),
     )
   })
@@ -188,7 +188,7 @@ describe('Home', () => {
 
   it('deletes only after the AlertDialog confirmation', async () => {
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      if (String(url) === '/api/ontologies/oid-1' && init?.method === 'DELETE') return ok(null)
+      if (String(url) === '/api/v1/ontologies/oid-1' && init?.method === 'DELETE') return ok(null)
       return ok({ items: [summary('oid-1', { title: 'Pizza' })], total: 1 })
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -206,7 +206,7 @@ describe('Home', () => {
     await userEvent.click(screen.getByRole('button', { name: '删除' }))
     await waitFor(() => expect(deleteCalls(fetchMock)).toHaveLength(1))
     expect(fetchMock).toHaveBeenCalledWith(
-      '/api/ontologies/oid-1',
+      '/api/v1/ontologies/oid-1',
       expect.objectContaining({ method: 'DELETE' }),
     )
   })
@@ -216,7 +216,7 @@ describe('Home', () => {
     // it must not vanish on the first click leaving only a toast as feedback.
     let resolveDelete!: (v: Response) => void
     const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      if (String(url) === '/api/ontologies/oid-1' && init?.method === 'DELETE') {
+      if (String(url) === '/api/v1/ontologies/oid-1' && init?.method === 'DELETE') {
         return new Promise<Response>((r) => {
           resolveDelete = r
         })

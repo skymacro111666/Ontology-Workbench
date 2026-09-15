@@ -99,11 +99,11 @@ export default function ValidationConsole({ oid }: { oid: string }) {
 
   const { data: meta } = useQuery({
     queryKey: ['ontology', oid],
-    queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
+    queryFn: () => api.get<OntologyMeta>(`/api/v1/ontologies/${oid}/meta`),
   })
   const { data: shapes } = useQuery({
     queryKey: ['validation-shapes', oid],
-    queryFn: () => api.get<ShapesPayload>(`/api/ontologies/${oid}/validation/shapes`),
+    queryFn: () => api.get<ShapesPayload>(`/api/v1/ontologies/${oid}/validation/shapes`),
   })
   const big =
     (meta?.classCount ?? 0) + (meta?.propertyCount ?? 0) + (meta?.instanceCount ?? 0) > 2000
@@ -118,7 +118,7 @@ export default function ValidationConsole({ oid }: { oid: string }) {
     try {
       // 恒带编辑器当前内容:未保存的 shapes 也能直接跑(inline shadows stored)。
       const data = await api.post<ValidationRunResult>(
-        `/api/ontologies/${oid}/validation/run`,
+        `/api/v1/ontologies/${oid}/validation/run`,
         { source: doc(), includeDeprecated: !ignoreDep },
       )
       setResult(data)
@@ -145,7 +145,7 @@ export default function ValidationConsole({ oid }: { oid: string }) {
     setSaving(true)
     setError(null)
     try {
-      await api.put(`/api/ontologies/${oid}/validation/shapes`, { source: doc() })
+      await api.put(`/api/v1/ontologies/${oid}/validation/shapes`, { source: doc() })
       toast.success(tr('validationView.saved'))
     } catch (e) {
       setError(
@@ -165,7 +165,7 @@ export default function ValidationConsole({ oid }: { oid: string }) {
     setError(null)
     try {
       const { name } = await api.downloadBinary(
-        `/api/ontologies/${oid}/validation/export`,
+        `/api/v1/ontologies/${oid}/validation/export`,
         `validation.${format}`,
         { method: 'POST', body: { source: doc(), includeDeprecated: !ignoreDep, format } },
       )

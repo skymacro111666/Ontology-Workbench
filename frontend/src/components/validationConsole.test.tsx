@@ -145,7 +145,7 @@ describe('ValidationConsole', () => {
     await userEvent.selectOptions(screen.getByLabelText(/预设/), 'obo-integrity')
     await userEvent.click(screen.getByRole('button', { name: /运行/ }))
     await waitFor(() => expect(posts).toHaveLength(1))
-    expect(posts[0].url).toContain(`/api/ontologies/${OID}/validation/run`)
+    expect(posts[0].url).toContain(`/api/v1/ontologies/${OID}/validation/run`)
     expect(posts[0].body).toMatchObject({ source: '# obo' })
   })
 
@@ -199,7 +199,7 @@ describe('ValidationConsole', () => {
     await userEvent.click(screen.getByRole('button', { name: /导出/ }))
     await userEvent.click(screen.getByRole('menuitem', { name: /导出 CSV/ }))
     await waitFor(() => expect(exportsOut).toHaveLength(1))
-    expect(exportsOut[0].url).toContain(`/api/ontologies/${OID}/validation/export`)
+    expect(exportsOut[0].url).toContain(`/api/v1/ontologies/${OID}/validation/export`)
     expect(exportsOut[0].body).toMatchObject({
       source: '# min',
       includeDeprecated: false,
@@ -221,6 +221,6 @@ describe('ValidationConsole', () => {
     await screen.findByLabelText(/shapes/i)
     await userEvent.click(screen.getByRole('button', { name: /保存/ }))
     await waitFor(() => expect(puts).toHaveLength(1))
-    expect(puts[0].url).toContain(`/api/ontologies/${OID}/validation/shapes`)
+    expect(puts[0].url).toContain(`/api/v1/ontologies/${OID}/validation/shapes`)
   })
 })

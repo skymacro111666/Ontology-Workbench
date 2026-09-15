@@ -35,7 +35,7 @@ from ontoworkbench.db.session import get_session
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 
-router = APIRouter(prefix="/api/ontologies", tags=["validation"])
+router = APIRouter(prefix="/api/v1/ontologies", tags=["validation"])
 
 
 class CamelModel(BaseModel):

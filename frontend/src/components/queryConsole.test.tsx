@@ -90,7 +90,7 @@ describe('QueryConsole', () => {
     renderConsole(stubFetch())
     await userEvent.click(screen.getByRole('button', { name: /^运行/ }))
     // Request shape: POST /query with the editor's doc as qs.
-    expect(posted?.url).toContain('/api/ontologies/oid-1/query')
+    expect(posted?.url).toContain('/api/v1/ontologies/oid-1/query')
     expect(posted?.body.qs).toContain('SELECT ?class ?label')
     // Table: header per column, curie-shortened IRIs, unbound cell as —.
     expect(await screen.findByText('ex:Dog')).toBeTruthy()
@@ -109,7 +109,7 @@ describe('QueryConsole', () => {
     await userEvent.click(screen.getByRole('button', { name: /导出/ }))
     await userEvent.click(screen.getByRole('menuitem', { name: /导出 CSV/ }))
     await waitFor(() => expect(exported).toBeDefined())
-    expect(exported!.url).toContain('/api/ontologies/oid-1/query/export')
+    expect(exported!.url).toContain('/api/v1/ontologies/oid-1/query/export')
     expect(exported!.body.format).toBe('csv')
     expect(String(exported!.body.qs)).toContain('SELECT ?class ?label')
     // 未截断 → 不出现限制提示

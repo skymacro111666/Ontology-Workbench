@@ -18,7 +18,7 @@ def test_entity_payload_matches_golden_structure(client: TestClient) -> None:
 
     oid = _upload(client)
     eid = quote("http://example.org/Dog", safe="")
-    data = client.get(f"/api/ontologies/{oid}/entities/{eid}").json()["data"]
+    data = client.get(f"/api/v1/ontologies/{oid}/entities/{eid}").json()["data"]
 
     golden_data = GOLDEN["data"]
     assert set(data) == set(golden_data), (

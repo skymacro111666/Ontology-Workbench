@@ -16,13 +16,13 @@ ex:Dog a owl:Class ; rdfs:subClassOf ex:Animal ; rdfs:label "Dog"@en .
 
 def _upload(client: TestClient) -> str:
     r = client.post(
-        "/api/ontologies", files={"file": ("mini.ttl", io.BytesIO(MINI), "text/turtle")}
+        "/api/v1/ontologies", files={"file": ("mini.ttl", io.BytesIO(MINI), "text/turtle")}
     )
     return r.json()["data"]["id"]
 
 
 def _run(client: TestClient, oid: str, qs: str):
-    return client.post(f"/api/ontologies/{oid}/query", json={"qs": qs}).json()["data"]
+    return client.post(f"/api/v1/ontologies/{oid}/query", json={"qs": qs}).json()["data"]
 
 
 def test_select_with_path_and_curie(client: TestClient) -> None:
@@ -86,20 +86,20 @@ def test_update_rejected_as_invalid(client: TestClient) -> None:
     """SPARQL UPDATE never runs: engine-level read-only via query()."""
     oid = _upload(client)
     r = client.post(
-        f"/api/ontologies/{oid}/query",
+        f"/api/v1/ontologies/{oid}/query",
         json={"qs": "INSERT DATA { <http://x/a> <http://x/b> <http://x/c> }"},
     )
     assert r.status_code == 400
     assert r.json()["code"] == "QUERY_INVALID"
     # Nothing landed: the class count did not change.
-    tree = client.get(f"/api/ontologies/{oid}/tree").json()["data"]
+    tree = client.get(f"/api/v1/ontologies/{oid}/tree").json()["data"]
     assert len(tree) == 1
 
 
 def test_syntax_garbage_is_query_invalid(client: TestClient) -> None:
     """Non-SPARQL text 400s with the engine's parse message as hint."""
     oid = _upload(client)
-    r = client.post(f"/api/ontologies/{oid}/query", json={"qs": "NONSENSE {"})
+    r = client.post(f"/api/v1/ontologies/{oid}/query", json={"qs": "NONSENSE {"})
     assert r.status_code == 400 and r.json()["code"] == "QUERY_INVALID"
 
 
@@ -120,7 +120,7 @@ def test_row_cap_truncates_truthfully(client: TestClient, monkeypatch) -> None:
 def test_query_requires_owned_ontology(client: TestClient) -> None:
     """Foreign/unknown oid 404s like every other browse endpoint."""
     r = client.post(
-        "/api/ontologies/00000000-0000-0000-0000-000000000000/query",
+        "/api/v1/ontologies/00000000-0000-0000-0000-000000000000/query",
         json={"qs": "SELECT * WHERE { ?s ?p ?o }"},
     )
     assert r.status_code == 404 and r.json()["code"] == "NOT_FOUND"
@@ -132,7 +132,7 @@ SELECT_ALL = "SELECT ?s ?p ?o WHERE { ?s ?p ?o } ORDER BY ?s ?p ?o"
 
 
 def _export(client: TestClient, oid: str, qs: str, format: str = "csv"):
-    return client.post(f"/api/ontologies/{oid}/query/export", json={"qs": qs, "format": format})
+    return client.post(f"/api/v1/ontologies/{oid}/query/export", json={"qs": qs, "format": format})
 
 
 def test_export_select_csv(client: TestClient) -> None:

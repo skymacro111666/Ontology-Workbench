@@ -104,18 +104,18 @@ export default function EntityDialogs({ oid }: { oid: string }) {
 
   const { data: meta } = useQuery({
     queryKey: ['ontology', oid],
-    queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
+    queryFn: () => api.get<OntologyMeta>(`/api/v1/ontologies/${oid}/meta`),
     enabled: !!dialog,
   })
   const { data: overview } = useQuery({
     queryKey: ['overview', oid],
-    queryFn: () => api.get<NodesEdges>(`/api/ontologies/${oid}/overview`),
+    queryFn: () => api.get<NodesEdges>(`/api/v1/ontologies/${oid}/overview`),
     enabled: !!dialog && !isEdit(dialog.mode) && dialog.mode !== 'delete',
   })
   const editEid = dialog && isEdit(dialog.mode) ? dialog.eid : undefined
   const { data: entity } = useQuery({
     queryKey: ['entity', oid, editEid],
-    queryFn: () => api.get<EntityIR>(`/api/ontologies/${oid}/entities/${encodeURIComponent(editEid ?? '')}`),
+    queryFn: () => api.get<EntityIR>(`/api/v1/ontologies/${oid}/entities/${encodeURIComponent(editEid ?? '')}`),
     enabled: !!editEid,
   })
 
@@ -208,7 +208,7 @@ export default function EntityDialogs({ oid }: { oid: string }) {
       const label = { value: name.trim(), lang: null }
       const cleanComment = comment.trim() === '' ? null : comment.trim()
       if (mode === 'class' || mode === 'subclass') {
-        return api.post<{ entity: { eid: string } }>(`/api/ontologies/${oid}/classes`, {
+        return api.post<{ entity: { eid: string } }>(`/api/v1/ontologies/${oid}/classes`, {
           name: name.trim(),
           prefix,
           label,
@@ -218,7 +218,7 @@ export default function EntityDialogs({ oid }: { oid: string }) {
         })
       }
       if (mode === 'objectProperty' || mode === 'dataProperty') {
-        return api.post<{ entity: { eid: string } }>(`/api/ontologies/${oid}/properties`, {
+        return api.post<{ entity: { eid: string } }>(`/api/v1/ontologies/${oid}/properties`, {
           name: name.trim(),
           prefix,
           ptype: mode === 'objectProperty' ? 'ObjectProperty' : 'DatatypeProperty',
@@ -237,11 +237,11 @@ export default function EntityDialogs({ oid }: { oid: string }) {
           body.domains = picked
           body.ranges = range
         }
-        return api.put(`/api/ontologies/${oid}/entities/${encodeURIComponent(dialog?.eid ?? '')}`, body)
+        return api.put(`/api/v1/ontologies/${oid}/entities/${encodeURIComponent(dialog?.eid ?? '')}`, body)
       }
       // delete
       return api.del(
-        `/api/ontologies/${oid}/entities/${encodeURIComponent(dialog?.eid ?? '')}` +
+        `/api/v1/ontologies/${oid}/entities/${encodeURIComponent(dialog?.eid ?? '')}` +
           `?baseRevision=${revision}&prune=true`,
       )
     },

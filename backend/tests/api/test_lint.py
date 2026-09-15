@@ -10,7 +10,7 @@ from tests.api.test_browse_api import _upload
 def test_config_roundtrip_and_defaults(client: TestClient) -> None:
     """Fresh ontology carries no config; PUT overwrites the whole set."""
     oid = _upload(client)
-    r = client.get(f"/api/ontologies/{oid}/lint/config")
+    r = client.get(f"/api/v1/ontologies/{oid}/lint/config")
     assert r.status_code == 200
     assert r.json()["data"] == {"disabled": [], "custom": []}
 
@@ -25,8 +25,8 @@ def test_config_roundtrip_and_defaults(client: TestClient) -> None:
             }
         ],
     }
-    assert client.put(f"/api/ontologies/{oid}/lint/config", json=body).status_code == 200
-    data = client.get(f"/api/ontologies/{oid}/lint/config").json()["data"]
+    assert client.put(f"/api/v1/ontologies/{oid}/lint/config", json=body).status_code == 200
+    data = client.get(f"/api/v1/ontologies/{oid}/lint/config").json()["data"]
     assert data["disabled"] == ["missing-label", "duplicate-label"]
     assert len(data["custom"]) == 1 and data["custom"][0]["name"] == "老书"
     assert data["custom"][0]["id"]  # uuid 持久,供 onlyRuleId
@@ -39,16 +39,16 @@ def test_config_rejects_bad_severity_and_foreign_ontology(client: TestClient) ->
         "disabled": [],
         "custom": [{"name": "x", "severity": "fatal", "sparql": "SELECT ?s WHERE {}"}],
     }
-    assert client.put(f"/api/ontologies/{oid}/lint/config", json=bad).status_code == 422
+    assert client.put(f"/api/v1/ontologies/{oid}/lint/config", json=bad).status_code == 422
     ghost = "00000000-0000-0000-0000-000000000000"
-    assert client.get(f"/api/ontologies/{ghost}/lint/config").status_code == 404
+    assert client.get(f"/api/v1/ontologies/{ghost}/lint/config").status_code == 404
 
 
 def test_run_lint_endpoint_assembles_builtin_and_custom(client: TestClient) -> None:
     """Run honors disabled builtins, adds custom SPARQL rules, counts severities."""
     oid = _upload(client)
     client.put(
-        f"/api/ontologies/{oid}/lint/config",
+        f"/api/v1/ontologies/{oid}/lint/config",
         json={
             "disabled": ["missing-label"],
             "custom": [
@@ -61,7 +61,7 @@ def test_run_lint_endpoint_assembles_builtin_and_custom(client: TestClient) -> N
             ],
         },
     )
-    r = client.post(f"/api/ontologies/{oid}/lint/run", json={})
+    r = client.post(f"/api/v1/ontologies/{oid}/lint/run", json={})
     assert r.status_code == 200
     data = r.json()["data"]
     ids = {res["ruleId"] for res in data["results"]}
@@ -73,7 +73,7 @@ def test_run_lint_endpoint_assembles_builtin_and_custom(client: TestClient) -> N
 
     # onlyRuleId 只跑一条(设置对话框的「测试」)
     rid = next(res for res in data["results"] if res.get("name") == "x")["ruleId"]
-    r = client.post(f"/api/ontologies/{oid}/lint/run", json={"onlyRuleId": rid})
+    r = client.post(f"/api/v1/ontologies/{oid}/lint/run", json={"onlyRuleId": rid})
     assert len(r.json()["data"]["results"]) == 1
 
 
@@ -88,7 +88,7 @@ def test_run_lint_never_evicts_pooled_store(
     import ontoworkbench.server.cache as cache_mod
 
     oid = _upload(client)
-    assert client.post(f"/api/ontologies/{oid}/lint/run", json={}).status_code == 200
+    assert client.post(f"/api/v1/ontologies/{oid}/lint/run", json={}).status_code == 200
 
     calls: list[int] = []
     real = cache_mod.parse_store
@@ -98,9 +98,9 @@ def test_run_lint_never_evicts_pooled_store(
         return real(data, fmt)
 
     monkeypatch.setattr(cache_mod, "parse_store", spy)
-    base = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["revision"]
+    base = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]["revision"]
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={"name": "Cat", "prefix": "ex", "parents": [], "baseRevision": base},
     )
     assert r.status_code == 200, r.text
@@ -117,7 +117,7 @@ def test_custom_update_rule_errors_and_nothing_lands(
     """
     oid = _upload(client)
     client.put(
-        f"/api/ontologies/{oid}/lint/config",
+        f"/api/v1/ontologies/{oid}/lint/config",
         json={
             "disabled": [],
             "custom": [
@@ -130,14 +130,14 @@ def test_custom_update_rule_errors_and_nothing_lands(
             ],
         },
     )
-    data = client.post(f"/api/ontologies/{oid}/lint/run", json={}).json()["data"]
+    data = client.post(f"/api/v1/ontologies/{oid}/lint/run", json={}).json()["data"]
     evil = next(res for res in data["results"] if res.get("name") == "evil")
     assert (evil["error"] or "").startswith("SPARQL_ERROR")
 
     # The pooled Store survived intact: the next edit persists everything.
-    base = client.get(f"/api/ontologies/{oid}/meta").json()["data"]["revision"]
+    base = client.get(f"/api/v1/ontologies/{oid}/meta").json()["data"]["revision"]
     r = client.post(
-        f"/api/ontologies/{oid}/classes",
+        f"/api/v1/ontologies/{oid}/classes",
         json={"name": "Cat", "prefix": "ex", "parents": [], "baseRevision": base},
     )
     assert r.status_code == 200, r.text
@@ -146,6 +146,6 @@ def test_custom_update_rule_errors_and_nothing_lands(
     while manager.state(oid) != "idle":
         assert time.monotonic() < deadline, "autosave did not land"
         time.sleep(0.02)
-    after = client.get(f"/api/ontologies/{oid}/source").json()["data"]["content"]
+    after = client.get(f"/api/v1/ontologies/{oid}/source").json()["data"]["content"]
     assert "ex:Cat" in after
     assert "ex:Animal" in after and "subClassOf" in after  # nothing was deleted

@@ -49,7 +49,7 @@ export default function Home() {
 
   const { data, isError, isPending, refetch } = useQuery({
     queryKey: ['ontologies'],
-    queryFn: () => api.get<{ items: OntologySummary[]; total: number }>('/api/ontologies'),
+    queryFn: () => api.get<{ items: OntologySummary[]; total: number }>('/api/v1/ontologies'),
   })
 
   const openOntology = (id: string) => {
@@ -58,7 +58,7 @@ export default function Home() {
   }
 
   const del = useMutation({
-    mutationFn: (id: string) => api.del(`/api/ontologies/${id}`),
+    mutationFn: (id: string) => api.del(`/api/v1/ontologies/${id}`),
     onSuccess: () => {
       toast.success(t('home.deleted'))
       setDeleteTarget(null)
@@ -70,7 +70,7 @@ export default function Home() {
   })
 
   const sample = useMutation({
-    mutationFn: (name: string) => api.post<OntologyMeta>(`/api/samples/${name}`),
+    mutationFn: (name: string) => api.post<OntologyMeta>(`/api/v1/samples/${name}`),
     onSuccess: (meta) => {
       void queryClient.invalidateQueries({ queryKey: ['ontologies'] })
       openOntology(meta.id)

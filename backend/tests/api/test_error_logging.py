@@ -12,7 +12,7 @@ def test_parse_failure_logs_reason(client: TestClient, caplog: logging.Logger) -
     """A rejected upload logs the parse error, not only the 400 envelope."""
     with caplog.at_level(logging.WARNING, logger="ow.errors"):
         r = client.post(
-            "/api/ontologies",
+            "/api/v1/ontologies",
             files={"file": ("bad.ttl", BAD_TTL, "text/turtle")},
         )
     assert r.status_code == 400
@@ -27,9 +27,9 @@ def test_parse_failure_logs_reason(client: TestClient, caplog: logging.Logger) -
 def test_api_error_logs_code(client: TestClient, caplog: logging.Logger) -> None:
     """ApiError failures (duplicate filename) log with their machine code."""
     files = {"file": ("dup.ttl", GOOD_TTL, "text/turtle")}
-    client.post("/api/ontologies", files=files)
+    client.post("/api/v1/ontologies", files=files)
     with caplog.at_level(logging.WARNING, logger="ow.errors"):
-        r = client.post("/api/ontologies", files=files)
+        r = client.post("/api/v1/ontologies", files=files)
     assert r.status_code == 409
     logged = " ".join(rec.getMessage() for rec in caplog.records)
     assert "DUPLICATE_FILENAME" in logged

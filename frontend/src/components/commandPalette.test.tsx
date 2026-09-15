@@ -100,7 +100,7 @@ describe('CommandPalette', () => {
     // keeps advancing the fake clock while react-query settles the fetch.
     await vi.waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        `/api/ontologies/oid-1/search?q=${encodeURIComponent('玛格丽特')}`,
+        `/api/v1/ontologies/oid-1/search?q=${encodeURIComponent('玛格丽特')}`,
         expect.anything(),
       )
     })

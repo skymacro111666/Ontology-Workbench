@@ -17,7 +17,7 @@ NS = "http://example.org/owl2-spike#"
 def oid(client: TestClient) -> str:
     """Upload the owl2 constructs fixture; return its ontology id."""
     r = client.post(
-        "/api/ontologies",
+        "/api/v1/ontologies",
         files={"file": ("owl2.ttl", io.BytesIO(FIX.read_bytes()), "text/turtle")},
     )
     return r.json()["data"]["id"]
@@ -26,7 +26,7 @@ def oid(client: TestClient) -> str:
 def test_entity_detail_carries_manchester(client: TestClient, oid: str) -> None:
     """Student 详情:manchester 含限定基数行(exactly 1),axioms 照旧."""
     eid = quote(f"{NS}Student", safe="")
-    ent = client.get(f"/api/ontologies/{oid}/entities/{eid}").json()["data"]
+    ent = client.get(f"/api/v1/ontologies/{oid}/entities/{eid}").json()["data"]
     assert ent["manchester"], "manchester 字段应非空"
     assert all({"kind", "text"} <= set(line) for line in ent["manchester"])
     assert any("exactly 1" in line["text"] for line in ent["manchester"])
@@ -44,7 +44,7 @@ def test_degradation_contract_bridge_failure(
 
     monkeypatch.setattr(browse_mod, "entity_manchester", boom)
     eid = quote(f"{NS}Student", safe="")
-    ent = client.get(f"/api/ontologies/{oid}/entities/{eid}").json()["data"]
+    ent = client.get(f"/api/v1/ontologies/{oid}/entities/{eid}").json()["data"]
     assert ent["manchester"] is None
     assert ent["axioms"]
 
@@ -59,10 +59,10 @@ def test_instance_detail_has_no_manchester(client: TestClient, oid: str) -> None
         ":alice a :Person, owl:NamedIndividual .\n"
     ).encode()
     r = client.post(
-        "/api/ontologies", files={"file": ("mini.ttl", io.BytesIO(mini), "text/turtle")}
+        "/api/v1/ontologies", files={"file": ("mini.ttl", io.BytesIO(mini), "text/turtle")}
     )
     mini_oid = r.json()["data"]["id"]
     eid = quote(f"{NS}alice", safe="")
-    ind = client.get(f"/api/ontologies/{mini_oid}/entities/{eid}").json()["data"]
+    ind = client.get(f"/api/v1/ontologies/{mini_oid}/entities/{eid}").json()["data"]
     assert ind["kind"] == "instance"
     assert ind.get("manchester") is None

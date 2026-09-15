@@ -140,7 +140,7 @@ export default function SourceView({ oid }: { oid: string }) {
   const queryClient = useQueryClient()
   const { data, isError, error, refetch } = useQuery({
     queryKey: ['source', oid],
-    queryFn: () => api.get<SourcePayload>(`/api/ontologies/${oid}/source`),
+    queryFn: () => api.get<SourcePayload>(`/api/v1/ontologies/${oid}/source`),
     retry: false,
   })
 
@@ -157,7 +157,7 @@ export default function SourceView({ oid }: { oid: string }) {
 
   const saveMutation = useMutation({
     mutationFn: (content: string) =>
-      api.put<OntologyMeta>(`/api/ontologies/${oid}/source`, {
+      api.put<OntologyMeta>(`/api/v1/ontologies/${oid}/source`, {
         content,
         baseFileHash: baseHashRef.current,
       }),

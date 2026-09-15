@@ -24,7 +24,7 @@ export default function OntologySwitcher() {
 
   const { data, isPending, isError } = useQuery({
     queryKey: ['ontologies'],
-    queryFn: () => api.get<{ items: OntologySummary[]; total: number }>('/api/ontologies'),
+    queryFn: () => api.get<{ items: OntologySummary[]; total: number }>('/api/v1/ontologies'),
   })
   const items = data?.items ?? []
   const current = items.find((o) => o.id === currentOid)

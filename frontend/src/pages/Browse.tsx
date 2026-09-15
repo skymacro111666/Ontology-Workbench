@@ -105,7 +105,7 @@ export default function Browse() {
   }, [eidParam, focusParam, setSelected])
   const { data: meta, isError, error, refetch } = useQuery({
     queryKey: ['ontology', oid],
-    queryFn: () => api.get<OntologyMeta>(`/api/ontologies/${oid}/meta`),
+    queryFn: () => api.get<OntologyMeta>(`/api/v1/ontologies/${oid}/meta`),
     retry: false,
     // Autosave in flight: poll until it lands (idle/absent stops the timer).
     refetchInterval: (query) =>
