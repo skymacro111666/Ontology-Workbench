@@ -87,6 +87,16 @@ it('logs out via the account menu (name now matches the assertion)', async () =>
   await waitFor(() => expect(localStorage.getItem(TOKEN_KEY)).toBeNull())
 })
 
+it('account menu carries the agent-token settings entry', async () => {
+  shell('/')
+  await userEvent.click(screen.getByRole('button', { name: /菜单/ }))
+  const item = await screen.findByText('Agent 令牌')
+  expect(item).toBeTruthy()
+  // Clicking runs the navigate handler and closes the menu.
+  await userEvent.click(item)
+  expect(screen.queryByText('退出登录')).toBeNull()
+})
+
 it('renders the router Outlet when no children are given (production branch)', () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(

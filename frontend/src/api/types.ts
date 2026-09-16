@@ -280,3 +280,19 @@ export type QueryResult =
     }
   | { kind: 'ask'; boolean: boolean; elapsedMs: number }
   | { kind: 'construct'; tripleCount: number; turtle: string; truncated: boolean; elapsedMs: number }
+
+/** Agent-token listing row (GET /agent-tokens, MCP v1): label + display
+ *  prefix only — the hash and plaintext never leave the DB. */
+export interface AgentTokenSummary {
+  id: string
+  label: string
+  tokenPrefix: string
+  createdAt: string
+  lastUsedAt: string | null
+}
+
+/** Mint response (POST /agent-tokens): the ONLY time the plaintext ships. */
+export interface AgentTokenCreated {
+  label: string
+  token: string
+}

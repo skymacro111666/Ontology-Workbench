@@ -84,6 +84,7 @@
     "avatarFallback": "U",
     "userMenu": "{{name}} menu",
     "changePwd": "Change password",
+    "agentTokens": "Agent tokens",
     "logout": "Sign out",
     "dirtyTitle": "Unsaved changes",
     "dirtyDesc": "The text view has unsaved changes — choose how to proceed before switching.",
@@ -425,5 +426,23 @@
     "errorTitle": "Validation failed",
     "ignoreDeprecated": "Ignore deprecated",
     "deprecatedHidden": "{{n}} deprecated-focus results hidden"
+  },
+  "settings": {
+    "title": "Agent tokens",
+    "subtitle": "Machine credentials for MCP clients tied to your account: the plaintext is shown once at creation; revoking takes effect immediately.",
+    "newToken": "New token",
+    "label": "Label",
+    "prefix": "Prefix",
+    "createdAt": "Created",
+    "lastUsedAt": "Last used",
+    "never": "Never",
+    "revoke": "Revoke",
+    "revokeConfirmTitle": "Revoke this token?",
+    "revokeConfirmDesc": "Clients using this token are rejected on their next request — this cannot be undone.",
+    "created": "Token created",
+    "createdWarning": "The plaintext is shown only this once — after closing it cannot be viewed again.",
+    "copyOk": "Copied",
+    "empty": "No tokens yet",
+    "labelPlaceholder": "e.g. claude"
   }
 }

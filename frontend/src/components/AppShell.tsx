@@ -1,4 +1,5 @@
 import {
+  BotIcon,
   CloudUploadIcon,
   DownloadIcon,
   FileIcon,
@@ -269,6 +270,10 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               <DropdownMenuItem className="text-xs" onSelect={() => setPwdOpen(true)}>
                 <KeyRoundIcon />
                 {t('shell.changePwd')}
+              </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs" onSelect={() => navigate('/settings')}>
+                <BotIcon />
+                {t('shell.agentTokens')}
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-xs"
