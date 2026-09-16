@@ -9,7 +9,7 @@
 [![English](https://img.shields.io/badge/English-README-blue)](README.en.md)
 [![简体中文](https://img.shields.io/badge/简体中文-README-gray)](../../README.md)
 
-[Features](#-features) · [Showcase](#-feature-showcase) · [Get Started](#-get-started) · [License](#-license)
+[Features](#-features) · [Showcase](#-feature-showcase) · [Get Started](#-get-started) · [MCP](#mcp) · [License](#-license)
 
 </div>
 
@@ -71,6 +71,65 @@ cd ../backend && uv run ow serve
 ```
 
 Open `http://<your-ip-address>:8734` (set `OW_HOST=0.0.0.0` in `.env` first — the default binds loopback only); the first visit walks you through a one-time admin setup; log in and load a bundled sample ontology. **Config precedence: CLI flags > environment variables (`.env`) > defaults**; common variables are `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL` (SQLite by default, PostgreSQL support coming soon) / `OW_LOG_LEVEL`; the docs-site export directory is confined to `{data dir}/exports/` unless `OW_EXPORT_ALLOW_ANY_PATH=1` opts out.
+
+## MCP
+
+A built-in MCP server (read-only in v1): 10 tools over streamable HTTP at `/api/v1/mcp`. It mounts once the first agent token exists (restart to apply); with zero tokens the endpoint is absent (404).
+
+### Creating an agent token
+
+Either way works:
+
+- **Settings page**: top-bar user menu → Agent tokens;
+- **API**:
+
+```bash
+curl -X POST http://127.0.0.1:8734/api/v1/agent-tokens \
+  -H "Authorization: Bearer <login token>" -H "Content-Type: application/json" \
+  -d '{"label":"claude"}'
+```
+
+The plaintext token ships only in the creation response; `OW_AGENT_TOKENS="label:owag_…"` bulk-imports at first boot (for migration; the DB is authoritative afterwards).
+
+### Connecting a client
+
+```bash
+claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp \
+  --header "Authorization: Bearer owag_…"
+```
+
+or any MCP client that speaks streamable HTTP:
+
+```json
+{
+  "mcpServers": {
+    "ow": {
+      "type": "http",
+      "url": "http://127.0.0.1:8734/api/v1/mcp",
+      "headers": { "Authorization": "Bearer owag_…" }
+    }
+  }
+}
+```
+
+### Tool catalog (10, all read-only)
+
+| Tool | Description |
+|------|-------------|
+| `list_ontologies` | Entry point: oid/title/entity counts/profile |
+| `get_ontology` | Metadata: stats, prefix table, OWL 2 profile, save state |
+| `search_entities` | Search over curie/label/comment, with kind filter |
+| `get_entity` | Label/comment/Manchester axiom lines/references/instance count |
+| `get_class_tree` | Class-tree slices; drill down by parent |
+| `get_instances` | Instances of a class, assertions included |
+| `run_lint` | 10 built-in rules + custom SPARQL rules |
+| `run_validation` | SHACL validation (points to the UI when no shapes are saved) |
+| `sparql_query` | Read-only SPARQL (engine-enforced, 1000-row cap) |
+| `export_file` | Full export (200,000-byte cap; suggests sparql_query beyond it) |
+
+Security semantics: an agent token is the account's machine credential (GitHub-PAT-shaped) — stored hashed in the DB, usable directly as a REST Bearer credential, and confined to a read-only endpoint allowlist; revocation takes effect immediately.
+
+> All REST APIs live under `/api/v1/*` as of v0.3.0.
 
 ## 📄 License
 

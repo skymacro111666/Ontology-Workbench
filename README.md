@@ -9,7 +9,7 @@
 [![简体中文](https://img.shields.io/badge/简体中文-README-blue)](README.md)
 [![English](https://img.shields.io/badge/English-README-gray)](assets/README/README.en.md)
 
-[特性](#-特性亮点) · [功能展示](#-功能展示) · [快速开始](#-快速开始) · [许可证](#-许可证)
+[特性](#-特性亮点) · [功能展示](#-功能展示) · [快速开始](#-快速开始) · [MCP](#mcp) · [许可证](#-许可证)
 
 </div>
 
@@ -73,6 +73,65 @@ cd ../backend && uv run ow serve
 ```
 
 访问 `http://<你的IP地址>:8734`(需先在 `.env` 设 `OW_HOST=0.0.0.0`,默认仅监听回环地址),首次访问引导创建管理员(一次性),登录后载入内置示例本体即可体验。**配置优先级:CLI 参数 > 环境变量(`.env`)> 默认值**;常用变量 `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL`(默认 SQLite,后续支持 PostgreSQL)/ `OW_LOG_LEVEL`;文档站导出目录默认限定在 `{数据目录}/exports/` 下,自托管可设 `OW_EXPORT_ALLOW_ANY_PATH=1` 放开。
+
+## MCP
+
+自带 MCP 服务器(v1 只读):10 个工具、streamable HTTP 传输,挂在 `/api/v1/mcp`。创建首枚 Agent 令牌后重启服务即完成挂载;令牌清零后重启则端点消失(404)。
+
+### 创建 Agent 令牌
+
+两路任选:
+
+- **设置页**:顶栏用户菜单 → Agent 令牌;
+- **API**:
+
+```bash
+curl -X POST http://127.0.0.1:8734/api/v1/agent-tokens \
+  -H "Authorization: Bearer <登录 token>" -H "Content-Type: application/json" \
+  -d '{"label":"claude"}'
+```
+
+明文令牌仅在创建响应中展示一次;另有 `OW_AGENT_TOKENS="label:owag_…"` 供首次启动批量导入(迁移用,之后以数据库为准)。
+
+### 客户端接入
+
+```bash
+claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp \
+  --header "Authorization: Bearer owag_…"
+```
+
+或任意支持 streamable HTTP 的 MCP 客户端:
+
+```json
+{
+  "mcpServers": {
+    "ow": {
+      "type": "http",
+      "url": "http://127.0.0.1:8734/api/v1/mcp",
+      "headers": { "Authorization": "Bearer owag_…" }
+    }
+  }
+}
+```
+
+### 工具一览(10 个,全部只读)
+
+| 工具 | 说明 |
+|------|------|
+| `list_ontologies` | 入口工具:oid/标题/实体计数/profile |
+| `get_ontology` | 元数据:统计、前缀表、OWL 2 profile、保存状态 |
+| `search_entities` | curie/label/comment 三字段搜索,kind 过滤 |
+| `get_entity` | 标签/注释/Manchester 公理行/被引用/实例数 |
+| `get_class_tree` | 类树切片,指定父类逐层下钻 |
+| `get_instances` | 类下实例清单(含断言) |
+| `run_lint` | 内置 10 规则 + 自定义 SPARQL 规则 |
+| `run_validation` | SHACL 校验(未配置 shapes 时返回指路错误) |
+| `sparql_query` | 只读 SPARQL(引擎级强制,1000 行截断) |
+| `export_file` | 全文导出(200,000 字节截断,超限建议改用 sparql_query) |
+
+安全语义:Agent 令牌是账户的机器凭证(GitHub PAT 同构)——数据库仅存哈希、可直接作 REST Bearer 凭证、受只读端点允许清单约束,吊销即时生效。
+
+> 全部 REST API 自 v0.3.0 起位于 `/api/v1/*`。
 
 ## 📄 许可证
 
