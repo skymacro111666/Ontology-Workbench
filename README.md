@@ -76,28 +76,28 @@ cd ../backend && uv run ow serve
 
 ## MCP
 
-自带 MCP 服务器(v1 只读):10 个工具、streamable HTTP 传输,挂在 `/api/v1/mcp/`(URL 以尾斜杠结尾)。创建首枚 Agent 令牌后重启服务即完成挂载;令牌清零后重启则端点消失(404)。
+自带 MCP 服务器:10 个工具、streamable HTTP 传输,挂在 `/api/v1/mcp/`(URL 以尾斜杠结尾)。创建首枚 Agent 令牌后重启服务即完成挂载;令牌清零后重启则端点消失(404)。
 
 ### 创建 Agent 令牌
 
-两路任选:
+两种方式:
 
-- **设置页**:顶栏用户菜单 → Agent 令牌;
-- **API**:
+- **1、设置页**:顶栏用户菜单 → Agent 令牌
+- **2、API**:
 
 ```bash
 curl -X POST http://127.0.0.1:8734/api/v1/agent-tokens \
   -H "Authorization: Bearer <登录 token>" -H "Content-Type: application/json" \
-  -d '{"label":"claude"}'
+  -d '{"label":"agent"}'
 ```
 
-明文令牌仅在创建响应中展示一次;另有 `OW_AGENT_TOKENS="label:owag_…"` 供首次启动批量导入(迁移用,之后以数据库为准)。
+明文令牌仅在创建响应中展示一次;另有 `OW_AGENT_TOKENS="label:owag_xxxxxx"` 供首次启动批量导入(迁移用,之后以数据库为准)。
 
 ### 客户端接入
 
 ```bash
 claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp/ \
-  --header "Authorization: Bearer owag_…"
+  --header "Authorization: Bearer owag_xxxxxx"
 ```
 
 或任意支持 streamable HTTP 的 MCP 客户端:
@@ -108,13 +108,13 @@ claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp/ \
     "ow": {
       "type": "http",
       "url": "http://127.0.0.1:8734/api/v1/mcp/",
-      "headers": { "Authorization": "Bearer owag_…" }
+      "headers": { "Authorization": "Bearer owag_xxxxxx" }
     }
   }
 }
 ```
 
-### 工具一览(10 个,全部只读)
+### 工具一览
 
 | 工具 | 说明 |
 |------|------|
@@ -130,8 +130,6 @@ claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp/ \
 | `export_file` | 全文导出(200,000 字节截断,超限建议改用 sparql_query) |
 
 安全语义:Agent 令牌是账户的机器凭证(GitHub PAT 同构)——数据库仅存哈希、可直接作 REST Bearer 凭证、受只读端点允许清单约束,吊销即时生效。
-
-> 全部 REST API 自 v0.3.0 起位于 `/api/v1/*`。
 
 ## 📄 许可证
 

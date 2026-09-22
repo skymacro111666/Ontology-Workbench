@@ -74,28 +74,28 @@ Open `http://<your-ip-address>:8734` (set `OW_HOST=0.0.0.0` in `.env` first — 
 
 ## MCP
 
-A built-in MCP server (read-only in v1): 10 tools over streamable HTTP at `/api/v1/mcp/` (URL ends with a trailing slash). It mounts once the first agent token exists (restart to apply); with zero tokens the endpoint is absent (404).
+A built-in MCP server: 10 tools over streamable HTTP at `/api/v1/mcp/` (URL ends with a trailing slash). It mounts once the first agent token exists (restart to apply); with zero tokens the endpoint is absent (404).
 
 ### Creating an agent token
 
-Either way works:
+Two ways:
 
-- **Settings page**: top-bar user menu → Agent tokens;
-- **API**:
+- **1. Settings page**: top-bar user menu → Agent tokens
+- **2. API**:
 
 ```bash
 curl -X POST http://127.0.0.1:8734/api/v1/agent-tokens \
   -H "Authorization: Bearer <login token>" -H "Content-Type: application/json" \
-  -d '{"label":"claude"}'
+  -d '{"label":"agent"}'
 ```
 
-The plaintext token ships only in the creation response; `OW_AGENT_TOKENS="label:owag_…"` bulk-imports at first boot (for migration; the DB is authoritative afterwards).
+The plaintext token ships only in the creation response; `OW_AGENT_TOKENS="label:owag_xxxxxx"` bulk-imports at first boot (for migration; the DB is authoritative afterwards).
 
 ### Connecting a client
 
 ```bash
 claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp/ \
-  --header "Authorization: Bearer owag_…"
+  --header "Authorization: Bearer owag_xxxxxx"
 ```
 
 or any MCP client that speaks streamable HTTP:
@@ -106,13 +106,13 @@ or any MCP client that speaks streamable HTTP:
     "ow": {
       "type": "http",
       "url": "http://127.0.0.1:8734/api/v1/mcp/",
-      "headers": { "Authorization": "Bearer owag_…" }
+      "headers": { "Authorization": "Bearer owag_xxxxxx" }
     }
   }
 }
 ```
 
-### Tool catalog (10, all read-only)
+### Tool catalog
 
 | Tool | Description |
 |------|-------------|
@@ -128,8 +128,6 @@ or any MCP client that speaks streamable HTTP:
 | `export_file` | Full export (200,000-byte cap; suggests sparql_query beyond it) |
 
 Security semantics: an agent token is the account's machine credential (GitHub-PAT-shaped) — stored hashed in the DB, usable directly as a REST Bearer credential, and confined to a read-only endpoint allowlist; revocation takes effect immediately.
-
-> All REST APIs live under `/api/v1/*` as of v0.3.0.
 
 ## 📄 License
 
