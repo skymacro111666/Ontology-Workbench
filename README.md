@@ -76,7 +76,7 @@ cd ../backend && uv run ow serve
 
 ## MCP
 
-自带 MCP 服务器(v1 只读):10 个工具、streamable HTTP 传输,挂在 `/api/v1/mcp`。创建首枚 Agent 令牌后重启服务即完成挂载;令牌清零后重启则端点消失(404)。
+自带 MCP 服务器(v1 只读):10 个工具、streamable HTTP 传输,挂在 `/api/v1/mcp/`(URL 以尾斜杠结尾)。创建首枚 Agent 令牌后重启服务即完成挂载;令牌清零后重启则端点消失(404)。
 
 ### 创建 Agent 令牌
 
@@ -96,7 +96,7 @@ curl -X POST http://127.0.0.1:8734/api/v1/agent-tokens \
 ### 客户端接入
 
 ```bash
-claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp \
+claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp/ \
   --header "Authorization: Bearer owag_…"
 ```
 
@@ -107,7 +107,7 @@ claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp \
   "mcpServers": {
     "ow": {
       "type": "http",
-      "url": "http://127.0.0.1:8734/api/v1/mcp",
+      "url": "http://127.0.0.1:8734/api/v1/mcp/",
       "headers": { "Authorization": "Bearer owag_…" }
     }
   }

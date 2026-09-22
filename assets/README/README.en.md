@@ -74,7 +74,7 @@ Open `http://<your-ip-address>:8734` (set `OW_HOST=0.0.0.0` in `.env` first — 
 
 ## MCP
 
-A built-in MCP server (read-only in v1): 10 tools over streamable HTTP at `/api/v1/mcp`. It mounts once the first agent token exists (restart to apply); with zero tokens the endpoint is absent (404).
+A built-in MCP server (read-only in v1): 10 tools over streamable HTTP at `/api/v1/mcp/` (URL ends with a trailing slash). It mounts once the first agent token exists (restart to apply); with zero tokens the endpoint is absent (404).
 
 ### Creating an agent token
 
@@ -94,7 +94,7 @@ The plaintext token ships only in the creation response; `OW_AGENT_TOKENS="label
 ### Connecting a client
 
 ```bash
-claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp \
+claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp/ \
   --header "Authorization: Bearer owag_…"
 ```
 
@@ -105,7 +105,7 @@ or any MCP client that speaks streamable HTTP:
   "mcpServers": {
     "ow": {
       "type": "http",
-      "url": "http://127.0.0.1:8734/api/v1/mcp",
+      "url": "http://127.0.0.1:8734/api/v1/mcp/",
       "headers": { "Authorization": "Bearer owag_…" }
     }
   }
