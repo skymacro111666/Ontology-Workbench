@@ -33,7 +33,15 @@ def register(mcp, loopback, audit) -> None:
     """Register the ten v1 tools onto the FastMCP instance."""
 
     async def _list_ontologies() -> dict[str, Any]:
-        return await loopback.call("GET", "/api/v1/ontologies")
+        data = await loopback.call("GET", "/api/v1/ontologies")
+        # Agent-facing guidance lives at the MCP layer, not the REST payload
+        # (browser/REST consumers never see this note) — the A2 stand-in for
+        # a session manifest: on-demand, not pre-injected.
+        data["note"] = (
+            "newest first; call get_ontology(id) for prefixes/profile, "
+            "search_entities(id, q) to locate entities before get_entity"
+        )
+        return data
 
     async def _get_ontology(oid: str) -> dict[str, Any]:
         return await loopback.call("GET", f"/api/v1/ontologies/{oid}/meta")
@@ -43,7 +51,22 @@ def register(mcp, loopback, audit) -> None:
         if kind:
             params["type"] = kind
         hits = await loopback.call("GET", f"/api/v1/ontologies/{oid}/search", params=params)
-        return _json_list(hits)
+        # Same envelope discipline as export_file below: never truncate
+        # silently (D9①). The engine breaks early at limit, so limitReached
+        # only says "more may exist", not how many.
+        return json.dumps(
+            {
+                "items": hits,
+                "limit": limit,
+                "limitReached": len(hits) >= limit,
+                "note": (
+                    "each item carries matched_field (localname/label/comment) "
+                    "as its hit rationale; refine q or raise limit when "
+                    "limitReached is true"
+                ),
+            },
+            ensure_ascii=False,
+        )
 
     async def _get_entity(oid: str, eid: str) -> dict[str, Any]:
         return await loopback.call("GET", f"/api/v1/ontologies/{oid}/entities/{_eid(eid)}")
@@ -95,15 +118,79 @@ def register(mcp, loopback, audit) -> None:
             "content": content,
         }
 
-    # name= is explicit: the audit wrapper's @wraps keeps the underscore-
-    # prefixed inner name, which the SDK would otherwise use verbatim.
-    mcp.tool(name="list_ontologies")(audit("list_ontologies", _list_ontologies))
-    mcp.tool(name="get_ontology")(audit("get_ontology", _get_ontology))
-    mcp.tool(name="search_entities")(audit("search_entities", _search_entities))
-    mcp.tool(name="get_entity")(audit("get_entity", _get_entity))
-    mcp.tool(name="get_class_tree")(audit("get_class_tree", _get_class_tree))
-    mcp.tool(name="get_instances")(audit("get_instances", _get_instances))
-    mcp.tool(name="run_lint")(audit("run_lint", _run_lint))
-    mcp.tool(name="run_validation")(audit("run_validation", _run_validation))
-    mcp.tool(name="sparql_query")(audit("sparql_query", _sparql_query))
-    mcp.tool(name="export_file")(audit("export_file", _export_file))
+    # name=/description= are explicit: the audit wrapper's @wraps keeps the
+    # underscore-prefixed inner name and empty docstring, which the SDK would
+    # otherwise use verbatim (A2: agents get an unnamed-in-practice tool).
+    mcp.tool(
+        name="list_ontologies",
+        description=(
+            "List every ontology owned by this credential, newest first, with "
+            "class/property/instance/axiom counts. Start here: pick an id, then "
+            "call get_ontology or search_entities with it."
+        ),
+    )(audit("list_ontologies", _list_ontologies))
+    mcp.tool(
+        name="get_ontology",
+        description=(
+            "Metadata for one ontology: counts, prefixes, save state, and the "
+            "OWL 2 profile report when available."
+        ),
+    )(audit("get_ontology", _get_ontology))
+    mcp.tool(
+        name="search_entities",
+        description=(
+            "Case-insensitive substring search over localname/label/comment "
+            "(individuals: localname/label only). Each hit carries the eid for "
+            "get_entity and matched_field saying which field hit; limitReached "
+            "marks a possible truncation at the limit."
+        ),
+    )(audit("search_entities", _search_entities))
+    mcp.tool(
+        name="get_entity",
+        description=(
+            "Full detail for one class/property/individual by eid (from "
+            "search_entities or get_class_tree): labels, Manchester-syntax "
+            "axioms, and neighbors."
+        ),
+    )(audit("get_entity", _get_entity))
+    mcp.tool(
+        name="get_class_tree",
+        description=(
+            "One level of the class tree: roots when parent is omitted, direct "
+            "children otherwise. Walk lazily via parent (nodes carry "
+            "children_count) instead of trying to fetch the whole tree."
+        ),
+    )(audit("get_class_tree", _get_class_tree))
+    mcp.tool(
+        name="get_instances",
+        description=("Individuals asserted as this class, with their property assertions."),
+    )(audit("get_instances", _get_instances))
+    mcp.tool(
+        name="run_lint",
+        description=(
+            "Run the ontology lint checks (naming, annotation, deprecated usage) "
+            "and return the findings list."
+        ),
+    )(audit("run_lint", _run_lint))
+    mcp.tool(
+        name="run_validation",
+        description=(
+            "Run instance-level validation. Without validation shapes configured "
+            "the error response explains that shapes are managed in the web UI."
+        ),
+    )(audit("run_validation", _run_validation))
+    mcp.tool(
+        name="sparql_query",
+        description=(
+            "Run a read-only SPARQL SELECT against one ontology. The engine caps "
+            "output at 1000 rows; a truncated flag in the payload marks it."
+        ),
+    )(audit("sparql_query", _sparql_query))
+    mcp.tool(
+        name="export_file",
+        description=(
+            "Export the ontology source as turtle / json-ld / rdf-xml. Output "
+            "over 200 KB is truncated with a hint pointing to sparql_query for "
+            "targeted slices."
+        ),
+    )(audit("export_file", _export_file))

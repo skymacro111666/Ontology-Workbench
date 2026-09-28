@@ -56,16 +56,56 @@ def test_all_ten_tools_registered(mcp_env: TestClient) -> None:  # noqa: F811
     }
 
 
+def test_all_tool_descriptions_present(mcp_env: TestClient) -> None:  # noqa: F811
+    """tools/list ships a non-empty description for every v1 tool (A2 discipline).
+
+    Would fail if a tool were registered without description= (the SDK falls
+    back to the empty docstring, leaving agents an unnamed-in-practice tool).
+    """
+    msg = _post_rpc(
+        mcp_env, {"jsonrpc": "2.0", "id": 8, "method": "tools/list"}, mcp_env.agent_token
+    )
+    empty = [t["name"] for t in msg["result"]["tools"] if not t.get("description", "").strip()]
+    assert empty == [], f"tools without a description: {empty}"
+
+
 def test_search_entity_tree_instances(mcp_env: TestClient) -> None:  # noqa: F811
     """Search hits carry eids that get_entity resolves; tree returns nodes."""
     oid = _first_oid(mcp_env)
     hits = _tool(mcp_env, "search_entities", {"oid": oid, "q": "Pizza", "kind": "Class"})
-    assert isinstance(hits, list) and hits
-    eid = hits[0]["eid"]
+    assert hits["items"]
+    eid = hits["items"][0]["eid"]
     ent = _tool(mcp_env, "get_entity", {"oid": oid, "eid": eid})
     assert ent["eid"] == eid
     tree = _tool(mcp_env, "get_class_tree", {"oid": oid})
     assert isinstance(tree, list)
+
+
+def test_list_ontologies_carries_note(mcp_env: TestClient) -> None:  # noqa: F811
+    """list_ontologies attaches agent-facing next-step guidance (A2, in lieu of a manifest).
+
+    The note is MCP-layer only: the REST envelope stays untouched for
+    browser/API consumers.
+    """
+    res = _tool(mcp_env, "list_ontologies", {})
+    assert res["items"] and res["total"] >= 1
+    assert "search_entities" in res["note"] and "get_ontology" in res["note"]
+    # REST stays note-free (loopback philosophy: MCP presentation only).
+    r = mcp_env.get("/api/v1/ontologies", headers={"Authorization": f"Bearer {mcp_env.jwt}"})
+    assert "note" not in r.json()["data"]
+
+
+def test_search_envelope_marks_truncation(mcp_env: TestClient) -> None:  # noqa: F811
+    """search_entities wraps hits in an envelope that never truncates silently (D9①).
+
+    limitReached=true when the engine broke at limit (more may exist); the note
+    tells the agent how to react (matched_field is the per-hit rationale).
+    """
+    oid = _first_oid(mcp_env)
+    res = _tool(mcp_env, "search_entities", {"oid": oid, "q": "e", "limit": 1})
+    assert res["limitReached"] is True
+    assert res["limit"] == 1 and res["items"]
+    assert "matched_field" in res["note"]
 
 
 def test_sparql_and_lint(mcp_env: TestClient) -> None:  # noqa: F811
