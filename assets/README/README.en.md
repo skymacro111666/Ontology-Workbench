@@ -9,7 +9,7 @@
 [![English](https://img.shields.io/badge/English-README-blue)](README.en.md)
 [![简体中文](https://img.shields.io/badge/简体中文-README-gray)](../../README.md)
 
-[Features](#-features) · [Showcase](#-feature-showcase) · [Get Started](#-get-started) · [MCP](#mcp) · [License](#-license)
+[Features](#-features) · [Showcase](#-feature-showcase) · [Get Started](#-get-started) · [MCP](#-mcp) · [License](#-license)
 
 </div>
 
@@ -18,13 +18,14 @@
 - **Three-pane browsing** — class-tree, property, and prefix-URI sidebars plus instant search; silky-smooth virtualized scrolling even on huge ontologies
 - **Smart graph visualization** — canvas hosts local-neighbor and global-overview graphs, edges colored by semantics, node positions remembered after dragging
 - **Point-and-edit canvas** — right-click to create, edit, and delete classes and properties, no page-hopping needed
-- **Progressive canvas for huge ontologies** — past 2000 live classes the overview switches to folded roots (click the +/− badges to expand subtrees in place, with live subtree sizes); a toggle forces the full view
-- **Millisecond incremental commits** — every edit patches the in-memory index at once (read-your-writes); the file lands via a debounced background save
-- **Integrated source editing** — built-in editor with full find-and-replace
-- **Built-in SPARQL console** — a third browse view; read-only is engine-enforced (UPDATE always rejected), SELECT/ASK/CONSTRUCT results, IRIs auto-shortened to curies
-- **SHACL validation** — run built-in or custom SHACL shapes against the ontology, with severity-graded reports
-- **OWL 2 compatible & profile-aware** — Manchester axiom rendering plus EL/QL/RL/DL profile detection (vocabulary-level approximation)
+- **Progressive canvas display** — past 2000 live classes the overview auto-folds to the root view; switch back to the full view at any time
+- **Blazing-fast incremental commits** — every edit patches the in-memory index at once (read-your-writes); the file lands via a debounced background save
+- **Integrated source editing** — built-in source editor with full find-and-replace
+- **Integrated SPARQL** — read-only queries with SELECT/ASK/CONSTRUCT support; IRIs auto-shortened to CURIEs
+- **Integrated SHACL** — built-in and custom shapes run standard consistency validation against the ontology, reporting violations at violation/warning/info levels
+- **OWL 2 compatible & profile-graded** — Manchester axiom rendering plus EL/QL/RL/DL profile detection (vocabulary-level approximation)
 - **Offline docs export** — generates a static site with zero external dependencies
+- **Built-in MCP** — an MCP server exposing 10 tools for agents to call on demand
 
 ## 📸 Feature Showcase
 
@@ -72,16 +73,14 @@ cd ../backend && uv run ow serve
 
 Open `http://<your-ip-address>:8734` (set `OW_HOST=0.0.0.0` in `.env` first — the default binds loopback only); the first visit walks you through a one-time admin setup; log in and load a bundled sample ontology. **Config precedence: CLI flags > environment variables (`.env`) > defaults**; common variables are `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL` (SQLite by default, PostgreSQL support coming soon) / `OW_LOG_LEVEL`; the docs-site export directory is confined to `{data dir}/exports/` unless `OW_EXPORT_ALLOW_ANY_PATH=1` opts out.
 
-## MCP
+## 🔌 MCP
 
-A built-in MCP server: 10 tools over streamable HTTP at `/api/v1/mcp/` (URL ends with a trailing slash). It mounts once the first agent token exists (restart to apply); with zero tokens the endpoint is absent (404).
+A built-in MCP server: 10 tools over streamable HTTP at `/api/v1/mcp/`. It mounts once the first agent token exists (restart to apply); with zero tokens the endpoint is absent (404).
 
 ### Creating an agent token
 
-Two ways:
-
-- **1. Settings page**: top-bar user menu → Agent tokens
-- **2. API**:
+- **Option 1: Settings page**: top-bar user menu → Agent tokens
+- **Option 2: API**:
 
 ```bash
 curl -X POST http://127.0.0.1:8734/api/v1/agent-tokens \
@@ -89,16 +88,18 @@ curl -X POST http://127.0.0.1:8734/api/v1/agent-tokens \
   -d '{"label":"agent"}'
 ```
 
-The plaintext token ships only in the creation response; `OW_AGENT_TOKENS="label:owag_xxxxxx"` bulk-imports at first boot (for migration; the DB is authoritative afterwards).
+The plaintext token is shown only once, in the creation response.
 
 ### Connecting a client
+
+Claude:
 
 ```bash
 claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp/ \
   --header "Authorization: Bearer owag_xxxxxx"
 ```
 
-or any MCP client that speaks streamable HTTP:
+Any MCP client that speaks streamable HTTP:
 
 ```json
 {
@@ -126,8 +127,6 @@ or any MCP client that speaks streamable HTTP:
 | `run_validation` | SHACL validation (points to the UI when no shapes are saved) |
 | `sparql_query` | Read-only SPARQL (engine-enforced, 1000-row cap) |
 | `export_file` | Full export (200,000-byte cap; suggests sparql_query beyond it) |
-
-Security semantics: an agent token is the account's machine credential (GitHub-PAT-shaped) — stored hashed in the DB, usable directly as a REST Bearer credential, and confined to a read-only endpoint allowlist; revocation takes effect immediately.
 
 ## 📄 License
 

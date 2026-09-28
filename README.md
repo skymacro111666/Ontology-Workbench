@@ -9,22 +9,23 @@
 [![简体中文](https://img.shields.io/badge/简体中文-README-blue)](README.md)
 [![English](https://img.shields.io/badge/English-README-gray)](assets/README/README.en.md)
 
-[特性](#-特性亮点) · [功能展示](#-功能展示) · [快速开始](#-快速开始) · [MCP](#mcp) · [许可证](#-许可证)
+[特性](#-特性亮点) · [功能展示](#-功能展示) · [快速开始](#-快速开始) · [MCP](#-mcp) · [许可证](#-许可证)
 
 </div>
 
 ## ✨ 特性亮点
 
-- **三区协同浏览** —— 类树、属性、前缀URI侧栏+即时搜索，大本体下虚拟滚动丝滑无卡顿
-- **智能图可视化** —— 画布承载局部邻居图与全局总览,边按语义着色,节点位置拖拽后持久化记忆
+- **三区协同浏览** —— 类树、属性、前缀URI侧栏和即时搜索，大本体下虚拟滚动丝滑无卡顿
+- **智能图可视化** —— 画布承载局部邻居图与全局总览，边按语义着色，节点位置拖拽后持久化记忆
 - **画布即点即编** —— 右键完成类与属性的新建、编辑、删除，无需跳转多页面
-- **大本体渐进画布** —— 存活类过 2000 时总览自动切折叠根视图(点 +/− 徽章就地展开子树,子树大小实时可见),可随时切回全图
-- **毫秒级增量提交** —— 编辑即时补丁内存索引,读写所见即所得;文件由后台防抖落盘
-- **集成源码编辑** —— 内置编辑器,搜索替换功能全覆盖
-- **内置 SPARQL 查询台** —— 浏览页第三视图,只读查询引擎级强制(UPDATE 一律拒绝),SELECT/ASK/CONSTRUCT 三形态结果,IRI 自动缩写为 curie
-- **SHACL 校验** —— 加载内置或自定义 SHACL shapes,对本体运行标准一致性校验,三档严重度报告
-- **OWL 2 compatible & profile-aware** —— Manchester 公理渲染与 EL/QL/RL/DL profile 检测(词表级近似)
+- **画布渐进展示** —— 存活类过 2000 时总览自动折叠根视图，可随时切回全图
+- **极速增量提交** —— 编辑即时补丁内存索引，读写所见即所得;文件由后台防抖落盘
+- **集成源码编辑** —— 内置源码编辑器，搜索替换功能全覆盖
+- **集成SPARQL** —— 只读查询支持 SELECT/ASK/CONSTRUCT，IRI 自动缩写为 CURIE
+- **集成SHACL** —— 内置及自定义 shapes，对本体运行标准一致性校验，violation/warning/info三档报告
+- **兼容OWL2定级** —— Manchester 公理渲染与 EL/QL/RL/DL profile 检测(词表级近似)
 - **离线文档导出** —— 生成完全零外部依赖的静态站点
+- **内置MCP功能** —— MCP服务器提供10个工具，支持Agent按需调用
 
 ## 📸 功能展示
 
@@ -74,16 +75,16 @@ cd ../backend && uv run ow serve
 
 访问 `http://<你的IP地址>:8734`(需先在 `.env` 设 `OW_HOST=0.0.0.0`,默认仅监听回环地址),首次访问引导创建管理员(一次性),登录后载入内置示例本体即可体验。**配置优先级:CLI 参数 > 环境变量(`.env`)> 默认值**;常用变量 `OW_HOST` / `OW_PORT` / `OW_DATA_DIR` / `OW_DB_URL`(默认 SQLite,后续支持 PostgreSQL)/ `OW_LOG_LEVEL`;文档站导出目录默认限定在 `{数据目录}/exports/` 下,自托管可设 `OW_EXPORT_ALLOW_ANY_PATH=1` 放开。
 
-## MCP
+## 🔌 MCP
 
-自带 MCP 服务器:10 个工具、streamable HTTP 传输,挂在 `/api/v1/mcp/`(URL 以尾斜杠结尾)。创建首枚 Agent 令牌后重启服务即完成挂载;令牌清零后重启则端点消失(404)。
+内置 MCP 服务器，提供10 个工具、streamable HTTP 传输，挂在 `/api/v1/mcp/`。创建首枚 Agent 令牌后重启服务即完成挂载，令牌清零后重启则端点消失(404)。
 
 ### 创建 Agent 令牌
 
-两种方式:
 
-- **1、设置页**:顶栏用户菜单 → Agent 令牌
-- **2、API**:
+
+- **方式一、设置页面**：顶栏用户菜单 → Agent 令牌
+- **方式二、API接口**：
 
 ```bash
 curl -X POST http://127.0.0.1:8734/api/v1/agent-tokens \
@@ -91,16 +92,17 @@ curl -X POST http://127.0.0.1:8734/api/v1/agent-tokens \
   -d '{"label":"agent"}'
 ```
 
-明文令牌仅在创建响应中展示一次;另有 `OW_AGENT_TOKENS="label:owag_xxxxxx"` 供首次启动批量导入(迁移用,之后以数据库为准)。
+明文令牌仅在创建响应中展示一次
 
 ### 客户端接入
 
+Claude：
 ```bash
 claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp/ \
   --header "Authorization: Bearer owag_xxxxxx"
 ```
 
-或任意支持 streamable HTTP 的 MCP 客户端:
+任意支持 streamable HTTP 的 MCP 客户端:
 
 ```json
 {
@@ -129,7 +131,6 @@ claude mcp add --transport http ow http://127.0.0.1:8734/api/v1/mcp/ \
 | `sparql_query` | 只读 SPARQL(引擎级强制,1000 行截断) |
 | `export_file` | 全文导出(200,000 字节截断,超限建议改用 sparql_query) |
 
-安全语义:Agent 令牌是账户的机器凭证(GitHub PAT 同构)——数据库仅存哈希、可直接作 REST Bearer 凭证、受只读端点允许清单约束,吊销即时生效。
 
 ## 📄 许可证
 
