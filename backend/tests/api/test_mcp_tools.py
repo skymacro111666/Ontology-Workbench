@@ -156,3 +156,84 @@ def test_export_full_under_limit(mcp_env: TestClient) -> None:  # noqa: F811
     oid = _first_oid(mcp_env)
     out = _tool(mcp_env, "export_file", {"oid": oid, "rdf_format": "turtle"})
     assert out["truncated"] is False and out["content"]
+
+
+def _log_lines(out: str) -> list[dict]:
+    """Parse the captured stdout into JSON lines (real pipeline output)."""
+    events = []
+    for line in out.splitlines():
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            continue
+    return events
+
+
+def test_audit_trail_measures_search(tmp_path, capsys, mcp_env: TestClient) -> None:  # noqa: F811
+    """Search audit events carry q/hits/limitReached/zero_hit + request id (B3 telemetry).
+
+    The M2 get_context_pack trigger ("agents chain 6-8 hops") and ontology
+    coverage gaps ("what did agents search for and not find") are only
+    answerable if the audit trail measures searches — today it logs the
+    tool name alone.
+    """
+    import logging as stdlib_logging
+
+    from ontoworkbench.observability.logging import setup_logging
+
+    before = list(stdlib_logging.getLogger().handlers)
+    try:
+        setup_logging(tmp_path)
+        oid = _first_oid(mcp_env)
+        _tool(mcp_env, "search_entities", {"oid": oid, "q": "zzz-nosuchthing"})
+        _tool(mcp_env, "search_entities", {"oid": oid, "q": "Pizza", "kind": "Class", "limit": 1})
+        for handler in stdlib_logging.getLogger().handlers:
+            handler.flush()
+        events = [
+            e
+            for e in _log_lines(capsys.readouterr().out)
+            if e.get("event") == "mcp.tool" and e.get("tool") == "search_entities"
+        ]
+        queries = [e.get("query") for e in events]
+        assert "zzz-nosuchthing" in queries and "Pizza" in queries
+        miss = next(e for e in events if e.get("query") == "zzz-nosuchthing")
+        assert miss["zero_hit"] is True and miss["hits"] == 0
+        assert isinstance(miss["request_id"], str) and miss["request_id"]
+        hit = next(e for e in events if e.get("query") == "Pizza")
+        assert hit["hits"] == 1 and hit["limit_reached"] is True
+    finally:
+        root = stdlib_logging.getLogger()
+        for handler in list(root.handlers):
+            if handler not in before:
+                root.removeHandler(handler)
+                handler.close()
+
+
+def test_audit_trail_records_result_sizes(tmp_path, capsys, mcp_env: TestClient) -> None:  # noqa: F811
+    """tree/sparql audit events carry result sizes (B3 telemetry)."""
+    import logging as stdlib_logging
+
+    from ontoworkbench.observability.logging import setup_logging
+
+    before = list(stdlib_logging.getLogger().handlers)
+    try:
+        setup_logging(tmp_path)
+        oid = _first_oid(mcp_env)
+        _tool(mcp_env, "get_class_tree", {"oid": oid})
+        qs = "SELECT ?s WHERE { ?s a <http://www.w3.org/2002/07/owl#Class> } LIMIT 3"
+        _tool(mcp_env, "sparql_query", {"oid": oid, "qs": qs})
+        for handler in stdlib_logging.getLogger().handlers:
+            handler.flush()
+        events = {
+            e.get("tool"): e
+            for e in _log_lines(capsys.readouterr().out)
+            if e.get("event") == "mcp.tool"
+        }
+        assert events["get_class_tree"]["nodes"] >= 1
+        assert isinstance(events["sparql_query"]["rows"], int)
+    finally:
+        root = stdlib_logging.getLogger()
+        for handler in list(root.handlers):
+            if handler not in before:
+                root.removeHandler(handler)
+                handler.close()

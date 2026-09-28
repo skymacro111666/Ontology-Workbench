@@ -11,6 +11,9 @@ import json
 from typing import Any
 from urllib.parse import quote
 
+from mcp.server.mcpserver.context import Context
+from structlog.contextvars import bind_contextvars
+
 MAX_EXPORT_BYTES = 200_000
 
 
@@ -32,7 +35,7 @@ def _json_list(items: list) -> str:
 def register(mcp, loopback, audit) -> None:
     """Register the ten v1 tools onto the FastMCP instance."""
 
-    async def _list_ontologies() -> dict[str, Any]:
+    async def _list_ontologies(ctx: Context) -> dict[str, Any]:
         data = await loopback.call("GET", "/api/v1/ontologies")
         # Agent-facing guidance lives at the MCP layer, not the REST payload
         # (browser/REST consumers never see this note) — the A2 stand-in for
@@ -43,10 +46,12 @@ def register(mcp, loopback, audit) -> None:
         )
         return data
 
-    async def _get_ontology(oid: str) -> dict[str, Any]:
+    async def _get_ontology(ctx: Context, oid: str) -> dict[str, Any]:
         return await loopback.call("GET", f"/api/v1/ontologies/{oid}/meta")
 
-    async def _search_entities(oid: str, q: str, kind: str | None = None, limit: int = 20) -> str:
+    async def _search_entities(
+        ctx: Context, oid: str, q: str, kind: str | None = None, limit: int = 20
+    ) -> str:
         params: dict[str, Any] = {"q": q, "limit": limit}
         if kind:
             params["type"] = kind
@@ -54,6 +59,17 @@ def register(mcp, loopback, audit) -> None:
         # Same envelope discipline as export_file below: never truncate
         # silently (D9①). The engine breaks early at limit, so limitReached
         # only says "more may exist", not how many.
+        # Telemetry (B3): what agents searched for and whether they found it
+        # is the raw signal for ontology coverage gaps and the M2
+        # get_context_pack trigger — measured here, analyzed offline.
+        bind_contextvars(
+            query=q[:80],
+            kind=kind or "all",
+            limit=limit,
+            hits=len(hits),
+            limit_reached=len(hits) >= limit,
+            zero_hit=not hits,
+        )
         return json.dumps(
             {
                 "items": hits,
@@ -68,36 +84,41 @@ def register(mcp, loopback, audit) -> None:
             ensure_ascii=False,
         )
 
-    async def _get_entity(oid: str, eid: str) -> dict[str, Any]:
+    async def _get_entity(ctx: Context, oid: str, eid: str) -> dict[str, Any]:
         return await loopback.call("GET", f"/api/v1/ontologies/{oid}/entities/{_eid(eid)}")
 
-    async def _get_class_tree(oid: str, parent: str | None = None) -> str:
+    async def _get_class_tree(ctx: Context, oid: str, parent: str | None = None) -> str:
         params = {"parent": parent} if parent else None
         nodes = await loopback.call("GET", f"/api/v1/ontologies/{oid}/tree", params=params)
+        bind_contextvars(nodes=len(nodes))
         return _json_list(nodes)
 
-    async def _get_instances(oid: str, eid: str) -> dict[str, Any]:
+    async def _get_instances(ctx: Context, oid: str, eid: str) -> dict[str, Any]:
         return await loopback.call(
             "GET", f"/api/v1/ontologies/{oid}/entities/{_eid(eid)}/instances"
         )
 
-    async def _run_lint(oid: str) -> dict[str, Any]:
+    async def _run_lint(ctx: Context, oid: str) -> dict[str, Any]:
         return await loopback.call("POST", f"/api/v1/ontologies/{oid}/lint/run", json_body={})
 
-    async def _run_validation(oid: str, include_deprecated: bool = True) -> dict[str, Any]:
+    async def _run_validation(
+        ctx: Context, oid: str, include_deprecated: bool = True
+    ) -> dict[str, Any]:
         return await loopback.call(
             "POST",
             f"/api/v1/ontologies/{oid}/validation/run",
             json_body={"includeDeprecated": include_deprecated},
         )
 
-    async def _sparql_query(oid: str, qs: str) -> dict[str, Any]:
+    async def _sparql_query(ctx: Context, oid: str, qs: str) -> dict[str, Any]:
         # 1000-row engine cap arrives in the REST payload (truncated flag included).
-        return await loopback.call("POST", f"/api/v1/ontologies/{oid}/query", json_body={"qs": qs})
+        res = await loopback.call("POST", f"/api/v1/ontologies/{oid}/query", json_body={"qs": qs})
+        bind_contextvars(rows=len(res.get("rows", [])), truncated=res.get("truncated"))
+        return res
 
     # rdf_format forwards verbatim; the API accepts turtle / json-ld / rdf-xml
     # (its error lists them) — "ttl" is the file extension, not a format key.
-    async def _export_file(oid: str, rdf_format: str = "turtle") -> dict[str, Any]:
+    async def _export_file(ctx: Context, oid: str, rdf_format: str = "turtle") -> dict[str, Any]:
         out = await loopback.call(
             "GET", f"/api/v1/ontologies/{oid}/export/file", params={"format": rdf_format}
         )
