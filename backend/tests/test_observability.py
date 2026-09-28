@@ -90,3 +90,40 @@ def test_common_fields_processor_defaults_and_respect() -> None:
     # An event that already carries a version (say, a future override) wins.
     kept = add_service_fields(None, None, {"event": "x", "service_version": "9.9.9"})
     assert kept["service_version"] == "9.9.9"
+
+
+def test_mcp_sdk_lines_share_the_json_envelope(tmp_path, capsys) -> None:
+    """The MCP SDK's stdlib lifecycle lines render in the app's JSON envelope.
+
+    The SDK logs "StreamableHTTP session manager started/shutting down"
+    through mcp.server.* stdlib loggers — not structlog — so without an
+    envelope-map entry they print as bare text and break the one-format
+    rule (user report 09-28). Verified through the real setup_logging,
+    not the filter in isolation, so the production map is what's tested.
+    """
+    import logging as stdlib_logging
+
+    from ontoworkbench.observability.logging import setup_logging
+
+    before = list(stdlib_logging.getLogger().handlers)
+    try:
+        setup_logging(tmp_path)
+        stdlib_logging.getLogger("mcp.server.streamable_http_manager").info(
+            "StreamableHTTP session manager started"
+        )
+        for handler in stdlib_logging.getLogger().handlers:
+            handler.flush()
+        line = capsys.readouterr().out.strip()
+        payload = json.loads(line)
+        assert payload["message"] == "StreamableHTTP session manager started"
+        assert payload["event"] == "mcp.sdk"
+        assert payload["service"] == "ontology-workbench"
+    finally:
+        # basicConfig(force=True) swapped root handlers onto pytest's captured
+        # stdout and a tmp file; restore the pre-test state so later tests'
+        # logging never writes into closed streams.
+        root = stdlib_logging.getLogger()
+        for handler in list(root.handlers):
+            if handler not in before:
+                root.removeHandler(handler)
+                handler.close()

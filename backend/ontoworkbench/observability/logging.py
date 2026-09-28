@@ -97,7 +97,12 @@ def setup_logging(log_dir: Path, level: str = "INFO") -> None:
     )
     # StreamHandler defaults to stderr; spec mandates stdout as the first sink
     stream = logging.StreamHandler(stream=sys.stdout)
-    envelope = JsonEnvelopeFilter({"alembic": "db.migrate", "uvicorn": "server.uvicorn"})
+    # "mcp" covers the SDK's stdlib loggers (streamable_http_manager et al.):
+    # its lifecycle lines ("StreamableHTTP session manager started") must
+    # wear the same JSON envelope as every other line (one-format rule).
+    envelope = JsonEnvelopeFilter(
+        {"alembic": "db.migrate", "uvicorn": "server.uvicorn", "mcp": "mcp.sdk"}
+    )
     for h in (stream, rotating):
         h.setFormatter(logging.Formatter("%(message)s"))
         h.addFilter(envelope)
