@@ -221,7 +221,8 @@ function ClassPropSection({ oid, cls }: { oid: string; cls: string }) {
   )
 }
 
-/** Manchester 关键词(行内着色):渲染器模板词表 + 布尔/基数连接词. */
+/** Manchester 关键词(行内着色):渲染器模板词表 + 布尔/基数连接词 +
+ *  特征词(渲染器把 *ObjectProperty 后缀剥掉,行内只剩短词). */
 const MANCHESTER_KEYWORDS = new Set([
   'SubClassOf',
   'SubPropertyOf',
@@ -231,6 +232,13 @@ const MANCHESTER_KEYWORDS = new Set([
   'HasKey',
   'Type',
   'Self',
+  'Reflexive',
+  'Irreflexive',
+  'Symmetric',
+  'Asymmetric',
+  'Transitive',
+  'Functional',
+  'InverseFunctional',
   'some',
   'only',
   'min',
@@ -262,10 +270,12 @@ function ManchesterText({ text }: { text: string }) {
   )
 }
 
-/** Axiom section (A+B iteration): one row per axiom with its kind as the
- *  leading anchor, kind chips filter when several families mix, and the box
- *  scrolls past ~12 rows instead of pushing the sections below away. Raw
- *  Turtle stays a closed <details> safety net (OWL 2 M1 degradation). */
+/** Axiom section (A+B iteration): one row per axiom, the colored Manchester
+ *  keyword as its only anchor (the leading kind badge column doubled the
+ *  predicate and ate a quarter of the column width — dropped 2026-10-03);
+ *  a kind dropdown filters when several families mix, and the box scrolls
+ *  past ~12 rows instead of pushing the sections below away. Raw Turtle
+ *  stays a closed <details> safety net (OWL 2 M1 degradation). */
 function ManchesterSection({
   lines,
   axioms,
@@ -321,13 +331,7 @@ function ManchesterSection({
     >
       <div className="border-line bg-panel-2 scrollbar-thin rounded-ctl flex max-h-72 flex-col gap-0.5 overflow-y-auto border p-1.5">
         {visible.map((l, i) => (
-          <div
-            key={`${l.kind}:${i}`}
-            className={cn('flex items-start gap-2 py-1', i > 0 && 'border-line border-t')}
-          >
-            <span className="text-ink-3 shrink-0 pt-px font-mono text-[10px] leading-5">
-              {l.kind}
-            </span>
+          <div key={`${l.kind}:${i}`} className={cn('py-1', i > 0 && 'border-line border-t')}>
             <ManchesterText text={l.text} />
           </div>
         ))}

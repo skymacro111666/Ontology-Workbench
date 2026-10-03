@@ -383,6 +383,23 @@ describe('InspectorPanel', () => {
     expect(screen.getByText(codeLine('Dog SubClassOf Animal'))).toBeTruthy()
   })
 
+  it('drops the leading kind column; colored keywords alone mark the rows', async () => {
+    const ent = {
+      ...entity(),
+      manchester: [
+        { kind: 'SubClassOf', text: 'Dog SubClassOf Animal' },
+        { kind: 'TransitiveObjectProperty', text: 'manages Transitive' },
+      ],
+    }
+    renderPanel(stubFetch(ent))
+    await screen.findByText('公理(结构化) (2)')
+    // The machine kind token lived only in the deleted badge column.
+    expect(screen.queryByText('TransitiveObjectProperty')).toBeNull()
+    // Characteristic words join the keyword tint so every row keeps a
+    // highlighted anchor after the column is gone.
+    expect(screen.getByText('Transitive').className).toContain('text-primary')
+  })
+
   it('caps the axiom box height with an inner scroll region', async () => {
     const many = Array.from({ length: 20 }, (_, i) => ({
       kind: 'SubClassOf',
