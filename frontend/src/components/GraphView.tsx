@@ -214,7 +214,7 @@ export function subclassDepths(
  *  back to the curie's local name; the inspector carries the full curie.
  *  Instances (on-demand badge reveal) render as small grey circles beside
  *  their class. The depth ladder (v3): the root/anchor carries the
- *  primary-soft tint and a bold 1.6px ink2 border, each generation below
+ *  root-tint fill and a bold 1.4px ink2 border, each generation below
  *  one shade lighter — focused keeps priority on border and label, and
  *  composes with the tint (a focused root shows both signals). */
 export function toG6Nodes(
@@ -247,15 +247,16 @@ export function toG6Nodes(
       }
     }
     const w = bucket ? 168 : cardWidth(name)
-    // Ladder borders: gen 0/1 share ink2 (1.6px vs 1.4px), gen 2 ink3,
-    // gen 3+ and ladder-less cards the plain line. Buckets never ladder.
+    // Ladder borders: gen 0/1 share ink2 at 1.4px (fill, weight and card
+    // height tell the root from gen 1), gen 2 ink3, gen 3+ and ladder-less
+    // cards the plain line. Buckets never ladder.
     const ladderStroke = depth === 0 || depth === 1 ? t.ink2 : depth === 2 ? t.ink3 : t.line
     const style: Record<string, unknown> = {
       size: bucket ? [w, 40] : depth === 0 ? [w, 36] : [w, 32],
       radius: 8,
       fill: depth === 0 ? t.rootTint : depth !== undefined && depth >= 3 ? t.panel2 : t.panel,
       stroke: focused ? t.primary : isProperty ? t.edgeSub : ladderStroke,
-      lineWidth: focused ? 2 : depth === 0 ? 1.6 : depth === 1 ? 1.4 : 1,
+      lineWidth: focused ? 2 : depth === 0 || depth === 1 ? 1.4 : 1,
       shadowColor: 'rgba(15, 23, 42, 0.08)',
       shadowBlur: 4,
       labelText: name,

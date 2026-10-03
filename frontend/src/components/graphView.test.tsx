@@ -541,11 +541,12 @@ describe('toG6Nodes', () => {
       ['g3', 3],
     ])
     const by = (id: string) => toG6Nodes(ladder, TOKENS, undefined, depths).find((n) => n.id === id) as G6Datum
-    // Root: the #FFF9D6 tint, bold ink label, 1.6px ink2 border, taller card.
+    // Root: the #FFF9D6 tint, bold ink label, 1.4px ink2 border (level with
+    // gen 1 — fill, weight and card height carry the difference), taller card.
     expect(by('r').style).toMatchObject({
       fill: '#fff9d6',
       stroke: '#475569',
-      lineWidth: 1.6,
+      lineWidth: 1.4,
       labelFontWeight: 700,
       labelFill: '#0f172a',
     })
