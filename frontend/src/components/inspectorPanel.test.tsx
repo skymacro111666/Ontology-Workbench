@@ -292,8 +292,11 @@ describe('InspectorPanel', () => {
     // Declared and universal rows count into their own group headers.
     expect(await screen.findByText('属性 (1)')).toBeTruthy()
     expect(screen.getByText('全域属性 (2)')).toBeTruthy()
-    // The hint explains what 「全域」 means, once per group.
-    expect(screen.getByText(/未声明 rdfs:domain/)).toBeTruthy()
+    // The hint hides behind an ⓘ after the group label: no visible line,
+    // hover title and aria-label carry the explanation.
+    expect(screen.queryByText(/未声明 rdfs:domain/)).toBeNull()
+    const info = screen.getByTitle(/未声明 rdfs:domain/)
+    expect(info.getAttribute('aria-label')).toMatch(/rdfs:domain/)
     // Universal rows keep the same rendering: datatype `= string` (both
     // email and referenceNumber land one), object property → navigable chip.
     expect(screen.getAllByText('= string')).toHaveLength(2)

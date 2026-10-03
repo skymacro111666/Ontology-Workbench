@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { InfoIcon } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
@@ -187,8 +188,22 @@ function ClassPropSection({ oid, cls }: { oid: string; cls: string }) {
         </Section>
       )}
       {universal.length > 0 && (
-        <Section label={t('inspector.universalProps')} count={universal.length}>
-          <p className="text-ink-3 text-[10px]">{t('inspector.universalPropsHint')}</p>
+        <Section
+          label={
+            <>
+              {t('inspector.universalProps')} ({universal.length})
+              {/* Hint behind an ⓘ hover (native title, the file's tooltip
+               *  convention) so the group header stays one clean line. */}
+              <span
+                title={t('inspector.universalPropsHint')}
+                aria-label={t('inspector.universalPropsHint')}
+                className="ml-1 inline-flex cursor-help align-middle text-ink-3"
+              >
+                <InfoIcon className="size-3" aria-hidden="true" />
+              </span>
+            </>
+          }
+        >
           <div className="flex flex-col gap-1">
             {universal.map((p) => (
               <PropRow key={p.eid} p={p} />
@@ -316,7 +331,9 @@ export function Section({
   action,
   children,
 }: {
-  label: string
+  /** Usually a plain string; a header may embed its count and decorations
+   *  (the 全域属性 group appends its ⓘ this way). */
+  label: ReactNode
   count?: number
   /** Header-affordance control (e.g. the instances section's ＋). */
   action?: ReactNode
