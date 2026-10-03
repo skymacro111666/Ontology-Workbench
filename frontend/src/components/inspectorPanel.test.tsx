@@ -350,11 +350,15 @@ describe('InspectorPanel', () => {
     await userEvent.click(raw)
     expect(details.open).toBe(true)
     // The Turtle text rides inside the details block (exact match: the URI
-    // block's example.org also contains an "x").
+    // block's example.org also contains an "x"); its horizontal scrollbar
+    // rides thin like the structured box above.
     expect(within(details).getByText('x')).toBeTruthy()
+    expect(within(details).getByText('x').closest('.overflow-x-auto')?.className).toContain(
+      'scrollbar-thin',
+    )
   })
 
-  it('filters axiom rows by the kind chip in the section header', async () => {
+  it('filters axiom rows from the kind dropdown in the section header', async () => {
     const ent = {
       ...entity(),
       manchester: [
@@ -365,12 +369,17 @@ describe('InspectorPanel', () => {
     }
     renderPanel(stubFetch(ent))
     await screen.findByText('公理(结构化) (3)')
-    // One chip per unique kind; picking one keeps only its rows.
-    await userEvent.click(screen.getByRole('button', { name: 'HasKey' }))
+    // No chip row in the header: one dropdown trigger holds the filter.
+    await userEvent.click(screen.getByRole('button', { name: /筛选/ }))
+    // Each option carries its row count; picking one keeps only its rows.
+    const menu = await screen.findByRole('menu')
+    await userEvent.click(within(menu).getByRole('menuitem', { name: /HasKey \(1\)/ }))
     expect(screen.getByText(codeLine('Dog HasKey owner'))).toBeTruthy()
     expect(screen.queryByText(codeLine('Dog SubClassOf Animal'))).toBeNull()
-    // Clicking the active chip again clears the filter.
-    await userEvent.click(screen.getByRole('button', { name: 'HasKey' }))
+    // Reopening and picking 全部 restores the full list.
+    await userEvent.click(screen.getByRole('button', { name: /筛选/ }))
+    const menu2 = await screen.findByRole('menu')
+    await userEvent.click(within(menu2).getByRole('menuitem', { name: /全部 \(3\)/ }))
     expect(screen.getByText(codeLine('Dog SubClassOf Animal'))).toBeTruthy()
   })
 
@@ -382,8 +391,12 @@ describe('InspectorPanel', () => {
     renderPanel(stubFetch({ ...entity(), manchester: many }))
     const firstRow = await screen.findByText(codeLine('Dog SubClassOf C0'))
     // Progressive disclosure: the box scrolls past ~12 rows instead of
-    // pushing every section below off-screen.
-    expect(firstRow.closest('.overflow-y-auto')).toBeTruthy()
+    // pushing every section below off-screen; the scrollbar rides thin.
+    const box = firstRow.closest('.overflow-y-auto') as HTMLElement
+    expect(box).toBeTruthy()
+    expect(box.className).toContain('scrollbar-thin')
+    // Single-kind axioms: the filter control stays out of the header.
+    expect(screen.queryByRole('button', { name: /筛选/ })).toBeNull()
   })
 
   it('shows no axiom section when manchester is null (degradation = status quo)', async () => {

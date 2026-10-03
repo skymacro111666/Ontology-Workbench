@@ -78,6 +78,22 @@
   background-image: radial-gradient(circle at 1px 1px, var(--color-line) 1px, transparent 0);
   background-size: 22px 22px;
 }
+/* Thin scrollbars for narrow boxes (inspector axiom region): the browser
+ * default ~15px eats 6% of the 264px inspector column. */
+.scrollbar-thin {
+  scrollbar-width: thin;
+}
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 3px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
 /* Uppercase micro-label (spec §3). */
 .microlabel {
   font-size: 11px;

@@ -134,6 +134,7 @@
     "referencedBy": "Referenced by",
     "instances": "Instances",
     "properties": "Properties",
+    "filter": "filter",
     "universalProps": "universal properties",
     "universalPropsHint": "no rdfs:domain declared — usable on any class",
     "inheritedFrom": "inherited from",

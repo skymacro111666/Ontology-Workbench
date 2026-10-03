@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { InfoIcon } from 'lucide-react'
+import { CheckIcon, InfoIcon, ListFilterIcon } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../api/client'
@@ -10,6 +10,12 @@ import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
 import { cn } from '@/lib/utils'
 import InstanceDetail from './InstanceDetail'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu'
 
 /** Clickable entity chip (mockup linklist): soft primary pill; the human
  *  label when present, the local curie name otherwise — the full curie
@@ -277,28 +283,43 @@ function ManchesterSection({
       count={lines.length}
       action={
         kinds.length > 1 ? (
-          <div className="flex flex-wrap gap-1">
-            {kinds.map((k) => (
+          // One dropdown trigger replaces the wrapping chip row: kind tokens
+          // (SubClassOf, HasKey, …) overflow the 264px inspector column.
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <button
-                key={k}
                 type="button"
-                aria-pressed={kindFilter === k}
-                onClick={() => setKindFilter(kindFilter === k ? null : k)}
-                className={cn(
-                  'rounded-full border px-2 py-px font-mono text-[10px] leading-4',
-                  kindFilter === k
-                    ? 'bg-primary-soft border-primary-border text-primary'
-                    : 'border-line text-ink-2 hover:text-primary',
-                )}
+                aria-label={t('inspector.filter')}
+                className="text-ink-3 hover:text-primary inline-flex items-center gap-1 font-mono text-[10px] leading-4"
               >
-                {k}
+                <ListFilterIcon className="size-3" aria-hidden="true" />
+                {kindFilter}
               </button>
-            ))}
-          </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => setKindFilter(null)}
+                className="text-xs"
+              >
+                {kindFilter === null && <CheckIcon className="size-3" aria-hidden="true" />}
+                {t('canvas.all')} ({lines.length})
+              </DropdownMenuItem>
+              {kinds.map((k) => (
+                <DropdownMenuItem
+                  key={k}
+                  onClick={() => setKindFilter(kindFilter === k ? null : k)}
+                  className="font-mono text-xs"
+                >
+                  {kindFilter === k && <CheckIcon className="size-3" aria-hidden="true" />}
+                  {k} ({lines.filter((l) => l.kind === k).length})
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : undefined
       }
     >
-      <div className="border-line bg-panel-2 rounded-ctl flex max-h-72 flex-col gap-0.5 overflow-y-auto border p-1.5">
+      <div className="border-line bg-panel-2 scrollbar-thin rounded-ctl flex max-h-72 flex-col gap-0.5 overflow-y-auto border p-1.5">
         {visible.map((l, i) => (
           <div
             key={`${l.kind}:${i}`}
@@ -316,7 +337,7 @@ function ManchesterSection({
           <summary className="text-ink-3 cursor-pointer text-[11px] select-none">
             {t('inspector.axioms.raw')}
           </summary>
-          <pre className="text-ink bg-panel-2 border-line rounded-ctl mt-1 max-w-full overflow-x-auto border p-1.5 font-mono text-xs break-all whitespace-pre-wrap">
+          <pre className="text-ink bg-panel-2 border-line scrollbar-thin rounded-ctl mt-1 max-w-full overflow-x-auto border p-1.5 font-mono text-xs break-all whitespace-pre-wrap">
             {axioms.map((a) => a.turtle).join('\n')}
           </pre>
         </details>
