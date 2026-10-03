@@ -234,6 +234,8 @@ describe('InspectorPanel', () => {
     const { fetchMock } = renderPanel(stubFetch(entity(), { nodes: [], edges: [] }, schema))
     // Section appears only when the schema is non-empty; counts carry both rows.
     expect(await screen.findByText('属性 (2)')).toBeTruthy()
+    // No domainless rows → no 全域属性 group at all.
+    expect(screen.queryByText(/全域属性/)).toBeNull()
     // Property names render as bare local names; the range class is a
     // navigable chip with the full curie in its tooltip.
     const book = screen.getByText('Book')
@@ -249,6 +251,53 @@ describe('InspectorPanel', () => {
     // Range-class chip click navigates to that class.
     await userEvent.click(book)
     expect(useBrowseStore.getState().selectedEid).toBe('http://example.org/Book')
+  })
+
+  it('splits universal (domainless) properties into their own group', async () => {
+    // Shapes mirror hr:Person's real payload: declared rows plus the two
+    // domainless ones (referenceNumber / totalValue) that belong to no class.
+    const schema: SchemaProp[] = [
+      {
+        eid: 'http://example.org/email',
+        curie: 'hr:email',
+        label: {},
+        ptype: 'DatatypeProperty',
+        inherited: false,
+        via: null,
+        target: { kind: 'datatype', curie: 'xsd:string', eid: null, declared: null },
+        domainless: false,
+      },
+      {
+        eid: 'http://example.org/referenceNumber',
+        curie: 'hr:referenceNumber',
+        label: {},
+        ptype: 'DatatypeProperty',
+        inherited: false,
+        via: null,
+        target: { kind: 'datatype', curie: 'xsd:string', eid: null, declared: null },
+        domainless: true,
+      },
+      {
+        eid: 'http://example.org/totalValue',
+        curie: 'hr:totalValue',
+        label: {},
+        ptype: 'ObjectProperty',
+        inherited: false,
+        via: null,
+        target: { kind: 'class', curie: 'hr:MonetaryAmount', eid: 'http://example.org/MA', declared: true },
+        domainless: true,
+      },
+    ]
+    renderPanel(stubFetch(entity(), { nodes: [], edges: [] }, schema))
+    // Declared and universal rows count into their own group headers.
+    expect(await screen.findByText('属性 (1)')).toBeTruthy()
+    expect(screen.getByText('全域属性 (2)')).toBeTruthy()
+    // The hint explains what 「全域」 means, once per group.
+    expect(screen.getByText(/未声明 rdfs:domain/)).toBeTruthy()
+    // Universal rows keep the same rendering: datatype `= string` (both
+    // email and referenceNumber land one), object property → navigable chip.
+    expect(screen.getAllByText('= string')).toHaveLength(2)
+    expect(screen.getByText('MonetaryAmount').title).toBe('hr:MonetaryAmount')
   })
 
   it('shows 无 for a class without instances', async () => {

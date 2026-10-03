@@ -134,6 +134,8 @@
     "referencedBy": "被引用",
     "instances": "实例",
     "properties": "属性",
+    "universalProps": "全域属性",
+    "universalPropsHint": "未声明 rdfs:domain,任何类的实例可用",
     "inheritedFrom": "继承自",
     "axioms": {
       "structured": "公理(结构化)",

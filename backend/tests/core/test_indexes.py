@@ -339,10 +339,15 @@ def test_assertion_schema_branches() -> None:
 
     free = props["ex:freeProp"]
     assert free.inherited is False and free.via is None and free.target is None
+    # The universal flag marks rows the inspector groups under 全域属性:
+    # no declared domain anywhere in the closure — usable on any class.
+    assert free.domainless is True
 
     # A direct domain hit wins over an ancestor hit regardless of row order.
     multi = props["ex:multiProp"]
     assert multi.inherited is False and multi.via is None
+    for p in (direct, inherited, multi):
+        assert p.domainless is False
 
 
 def _linked(n: int, cap: int | None = None) -> tuple[Indexes, list[str], int]:

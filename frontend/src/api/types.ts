@@ -102,6 +102,8 @@ export interface SchemaProp {
   ptype: string
   inherited: boolean
   via: string | null
+  /** No declared domain — usable on any class; grouped under 全域属性. */
+  domainless?: boolean
   target: { kind: 'class' | 'datatype'; curie: string; eid: string | null; declared: boolean | null } | null
 }
 

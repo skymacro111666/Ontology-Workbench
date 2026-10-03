@@ -134,6 +134,8 @@
     "referencedBy": "Referenced by",
     "instances": "Instances",
     "properties": "Properties",
+    "universalProps": "universal properties",
+    "universalPropsHint": "no rdfs:domain declared — usable on any class",
     "inheritedFrom": "inherited from",
     "axioms": {
       "structured": "Axioms (structured)",

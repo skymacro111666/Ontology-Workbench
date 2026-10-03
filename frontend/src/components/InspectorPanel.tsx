@@ -130,8 +130,11 @@ function InstanceRows({ nodes }: { nodes: GNode[] }) {
  *  draws its property list, and the class page's capability sheet. Inherited
  *  rows dim with a 「继承自 via」 suffix (competitor's pattern); object
  *  properties pair with a navigable range-class link, datatype properties
- *  with `= localName(xsd curie)`. Same query key shape as InstanceDetail's
- *  single-class schema lookups, so the entries share cache. */
+ *  with `= localName(xsd curie)`. Domainless rows (no rdfs:domain anywhere
+ *  — usable on any class) sit in their own 全域属性 group so they never
+ *  read as the class's own properties. Same query key shape as
+ *  InstanceDetail's single-class schema lookups, so the entries share
+ *  cache. */
 function ClassPropSection({ oid, cls }: { oid: string; cls: string }) {
   const { t } = useTranslation()
   const setSelected = useBrowseStore((s) => s.setSelected)
@@ -143,39 +146,57 @@ function ClassPropSection({ oid, cls }: { oid: string; cls: string }) {
       ),
   })
   if (!props?.length) return null
-  return (
-    <Section label={t('inspector.properties')} count={props.length}>
-      <div className="flex flex-col gap-1">
-        {props.map((p) => (
-          <div
-            key={p.eid}
-            className={cn('flex flex-wrap items-baseline gap-1.5 text-xs', p.inherited && 'opacity-60')}
+  const universal = props.filter((p) => p.domainless)
+  const declared = props.filter((p) => !p.domainless)
+  const PropRow = ({ p }: { p: SchemaProp }) => (
+    <div
+      className={cn('flex flex-wrap items-baseline gap-1.5 text-xs', p.inherited && 'opacity-60')}
+    >
+      <span className="text-ink-2 font-mono">{localName(p.curie)}</span>
+      {p.target?.kind === 'class' ? (
+        <>
+          <span className="text-ink-3">→</span>
+          <button
+            type="button"
+            title={p.target.curie}
+            onClick={() => p.target?.eid && setSelected(p.target.eid)}
+            className="text-primary hover:underline underline decoration-dotted underline-offset-2"
           >
-            <span className="text-ink-2 font-mono">{localName(p.curie)}</span>
-            {p.target?.kind === 'class' ? (
-              <>
-                <span className="text-ink-3">→</span>
-                <button
-                  type="button"
-                  title={p.target.curie}
-                  onClick={() => p.target?.eid && setSelected(p.target.eid)}
-                  className="text-primary hover:underline underline decoration-dotted underline-offset-2"
-                >
-                  {localName(p.target.curie)}
-                </button>
-              </>
-            ) : (
-              <span className="text-ink-3">= {localName(p.target?.curie ?? '')}</span>
-            )}
-            {p.inherited && p.via && (
-              <span className="text-ink-3 text-[10px]">
-                {t('inspector.inheritedFrom')} {p.via}
-              </span>
-            )}
+            {localName(p.target.curie)}
+          </button>
+        </>
+      ) : (
+        <span className="text-ink-3">= {localName(p.target?.curie ?? '')}</span>
+      )}
+      {p.inherited && p.via && (
+        <span className="text-ink-3 text-[10px]">
+          {t('inspector.inheritedFrom')} {p.via}
+        </span>
+      )}
+    </div>
+  )
+  return (
+    <>
+      {declared.length > 0 && (
+        <Section label={t('inspector.properties')} count={declared.length}>
+          <div className="flex flex-col gap-1">
+            {declared.map((p) => (
+              <PropRow key={p.eid} p={p} />
+            ))}
           </div>
-        ))}
-      </div>
-    </Section>
+        </Section>
+      )}
+      {universal.length > 0 && (
+        <Section label={t('inspector.universalProps')} count={universal.length}>
+          <p className="text-ink-3 text-[10px]">{t('inspector.universalPropsHint')}</p>
+          <div className="flex flex-col gap-1">
+            {universal.map((p) => (
+              <PropRow key={p.eid} p={p} />
+            ))}
+          </div>
+        </Section>
+      )}
+    </>
   )
 }
 

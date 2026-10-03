@@ -73,6 +73,10 @@ class SchemaProp(BaseModel):
     ptype: str
     inherited: bool = False
     via: str | None = None  # curie of the class pulling it in (inherited only)
+    # No declared domain anywhere in the closure — usable on any class; the
+    # inspector groups these rows under 全域属性 so they never read as the
+    # class's own properties.
+    domainless: bool = False
     target: SchemaTarget | None = None
 
 
@@ -619,8 +623,10 @@ class Indexes:
                     continue
                 inherited = hit.eid not in direct
                 via = hit.curie if inherited else None
+                domainless = False
             else:
-                inherited, via = False, None  # domainless: universal
+                # domainless: universal — usable on any class (spec §3).
+                inherited, via, domainless = False, None, True
             ranges = [r for r in e.referenced_by if r.relation == "rdfs:range"]
             target = None
             if ranges:
@@ -640,6 +646,7 @@ class Indexes:
                 ptype=e.type,
                 inherited=inherited,
                 via=via,
+                domainless=domainless,
                 target=target,
             )
         return list(out.values())
