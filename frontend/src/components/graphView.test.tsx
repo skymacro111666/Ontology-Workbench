@@ -26,6 +26,7 @@ const TOKENS = {
   primary: '#4f46e5',
   primaryFg: '#ffffff',
   primarySoft: '#eef2ff',
+  rootTint: '#fff9d6',
   panel: '#ffffff',
   panel2: '#f8fafc',
   line: '#e2e8f0',
@@ -123,6 +124,7 @@ describe('GraphView', () => {
     const cs = document.documentElement.style
     cs.setProperty('--color-primary', '#4f46e5')
     cs.setProperty('--color-primary-soft', '#eef2ff')
+    cs.setProperty('--color-root-tint', '#fff9d6')
     cs.setProperty('--color-ink-2', '#475569')
     draw({ anchorId: 'a' })
     const { nodes } = lastData()
@@ -133,7 +135,7 @@ describe('GraphView', () => {
     // ladder (tinted card composed with its highlighted 2px border).
     draw()
     const plain = lastData().nodes.find((n) => n.id === 'a')?.style
-    expect(plain).toMatchObject({ fill: '#eef2ff', stroke: '#4f46e5', lineWidth: 2 })
+    expect(plain).toMatchObject({ fill: '#fff9d6', stroke: '#4f46e5', lineWidth: 2 })
     const child = lastData().nodes.find((n) => n.id === 'b')?.style
     expect(child).toMatchObject({ stroke: '#475569', lineWidth: 1.4 })
   })
@@ -539,9 +541,9 @@ describe('toG6Nodes', () => {
       ['g3', 3],
     ])
     const by = (id: string) => toG6Nodes(ladder, TOKENS, undefined, depths).find((n) => n.id === id) as G6Datum
-    // Root: primary-soft tint, bold ink label, 1.6px ink2 border, taller card.
+    // Root: the #FFF9D6 tint, bold ink label, 1.6px ink2 border, taller card.
     expect(by('r').style).toMatchObject({
-      fill: '#eef2ff',
+      fill: '#fff9d6',
       stroke: '#475569',
       lineWidth: 1.6,
       labelFontWeight: 700,
@@ -571,7 +573,7 @@ describe('toG6Nodes', () => {
     const by = (id: string) => focused.find((n) => n.id === id) as G6Datum
     // A focused root shows BOTH signals: 2px primary border + primary label
     // over the retained primary-soft tint.
-    expect(by('fr').style).toMatchObject({ stroke: '#4f46e5', lineWidth: 2, fill: '#eef2ff', labelFill: '#4f46e5' })
+    expect(by('fr').style).toMatchObject({ stroke: '#4f46e5', lineWidth: 2, fill: '#fff9d6', labelFill: '#4f46e5' })
     // A focused plain-generation node keeps fill panel.
     expect(by('fc').style).toMatchObject({ stroke: '#4f46e5', lineWidth: 2, fill: '#ffffff' })
   })

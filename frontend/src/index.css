@@ -11,6 +11,8 @@
   --color-primary-hover: #4338ca;
   --color-primary-soft: #eef2ff;
   --color-primary-border: #c7d2fe;
+  /* Class-tree root tint (canvas depth ladder): user-picked warm cream. */
+  --color-root-tint: #FFF9D6;
   --color-canvas: #f8fafc;
   --color-panel: #ffffff;
   --color-panel-2: #f8fafc;
@@ -57,6 +59,9 @@
   --color-primary-hover: #a5b4fc;
   --color-primary-soft: #6366f11f;
   --color-primary-border: #6366f155;
+  /* Translucent so the dark panel shows through and light ink stays
+   * readable (solid #FFF9D6 would wash out the label). */
+  --color-root-tint: #fff9d62e;
   --color-canvas: #0f172a;
   --color-panel: #1e293b;
   --color-panel-2: #334155;

@@ -51,6 +51,7 @@ export interface CanvasTokens {
   primary: string
   primaryFg: string
   primarySoft: string
+  rootTint: string
   panel: string
   panel2: string
   line: string
@@ -69,6 +70,7 @@ export function readCanvasTokens(): CanvasTokens {
     primary: v('--color-primary'),
     primaryFg: v('--color-primary-foreground'),
     primarySoft: v('--color-primary-soft'),
+    rootTint: v('--color-root-tint'),
     panel: v('--color-panel'),
     panel2: v('--color-panel-2'),
     line: v('--color-line'),
@@ -110,7 +112,7 @@ const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
  *  root tinted bold, each generation one shade lighter. The DOM legend
  *  resolves CSS variables itself (canvas tokens cannot cross into it). */
 const NODE_LEGEND: { label: string; visual: { fill: string; stroke: string; width: number } }[] = [
-  { label: 'canvas.nodeRoot', visual: { fill: 'var(--color-primary-soft)', stroke: 'var(--color-ink-2)', width: 1.6 } },
+  { label: 'canvas.nodeRoot', visual: { fill: 'var(--color-root-tint)', stroke: 'var(--color-ink-2)', width: 1.6 } },
   { label: 'canvas.nodeDepth1', visual: { fill: 'var(--color-panel)', stroke: 'var(--color-ink-2)', width: 1.4 } },
   { label: 'canvas.nodeDepth2', visual: { fill: 'var(--color-panel)', stroke: 'var(--color-ink-3)', width: 1 } },
   { label: 'canvas.nodeDepth3', visual: { fill: 'var(--color-panel-2)', stroke: 'var(--color-line)', width: 1 } },
@@ -251,7 +253,7 @@ export function toG6Nodes(
     const style: Record<string, unknown> = {
       size: bucket ? [w, 40] : depth === 0 ? [w, 36] : [w, 32],
       radius: 8,
-      fill: depth === 0 ? t.primarySoft : depth !== undefined && depth >= 3 ? t.panel2 : t.panel,
+      fill: depth === 0 ? t.rootTint : depth !== undefined && depth >= 3 ? t.panel2 : t.panel,
       stroke: focused ? t.primary : isProperty ? t.edgeSub : ladderStroke,
       lineWidth: focused ? 2 : depth === 0 ? 1.6 : depth === 1 ? 1.4 : 1,
       shadowColor: 'rgba(15, 23, 42, 0.08)',
