@@ -50,9 +50,12 @@ const kindsFromKeys = (keys: string[]): KindFilter => ({
 export interface CanvasTokens {
   primary: string
   primaryFg: string
+  primarySoft: string
   panel: string
+  panel2: string
   line: string
   ink: string
+  ink2: string
   ink3: string
   edgeSub: string
   success: string
@@ -65,9 +68,12 @@ export function readCanvasTokens(): CanvasTokens {
   return {
     primary: v('--color-primary'),
     primaryFg: v('--color-primary-foreground'),
+    primarySoft: v('--color-primary-soft'),
     panel: v('--color-panel'),
+    panel2: v('--color-panel-2'),
     line: v('--color-line'),
     ink: v('--color-ink'),
+    ink2: v('--color-ink-2'),
     ink3: v('--color-ink-3'),
     edgeSub: v('--color-edge-sub'),
     success: v('--color-success'),
@@ -98,6 +104,16 @@ const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
   { label: 'canvas.edgeDataProp', visual: { stroke: 'var(--color-ink-3)', dash: '1 4' } },
   { label: 'canvas.edgeInstance', visual: { stroke: 'var(--color-ink-3)' } },
   { label: 'canvas.edgeAssertion', visual: { stroke: 'var(--color-success)' } },
+]
+
+/** Node ladder legend (v3): the class card styles above as swatches —
+ *  root tinted bold, each generation one shade lighter. The DOM legend
+ *  resolves CSS variables itself (canvas tokens cannot cross into it). */
+const NODE_LEGEND: { label: string; visual: { fill: string; stroke: string; width: number } }[] = [
+  { label: 'canvas.nodeRoot', visual: { fill: 'var(--color-primary-soft)', stroke: 'var(--color-ink-2)', width: 1.6 } },
+  { label: 'canvas.nodeDepth1', visual: { fill: 'var(--color-panel)', stroke: 'var(--color-ink-2)', width: 1.4 } },
+  { label: 'canvas.nodeDepth2', visual: { fill: 'var(--color-panel)', stroke: 'var(--color-ink-3)', width: 1 } },
+  { label: 'canvas.nodeDepth3', visual: { fill: 'var(--color-panel-2)', stroke: 'var(--color-line)', width: 1 } },
 ]
 
 /** Two-stage layout pipeline: dagre fixes the ranks and sibling order
@@ -144,21 +160,72 @@ export function hitFold(hit: HitShape | null | undefined, node: unknown): boolea
 /** Bucket kinds render as large dashed rectangles (spec §5.2). */
 const isBucket = (kind: string) => kind === 'deprecatedBucket' || kind === 'prefixBucket'
 
+/** Class generations for the depth ladder: BFS down the subClassOf edges
+ *  from the anchor (anchored canvas) or from the parentless top classes
+ *  (fresh overview), so card styles can encode 树干到树叶 (v3 spec). API
+ *  edges read source = child, target = parent — toG6Edges swaps them for
+ *  the TB layout, this walks the raw direction. Multi-parent nodes keep
+ *  the shallowest generation (BFS dequeue order); properties, instances
+ *  and buckets never enter the map — they carry their own visual
+ *  language. A parent ring unreachable from any root maps nothing. */
+export function subclassDepths(
+  nodes: GraphViewNode[],
+  edges: GEdge[],
+  anchorId?: string,
+): Map<string, number> {
+  const classes = new Set(nodes.filter((n) => n.kind === 'class').map((n) => n.id))
+  const children = new Map<string, string[]>()
+  const hasParent = new Set<string>()
+  for (const e of edges) {
+    if (e.kind !== 'subClassOf') continue
+    if (!classes.has(e.target) || !classes.has(e.source)) continue
+    const list = children.get(e.target)
+    if (list) list.push(e.source)
+    else children.set(e.target, [e.source])
+    hasParent.add(e.source)
+  }
+  const roots =
+    anchorId !== undefined && classes.has(anchorId)
+      ? [anchorId]
+      : [...classes].filter((id) => !hasParent.has(id))
+  const depths = new Map<string, number>()
+  const queue: string[] = []
+  for (const r of roots) {
+    depths.set(r, 0)
+    queue.push(r)
+  }
+  while (queue.length) {
+    const id = queue.shift() as string
+    const d = depths.get(id) as number
+    for (const c of children.get(id) ?? []) {
+      if (depths.has(c)) continue
+      depths.set(c, d + 1)
+      queue.push(c)
+    }
+  }
+  return depths
+}
+
 /** Card style (mockup): classes get a solid grey border, property nodes a
  *  dashed violet one (kind encoded in the border), and the highlighted
  *  entity a 2px primary border. Node labels prefer rdfs:label, falling
  *  back to the curie's local name; the inspector carries the full curie.
  *  Instances (on-demand badge reveal) render as small grey circles beside
- *  their class. */
+ *  their class. The depth ladder (v3): the root/anchor carries the
+ *  primary-soft tint and a bold 1.6px ink2 border, each generation below
+ *  one shade lighter — focused keeps priority on border and label, and
+ *  composes with the tint (a focused root shows both signals). */
 export function toG6Nodes(
   nodes: GraphViewNode[],
   t: CanvasTokens,
   foldedIds?: Set<string>,
+  depths?: Map<string, number>,
 ): NodeData[] {
   return nodes.map((n) => {
     const isProperty = n.kind === 'property'
     const bucket = isBucket(n.kind)
     const focused = !!n.highlighted
+    const depth = depths?.get(n.id)
     // 节点显示名 rdfs:label 优先,缺失回退 curie 局部名。
     const name = cardDisplayName(n)
     if (n.kind === 'instance') {
@@ -178,18 +245,21 @@ export function toG6Nodes(
       }
     }
     const w = bucket ? 168 : cardWidth(name)
+    // Ladder borders: gen 0/1 share ink2 (1.6px vs 1.4px), gen 2 ink3,
+    // gen 3+ and ladder-less cards the plain line. Buckets never ladder.
+    const ladderStroke = depth === 0 || depth === 1 ? t.ink2 : depth === 2 ? t.ink3 : t.line
     const style: Record<string, unknown> = {
-      size: bucket ? [w, 40] : [w, 32],
+      size: bucket ? [w, 40] : depth === 0 ? [w, 36] : [w, 32],
       radius: 8,
-      fill: t.panel,
-      stroke: focused ? t.primary : isProperty ? t.edgeSub : t.line,
-      lineWidth: focused ? 2 : 1,
+      fill: depth === 0 ? t.primarySoft : depth !== undefined && depth >= 3 ? t.panel2 : t.panel,
+      stroke: focused ? t.primary : isProperty ? t.edgeSub : ladderStroke,
+      lineWidth: focused ? 2 : depth === 0 ? 1.6 : depth === 1 ? 1.4 : 1,
       shadowColor: 'rgba(15, 23, 42, 0.08)',
       shadowBlur: 4,
       labelText: name,
-      labelFill: focused ? t.primary : t.ink,
-      labelFontSize: bucket ? 13 : 12,
-      labelFontWeight: focused ? 700 : bucket ? 600 : 400,
+      labelFill: focused ? t.primary : depth !== undefined && depth >= 3 ? t.ink2 : t.ink,
+      labelFontSize: bucket || depth === 0 ? 13 : 12,
+      labelFontWeight: focused ? 700 : depth === 0 ? 700 : bucket || depth === 1 ? 600 : 400,
       labelPlacement: 'center',
     }
     if ((isProperty || bucket) && !focused) style.lineDash = bucket ? [6, 4] : [4, 3]
@@ -344,11 +414,12 @@ function buildData(
   showLabels: boolean,
   t: CanvasTokens,
   foldedIds?: Set<string>,
+  anchorId?: string,
 ): GraphData {
   const visible = visibleOf(nodes, kinds)
   const ids = new Map(visible.map((n) => [n.id, n.curie]))
   return {
-    nodes: toG6Nodes(visible, t, foldedIds),
+    nodes: toG6Nodes(visible, t, foldedIds, subclassDepths(visible, edges, anchorId)),
     edges: toG6Edges(shownEdges(edges, kinds), ids, showLabels, t),
   }
 }
@@ -377,6 +448,7 @@ export default function GraphView({
   onContextMenu,
   extraControls,
   foldedIds,
+  anchorId,
 }: {
   nodes: GraphViewNode[]
   edges: GEdge[]
@@ -388,6 +460,9 @@ export default function GraphView({
   onFoldClick?: (eid: string, folded: boolean) => void
   /** Currently expanded fold ids — flips their badge from + to −. */
   foldedIds?: Set<string>
+  /** Root of the depth ladder (the progressive-reveal anchor); without it
+   *  the parentless top classes act as roots. */
+  anchorId?: string
   height?: number | string
   /** Optional entity to fit-view onto (overview focus param). */
   focusId?: string
@@ -461,9 +536,9 @@ export default function GraphView({
   })
   // Latest state for the build effect (its deps are narrower than the state).
   // Updated in a render-following effect declared before everything else.
-  const stateRef = useRef({ nodes, edges, showLabels, kinds, focusId, foldedIds })
+  const stateRef = useRef({ nodes, edges, showLabels, kinds, focusId, foldedIds, anchorId })
   useEffect(() => {
-    stateRef.current = { nodes, edges, showLabels, kinds, focusId, foldedIds }
+    stateRef.current = { nodes, edges, showLabels, kinds, focusId, foldedIds, anchorId }
   })
   // Change-driven effects (label toggle, kind filter) must not fire on mount:
   // the build effect already rendered the current state. For a 5000-node
@@ -515,7 +590,7 @@ export default function GraphView({
     positionsRef.current = useSaved
       ? assignFallbackPositions(snap.nodes, snap.edges, seeded)
       : {}
-    const data = buildData(snap.nodes, snap.edges, snap.kinds, snap.showLabels, t, foldedIds)
+    const data = buildData(snap.nodes, snap.edges, snap.kinds, snap.showLabels, t, foldedIds, snap.anchorId)
     edgePropRef.current = new Map(
       (data.edges ?? []).map((ed) => [
         ed.id as string,
@@ -685,7 +760,7 @@ export default function GraphView({
       mount.remove()
       graphRef.current = null
     }
-  }, [nodes, edges, resolved, savedPositions, foldedIds])
+  }, [nodes, edges, resolved, savedPositions, foldedIds, anchorId])
 
   /** Edge-label toggle without rebuilding (keeps dragged positions). */
   useEffect(() => {
@@ -725,7 +800,7 @@ export default function GraphView({
     const snap = stateRef.current
     const seeded = positionsRef.current
     const useSaved = Object.keys(seeded).length > 0
-    const data = buildData(snap.nodes, snap.edges, kinds, snap.showLabels, readCanvasTokens())
+    const data = buildData(snap.nodes, snap.edges, kinds, snap.showLabels, readCanvasTokens(), undefined, snap.anchorId)
     edgePropRef.current = new Map(
       (data.edges ?? []).map((ed) => [
         ed.id as string,
@@ -865,6 +940,23 @@ export default function GraphView({
                 stroke={visual.stroke}
                 strokeWidth="1.5"
                 strokeDasharray={visual.dash}
+              />
+            </svg>
+            <span className="text-ink-2 text-xs">{tr(label)}</span>
+          </div>
+          ))}
+          {NODE_LEGEND.map(({ label, visual }) => (
+          <div key={label} className="flex items-center gap-2">
+            <svg width="26" height="12" aria-hidden="true" className="shrink-0">
+              <rect
+                x="1"
+                y="1"
+                width="24"
+                height="10"
+                rx="3"
+                fill={visual.fill}
+                stroke={visual.stroke}
+                strokeWidth={visual.width}
               />
             </svg>
             <span className="text-ink-2 text-xs">{tr(label)}</span>

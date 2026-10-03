@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GEdge } from '../api/types'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { lastG6, MockGraph, resetG6 } from '../test/g6Mock'
-import GraphView, { toG6Edges, toG6Nodes, type GraphViewNode, type KindFilter } from './GraphView'
+import GraphView, { subclassDepths, toG6Edges, toG6Nodes, type GraphViewNode, type KindFilter } from './GraphView'
 import { FAST_LAYOUT_NODES, MIN_AUTO_ZOOM } from './linearTree'
 
 /* G6 renders on canvas, which jsdom cannot provide — the module is mocked and
@@ -25,9 +25,12 @@ vi.mock('@antv/g6', async () => {
 const TOKENS = {
   primary: '#4f46e5',
   primaryFg: '#ffffff',
+  primarySoft: '#eef2ff',
   panel: '#ffffff',
+  panel2: '#f8fafc',
   line: '#e2e8f0',
   ink: '#0f172a',
+  ink2: '#475569',
   ink3: '#94a3b8',
   edgeSub: '#8b5cf6',
   success: '#10b981',
@@ -112,6 +115,35 @@ describe('GraphView', () => {
     expect(screen.getByRole('button', { name: '对象' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '数据' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '适配' })).toBeTruthy()
+  })
+
+  it('applies the depth ladder from anchorId in built canvas data', () => {
+    // jsdom loads no CSS: seed the ladder's custom properties the way
+    // index.css would, so the real readCanvasTokens resolves colors.
+    const cs = document.documentElement.style
+    cs.setProperty('--color-primary', '#4f46e5')
+    cs.setProperty('--color-primary-soft', '#eef2ff')
+    cs.setProperty('--color-ink-2', '#475569')
+    draw({ anchorId: 'a' })
+    const { nodes } = lastData()
+    // NODES: b and c are a's subclasses — anchored on a they read gen 1.
+    expect(nodes.find((n) => n.id === 'b')?.style).toMatchObject({ stroke: '#475569', lineWidth: 1.4 })
+    expect(nodes.find((n) => n.id === 'c')?.style).toMatchObject({ stroke: '#475569', lineWidth: 1.4 })
+    // Without an anchor the parentless classes become roots: a tops the
+    // ladder (tinted card composed with its highlighted 2px border).
+    draw()
+    const plain = lastData().nodes.find((n) => n.id === 'a')?.style
+    expect(plain).toMatchObject({ fill: '#eef2ff', stroke: '#4f46e5', lineWidth: 2 })
+    const child = lastData().nodes.find((n) => n.id === 'b')?.style
+    expect(child).toMatchObject({ stroke: '#475569', lineWidth: 1.4 })
+  })
+
+  it('legend spells out the node depth ladder alongside the edge rows', () => {
+    draw()
+    expect(screen.getByText('根类')).toBeTruthy()
+    expect(screen.getByText('一代子类')).toBeTruthy()
+    expect(screen.getByText('二代子类')).toBeTruthy()
+    expect(screen.getByText('三代及更深')).toBeTruthy()
   })
 
   it('lays out as a dagre → rank-wrap pipeline with orthogonal edges', () => {
@@ -415,6 +447,57 @@ describe('toG6Edges', () => {
   })
 })
 
+describe('subclassDepths', () => {
+  const CLASSES: GraphViewNode[] = [
+    { id: 'a', curie: 'ex:A', label: {}, kind: 'class' },
+    { id: 'b', curie: 'ex:B', label: {}, kind: 'class' },
+    { id: 'c', curie: 'ex:C', label: {}, kind: 'class' },
+    { id: 'd', curie: 'ex:D', label: {}, kind: 'class' },
+    { id: 'e', curie: 'ex:E', label: {}, kind: 'class' },
+    { id: 'p', curie: 'ex:knows', label: {}, kind: 'property', ptype: 'ObjectProperty' },
+    { id: 'i', curie: 'ex:rex', label: {}, kind: 'instance' },
+  ]
+  // subClassOf in API form: source = child, target = parent. e has two
+  // parents (a at gen 1, d at gen 2) — the shallowest must win.
+  const TREE: GEdge[] = [
+    { source: 'b', target: 'a', kind: 'subClassOf' },
+    { source: 'c', target: 'a', kind: 'subClassOf' },
+    { source: 'd', target: 'c', kind: 'subClassOf' },
+    { source: 'e', target: 'a', kind: 'subClassOf' },
+    { source: 'e', target: 'd', kind: 'subClassOf' },
+    { source: 'i', target: 'a', kind: 'instance' },
+  ]
+
+  it('maps generations by BFS from the anchor; multi-parent keeps the shallowest', () => {
+    const depths = subclassDepths(CLASSES, TREE, 'a')
+    expect(depths.get('a')).toBe(0)
+    expect(depths.get('b')).toBe(1)
+    expect(depths.get('c')).toBe(1)
+    expect(depths.get('d')).toBe(2)
+    expect(depths.get('e')).toBe(1)
+  })
+
+  it('falls back to parentless top classes without an anchor', () => {
+    const depths = subclassDepths(CLASSES, TREE)
+    expect(depths.get('a')).toBe(0)
+    expect(depths.get('d')).toBe(2)
+  })
+
+  it('leaves properties, instances and parentless cycles out of the ladder', () => {
+    const depths = subclassDepths(CLASSES, TREE, 'a')
+    expect(depths.has('p')).toBe(false)
+    expect(depths.has('i')).toBe(false)
+    // A parent ring with no root above it maps nothing (b and c only —
+    // the other fixture classes are legitimately parentless roots).
+    const ring: GEdge[] = [
+      { source: 'b', target: 'c', kind: 'subClassOf' },
+      { source: 'c', target: 'b', kind: 'subClassOf' },
+    ]
+    const ringNodes = CLASSES.filter((n) => n.id === 'b' || n.id === 'c')
+    expect(subclassDepths(ringNodes, ring).size).toBe(0)
+  })
+})
+
 describe('toG6Nodes', () => {
   it('keeps cards compact: min 72px wide, 6.6px per curie char', () => {
     const mapped = toG6Nodes(NODES, TOKENS)
@@ -439,6 +522,58 @@ describe('toG6Nodes', () => {
     expect(by('b').style).toMatchObject({ stroke: '#e2e8f0' })
     expect(by('b').style.lineDash).toBeUndefined()
     expect(by('b').style.badges).toBeUndefined()
+  })
+
+  it('styles the class depth ladder: tinted bold root, lighter generations', () => {
+    const ladder: GraphViewNode[] = [
+      { id: 'r', curie: 'ex:Root', label: {}, kind: 'class' },
+      { id: 'g1', curie: 'ex:One', label: {}, kind: 'class' },
+      { id: 'g2', curie: 'ex:Two', label: {}, kind: 'class' },
+      { id: 'g3', curie: 'ex:Three', label: {}, kind: 'class' },
+      { id: 'x', curie: 'ex:Plain', label: {}, kind: 'class' },
+    ]
+    const depths = new Map([
+      ['r', 0],
+      ['g1', 1],
+      ['g2', 2],
+      ['g3', 3],
+    ])
+    const by = (id: string) => toG6Nodes(ladder, TOKENS, undefined, depths).find((n) => n.id === id) as G6Datum
+    // Root: primary-soft tint, bold ink label, 1.6px ink2 border, taller card.
+    expect(by('r').style).toMatchObject({
+      fill: '#eef2ff',
+      stroke: '#475569',
+      lineWidth: 1.6,
+      labelFontWeight: 700,
+      labelFill: '#0f172a',
+    })
+    expect((by('r').style.size as number[])[1]).toBe(36)
+    // Gen 1: same ink2 border a notch thinner, semibold label.
+    expect(by('g1').style).toMatchObject({ fill: '#ffffff', stroke: '#475569', lineWidth: 1.4, labelFontWeight: 600 })
+    // Gen 2: mid-grey border.
+    expect(by('g2').style).toMatchObject({ stroke: '#94a3b8', lineWidth: 1 })
+    // Gen 3+: light border, panel-2 fill, dimmed label.
+    expect(by('g3').style).toMatchObject({ stroke: '#e2e8f0', fill: '#f8fafc', labelFill: '#475569' })
+    // No depth entry: the legacy plain card, unchanged.
+    expect(by('x').style).toMatchObject({ stroke: '#e2e8f0', fill: '#ffffff', labelFill: '#0f172a', lineWidth: 1 })
+  })
+
+  it('focused overrides border and label but composes with the root tint', () => {
+    const focused = toG6Nodes(
+      [
+        { id: 'fr', curie: 'ex:FR', label: {}, kind: 'class', highlighted: true },
+        { id: 'fc', curie: 'ex:FC', label: {}, kind: 'class', highlighted: true },
+      ],
+      TOKENS,
+      undefined,
+      new Map([['fr', 0], ['fc', 2]]),
+    )
+    const by = (id: string) => focused.find((n) => n.id === id) as G6Datum
+    // A focused root shows BOTH signals: 2px primary border + primary label
+    // over the retained primary-soft tint.
+    expect(by('fr').style).toMatchObject({ stroke: '#4f46e5', lineWidth: 2, fill: '#eef2ff', labelFill: '#4f46e5' })
+    // A focused plain-generation node keeps fill panel.
+    expect(by('fc').style).toMatchObject({ stroke: '#4f46e5', lineWidth: 2, fill: '#ffffff' })
   })
 
   it('class nodes prefer rdfs:label over curie local name', () => {

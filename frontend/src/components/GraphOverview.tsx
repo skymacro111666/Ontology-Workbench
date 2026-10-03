@@ -563,6 +563,7 @@ export default function GraphOverview({
           onBadgeClick={(eid) => void toggleInstances(eid)}
           onFoldClick={(eid, folded) => void toggleFold(eid, folded)}
           foldedIds={foldedIdsAll}
+          anchorId={anchor?.self.id}
           defaultKinds={{ classes: true, objectProps: false, dataProps: false }}
           savedPositions={savedPositions}
           onLayoutChange={(positions) => saveLayout.mutate(positions)}
