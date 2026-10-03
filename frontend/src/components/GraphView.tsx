@@ -112,7 +112,7 @@ const LEGEND: { label: string; visual: { stroke: string; dash?: string } }[] = [
  *  root tinted bold, each generation one shade lighter. The DOM legend
  *  resolves CSS variables itself (canvas tokens cannot cross into it). */
 const NODE_LEGEND: { label: string; visual: { fill: string; stroke: string; width: number } }[] = [
-  { label: 'canvas.nodeRoot', visual: { fill: 'var(--color-root-tint)', stroke: 'var(--color-ink-2)', width: 1.6 } },
+  { label: 'canvas.nodeRoot', visual: { fill: 'var(--color-root-tint)', stroke: 'var(--color-ink-2)', width: 1.4 } },
   { label: 'canvas.nodeDepth1', visual: { fill: 'var(--color-panel)', stroke: 'var(--color-ink-2)', width: 1.4 } },
   { label: 'canvas.nodeDepth2', visual: { fill: 'var(--color-panel)', stroke: 'var(--color-ink-3)', width: 1 } },
   { label: 'canvas.nodeDepth3', visual: { fill: 'var(--color-panel-2)', stroke: 'var(--color-line)', width: 1 } },
