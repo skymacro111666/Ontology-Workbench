@@ -12,6 +12,9 @@ import ValidationConsole from './ValidationConsole'
    横幅/过滤/截断、大本体等待提示。 */
 
 const OID = 'oid-1'
+const OID2 = 'oid-2'
+/** oid-2's stored shapes — a distinct doc to prove the editor refills. */
+const SHAPES_B = '# oid-2 shapes\n<#S> a sh:NodeShape .\n'
 const META: OntologyMeta = {
   id: OID,
   title: 'Mini',
@@ -99,7 +102,16 @@ function stubFetch() {
       puts.push({ url: u, body })
       return env({ source: body.source, updatedAt: 't', presets: [], afWarnings: [] })
     }
-    if (u.endsWith('/validation/shapes'))
+    if (u.endsWith('/validation/shapes')) {
+      if (u.includes(`/${OID2}/`))
+        return env({
+          source: SHAPES_B,
+          updatedAt: 't',
+          presets: [
+            { id: 'obo-integrity', name: 'OBO 风格·完整性', source: '# obo' },
+            { id: 'minimal-label', name: '最小检查', source: '# min' },
+          ],
+        })
       return env({
         source: null,
         updatedAt: null,
@@ -108,22 +120,25 @@ function stubFetch() {
           { id: 'minimal-label', name: '最小检查', source: '# min' },
         ],
       })
+    }
     if (u.endsWith('/meta')) return env(META)
     return env({})
   })
 }
 
-function draw() {
+function draw(oid: string = OID) {
   vi.stubGlobal('fetch', stubFetch())
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   qc.setQueryData(['ontology', OID], META)
-  return render(
+  const tree = (o: string) => (
     <QueryClientProvider client={qc}>
       <ThemeProvider>
-        <ValidationConsole oid={OID} />
+        <ValidationConsole oid={o} />
       </ThemeProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  const view = render(tree(oid))
+  return { ...view, rerenderWith: (o: string) => view.rerender(tree(o)) }
 }
 
 beforeEach(() => {
@@ -162,6 +177,23 @@ describe('ValidationConsole', () => {
     // 焦点点击 → 实体详情(browseStore.selectedEid)。
     await userEvent.click(screen.getByText('ex:A'))
     expect(useBrowseStore.getState().selectedEid).toBe('http://example.org/A')
+  })
+
+  it('drops the result and refills the editor when the oid switches', async () => {
+    const { rerenderWith } = draw()
+    await screen.findByLabelText(/shapes/i)
+    await userEvent.click(screen.getByRole('button', { name: /运行/ }))
+    expect(await screen.findByText(/不符合/)).toBeTruthy()
+    // Same route, different param — the console stays mounted, oid moves.
+    rerenderWith(OID2)
+    // The old run's banner and rows are gone (no cross-ontology leakage).
+    expect(screen.queryByText(/不符合/)).toBeNull()
+    expect(screen.queryByText('ex:A')).toBeNull()
+    // The editor refilled from oid-2's stored shapes; a run posts exactly that.
+    expect(await screen.findByText('# oid-2 shapes')).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: /运行/ }))
+    await waitFor(() => expect(posts.at(-1)?.url).toContain(`/${OID2}/validation/run`))
+    expect(posts.at(-1)?.body.source).toBe(SHAPES_B)
   })
 
   it('ignore-deprecated is on by default and the hidden count surfaces', async () => {

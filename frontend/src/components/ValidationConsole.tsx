@@ -218,6 +218,23 @@ export default function ValidationConsole({ oid }: { oid: string }) {
     }
   }, [])
 
+  // The console stays mounted across /browse/{oid} switches; the run result
+  // and the shapes editor both belong to the oid they were created against.
+  // On a switch, drop them — the fill effect below (declared later, so it
+  // runs after this one in the same commit) re-fills from the new oid's
+  // stored shapes. Without this, a run would post the OLD ontology's shapes
+  // against the NEW ontology's data.
+  useEffect(() => {
+    setResult(null)
+    setError(null)
+    setElapsed(0)
+    setShowAll(false)
+    setPresetId('')
+    filledRef.current = false
+    const view = viewRef.current
+    if (view) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '' } })
+  }, [oid])
+
   useEffect(() => {
     if (filledRef.current || !shapes) return
     filledRef.current = true
