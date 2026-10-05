@@ -13,12 +13,15 @@ const SEV_ORDER = ['error', 'warning', 'info'] as const
 /** B3's lint state machine: manual run + stale tracking. Returned as two
  *  render slices because their DOM homes differ — the button rides the
  *  canvas control cluster (an absolutely-positioned box the drawer must
- *  NOT anchor to), the drawer anchors to the canvas container itself. */
+ *  NOT anchor to), the drawer anchors to the canvas container itself.
+ *  The report is oid-scoped: the panel stays mounted across ontology
+ *  switches, so a foreign oid masks the stored report (drawer + badge). */
 export function useLint(oid: string, onOpenSettings?: () => void) {
   const { t } = useTranslation()
   const setSelected = useBrowseStore((s) => s.setSelected)
-  const [report, setReport] = useState<LintReportT | null>(null)
+  const [entry, setEntry] = useState<{ oid: string; report: LintReportT } | null>(null)
   const [open, setOpen] = useState(true)
+  const report = entry?.oid === oid ? entry.report : null
   const { data: meta } = useQuery({
     queryKey: ['ontology', oid],
     queryFn: () => api.get<OntologyMeta>(`/api/v1/ontologies/${oid}/meta`),
@@ -28,7 +31,7 @@ export function useLint(oid: string, onOpenSettings?: () => void) {
   const run = useMutation({
     mutationFn: () => api.post<LintReportT>(`/api/v1/ontologies/${oid}/lint/run`, {}),
     onSuccess: (r) => {
-      setReport(r)
+      setEntry({ oid, report: r })
       setOpen(true)
     },
     onError: (e) => toast.error(errText(e, t)),

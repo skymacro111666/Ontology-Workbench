@@ -94,20 +94,21 @@ function stubFetch(report: LintReportT = REPORT) {
   })
 }
 
-function draw(fetchMock: ReturnType<typeof stubFetch>) {
+function draw(fetchMock: ReturnType<typeof stubFetch>, oid: string = OID) {
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  const view = render(
+  const tree = (o: string) => (
     <QueryClientProvider client={qc}>
       <ThemeProvider>
         {/* The drawer positions absolutely within the canvas container. */}
         <div className="relative">
-          <LintPanel oid={OID} />
+          <LintPanel oid={o} />
         </div>
       </ThemeProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
-  return { qc, ...view }
+  const view = render(tree(oid))
+  return { qc, rerenderWith: (o: string) => view.rerender(tree(o)), ...view }
 }
 
 beforeEach(() => {
@@ -160,5 +161,16 @@ describe('LintPanel', () => {
     expect(await screen.findByText('未发现问题')).toBeTruthy()
     // A clean report leaves the button bare — no "0" pill.
     expect(btn.textContent).toBe('检查')
+  })
+
+  it('drops the report when the oid switches (no cross-ontology leakage)', async () => {
+    const { rerenderWith } = draw(stubFetch())
+    await userEvent.click(await screen.findByRole('button', { name: /检查/ }))
+    expect(await screen.findByText('错误 1')).toBeTruthy()
+    // Same route, different param — the panel stays mounted, oid prop moves.
+    rerenderWith('oid-2')
+    // The drawer auto-hides and the badge resets to bare.
+    expect(screen.queryByText('错误 1')).toBeNull()
+    expect(screen.getByRole('button', { name: /检查/ }).textContent).toBe('检查')
   })
 })
