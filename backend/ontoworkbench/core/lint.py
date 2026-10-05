@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 from ontoworkbench.core.ir import IRBundle
 from ontoworkbench.core.owl2.profile import classify
-from ontoworkbench.core.terms import OWL_DISJOINTWITH, XSD_NS
+from ontoworkbench.core.terms import OWL_DISJOINTWITH, OWL_VERSIONINFO, XSD_NS
 
 MAX_FINDINGS = 200
 
@@ -279,6 +279,19 @@ def _missing_label(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[st
     for ind in ir.individuals.values():
         if not ind.label:
             yield ind.eid, {}
+
+
+@rule("missing-version", "warning")
+def _missing_version(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+    """Flag ontologies carrying no owl:versionInfo (release discipline).
+
+    One finding at most: presence is checked graph-wide, so a stray
+    versionInfo anywhere satisfies it; the subject is the ontology IRI
+    ('' when no owl:Ontology header is declared).
+    """
+    if any(True for _ in store.quads_for_pattern(None, OWL_VERSIONINFO, None, ox.DefaultGraph())):
+        return
+    yield ir.ontology_iri or "", {}
 
 
 @rule("orphan-class", "warning")

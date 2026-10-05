@@ -24,13 +24,14 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
-/** The ten builtin rules (id → default severity), in display order. */
+/** The eleven builtin rules (id → default severity), in display order. */
 const BUILTIN_IDS: [string, string][] = [
   ['disjoint-parents', 'error'],
   ['instance-disjoint', 'error'],
   ['subclass-cycle', 'error'],
   ['domain-range', 'error'],
   ['missing-label', 'warning'],
+  ['missing-version', 'warning'],
   ['orphan-class', 'warning'],
   ['unused-property', 'warning'],
   ['profile-exit', 'warning'],

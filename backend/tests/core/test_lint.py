@@ -92,6 +92,36 @@ def test_missing_label_and_orphan() -> None:
     assert "http://example.org/GoodBook" not in labeled
 
 
+VERSION_TTL = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+ex:ont a owl:Ontology .
+ex:A a owl:Class .
+"""
+
+
+def test_missing_version_warns_when_absent() -> None:
+    """No owl:versionInfo anywhere → one warning on the ontology IRI."""
+    res = run_rule("missing-version", _store(VERSION_TTL), _ir(VERSION_TTL))
+    assert [(f.subject, f.severity) for f in res.findings] == [
+        ("http://example.org/ont", "warning")
+    ]
+
+
+def test_missing_version_silent_when_present() -> None:
+    """A versionInfo on the header satisfies the release discipline."""
+    tagged = VERSION_TTL.replace(
+        "ex:ont a owl:Ontology .", 'ex:ont a owl:Ontology ; owl:versionInfo "1.0.0" .'
+    )
+    res = run_rule("missing-version", _store(tagged), _ir(tagged))
+    assert res.findings == [] and res.total == 0
+
+
+def test_missing_version_falls_back_without_header() -> None:
+    """No owl:Ontology declaration either → finding still fires, subject ''."""
+    res = run_rule("missing-version", _store(TTL), _ir(TTL))
+    assert [f.subject for f in res.findings] == [""]
+
+
 R789_TTL = """@prefix ex: <http://example.org/> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
