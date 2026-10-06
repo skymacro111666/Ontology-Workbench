@@ -188,3 +188,88 @@ def test_custom_rule_timeout(monkeypatch) -> None:
     assert res.error == "TIMEOUT" and res.findings == []
     # The Task 16/17 config surface names rules by id; pin the first three.
     assert {"disjoint-parents", "instance-disjoint", "subclass-cycle"} <= set(RULES)
+
+
+# --- T1 batch (OntoBricks/D2KLab checklist, 2026-10-06) ---------------------
+
+CLOSURE_TTL = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:X a owl:Class . ex:Y a owl:Class ; owl:disjointWith ex:X .
+ex:A a owl:Class ; rdfs:subClassOf ex:X .
+ex:B a owl:Class ; rdfs:subClassOf ex:Y .
+ex:C a owl:Class ; rdfs:subClassOf ex:A , ex:B .
+ex:G a owl:Class ; rdfs:subClassOf ex:H ; owl:disjointWith ex:H .
+ex:H a owl:Class .
+ex:Clean a owl:Class ; rdfs:subClassOf ex:A .
+"""
+
+
+def test_disjoint_parents_closure_flags_p11_and_p13() -> None:
+    """Closure clashes: P1.3 via ancestors, P1.1 declared with own parent."""
+    res = run_rule("disjoint-parents", _store(CLOSURE_TTL), _ir(CLOSURE_TTL))
+    subs = {f.subject for f in res.findings}
+    assert "http://example.org/C" in subs  # via closure (P1.3)
+    assert "http://example.org/G" in subs  # declared disjoint with own parent (P1.1)
+    assert "http://example.org/Clean" not in subs
+    assert "http://example.org/H" not in subs  # H itself stays satisfiable
+
+
+REDUNDANT_TTL = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:A a owl:Class . ex:B a owl:Class ; rdfs:subClassOf ex:A .
+ex:C a owl:Class ; rdfs:subClassOf ex:A , ex:B .
+ex:D a owl:Class ; rdfs:subClassOf ex:B .
+"""
+
+
+def test_redundant_subclass_flags_direct_parent_reachable_via_sibling() -> None:
+    """P1.2: C declares ⊑A directly but A is already implied via B."""
+    res = run_rule("redundant-subclass", _store(REDUNDANT_TTL), _ir(REDUNDANT_TTL))
+    subs = {f.subject for f in res.findings}
+    assert subs == {"http://example.org/C"}
+    assert res.findings[0].params["via"] == "ex:B"
+
+
+SUBPROP_TTL = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+ex:Root a owl:Class . ex:Leaf a owl:Class ; rdfs:subClassOf ex:Root .
+ex:Elsewhere a owl:Class .
+ex:p a owl:ObjectProperty ; rdfs:domain ex:Root ; rdfs:range xsd:string .
+ex:sBad a owl:ObjectProperty ; rdfs:subPropertyOf ex:p ; rdfs:domain ex:Elsewhere .
+ex:sOk a owl:ObjectProperty ; rdfs:subPropertyOf ex:p ; rdfs:domain ex:Leaf .
+ex:sSame a owl:ObjectProperty ; rdfs:subPropertyOf ex:p ; rdfs:range xsd:string .
+"""
+
+
+def test_subproperty_expansion_flags_broader_domain_not_narrower() -> None:
+    """P2.5: broadening flagged; narrowing and exact datatype stay clean."""
+    res = run_rule("subproperty-expansion", _store(SUBPROP_TTL), _ir(SUBPROP_TTL))
+    subs = {f.subject for f in res.findings}
+    assert subs == {"http://example.org/sBad"}
+    assert res.findings[0].params["side"] == "domain"
+
+
+SHADOW_TTL = """@prefix ex: <http://example.org/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+ex:label a owl:ObjectProperty .
+ex:seeAlso a owl:DatatypeProperty .
+ex:hasTopping a owl:ObjectProperty ; rdfs:label "topping"@en .
+ex:describedBy a owl:ObjectProperty ; rdfs:label "comment"@en .
+ex:named a owl:Class ; rdfs:label "comment"@en .
+"""
+
+
+def test_shadow_vocabulary_flags_standard_term_collisions() -> None:
+    """P3.1: local names (and labels) colliding with rdf/rdfs/owl terms."""
+    res = run_rule("shadow-vocabulary", _store(SHADOW_TTL), _ir(SHADOW_TTL))
+    subs = {f.subject for f in res.findings}
+    assert "http://example.org/label" in subs
+    assert "http://example.org/seeAlso" in subs
+    assert "http://example.org/describedBy" in subs  # collision via its label
+    assert "http://example.org/hasTopping" not in subs  # label "topping" is no term
+    assert "http://example.org/named" not in subs  # classes are not the subject here

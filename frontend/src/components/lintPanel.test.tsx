@@ -127,7 +127,7 @@ describe('LintPanel', () => {
     await userEvent.click(await screen.findByRole('button', { name: /检查/ }))
     // The drawer lands with the severity badge and the rule's local name.
     expect(await screen.findByText('错误 1')).toBeTruthy()
-    expect(screen.getByText(/不相交父类/)).toBeTruthy()
+    expect(screen.getByText(/不相交祖先/)).toBeTruthy()
     // The finding row pairs the subject chip with the templated message.
     const chip = screen.getByRole('button', { name: 'ScienceFiction' })
     expect(chip.title).toBe('lib:ScienceFiction')

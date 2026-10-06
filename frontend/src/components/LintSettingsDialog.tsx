@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
-/** The eleven builtin rules (id → default severity), in display order. */
+/** The fourteen builtin rules (id → default severity), in display order. */
 const BUILTIN_IDS: [string, string][] = [
   ['disjoint-parents', 'error'],
   ['instance-disjoint', 'error'],
@@ -34,9 +34,12 @@ const BUILTIN_IDS: [string, string][] = [
   ['missing-version', 'warning'],
   ['orphan-class', 'warning'],
   ['unused-property', 'warning'],
+  ['subproperty-expansion', 'warning'],
   ['profile-exit', 'warning'],
   ['undeclared-ref', 'info'],
   ['duplicate-label', 'info'],
+  ['redundant-subclass', 'info'],
+  ['shadow-vocabulary', 'info'],
 ]
 
 /** Editable mirror of one custom rule (id only exists once saved). */

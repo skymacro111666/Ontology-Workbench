@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import pyoxigraph as ox
 from pydantic import BaseModel
 
+from ontoworkbench.core import terms
 from ontoworkbench.core.ir import IRBundle
 from ontoworkbench.core.owl2.profile import classify
 from ontoworkbench.core.terms import OWL_DISJOINTWITH, OWL_VERSIONINFO, XSD_NS
@@ -142,22 +143,25 @@ def _disjoint_pairs(store: ox.Store) -> set[frozenset[str]]:
 
 @rule("disjoint-parents", "error")
 def _disjoint_parents(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
-    """Flag classes whose direct parents include a disjoint pair.
+    """Flag classes whose ancestor closure spans a disjoint pair.
 
-    The pizza ontology's CheeseyVegetableTopping pattern: unsatisfiable
-    without any reasoning.
+    Covers the pizza CheeseyVegetableTopping direct-parents shape, the
+    declared ancestor-descendant clash (P1.1: G ⊑ H while G⊏⊏H) and the
+    clash riding the closure (P1.3: A⊑X, B⊑Y, X⊏⊏Y, C⊑A+B) — all
+    unsatisfiable without any reasoning. (Closure upgrade, 2026-10-06.)
     """
     dis = _disjoint_pairs(store)
     if not dis:
         return
+    closure = _ancestors_factory(ir)
     for e in ir.entities.values():
         if e.type != "Class":
             continue
-        parents = e.parents
-        for i, p1 in enumerate(parents):
-            for p2 in parents[i + 1 :]:
-                if frozenset((p1.eid, p2.eid)) in dis:
-                    yield e.eid, {"parent1": p1.curie, "parent2": p2.curie}
+        kinds = closure(e.eid)  # self + ancestors
+        hit = next((pair for pair in dis if pair <= kinds), None)
+        if hit is not None:
+            a, b = sorted(hit)
+            yield e.eid, {"parent1": _curie_of(ir, a), "parent2": _curie_of(ir, b)}
 
 
 @rule("instance-disjoint", "error")
@@ -379,6 +383,139 @@ def _profile_exit(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str
                 "profile": ", ".join(v["bans"]),
             },
         )
+
+
+# --- T1 batch (OntoBricks/D2KLab checklist 2026-10-06; semantics reference:
+# D2KLab Ontology-Pitfalls-Detector, Apache-2.0) ----------------------------
+
+
+@rule("redundant-subclass", "info")
+def _redundant_subclass(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+    """Flag a direct subClassOf already implied via another parent (P1.2).
+
+    C declares ⊑ A and ⊑ B while B ⊑ … ⊑ A: the direct ⊑ A axiom adds
+    nothing beyond transitivity.
+    """
+    closure = _ancestors_factory(ir)
+    for e in ir.entities.values():
+        if e.type != "Class":
+            continue
+        parents = {p.eid for p in e.parents}
+        for via in parents:
+            implied = closure(via) - {via}
+            hit = next((p for p in parents if p != via and p in implied), None)
+            if hit is not None:
+                yield e.eid, {"parent": _curie_of(ir, hit), "via": _curie_of(ir, via)}
+
+
+@rule("subproperty-expansion", "warning")
+def _subproperty_expansion(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+    """Flag sub-properties that broaden the parent's domain/range (P2.5).
+
+    A sub-property may narrow a facet (d ⊑ some parent facet, or the same
+    datatype), never widen it.
+    """
+    closure = _ancestors_factory(ir)
+    facets: dict[str, dict[str, set[str]]] = {}
+    for pred in (terms.RDFS_DOMAIN, terms.RDFS_RANGE):
+        side = "domain" if pred == terms.RDFS_DOMAIN else "range"
+        for q in store.quads_for_pattern(None, pred, None, ox.DefaultGraph()):
+            if isinstance(q.subject, ox.NamedNode) and isinstance(q.object, ox.NamedNode):
+                facets.setdefault(q.subject.value, {}).setdefault(side, set()).add(q.object.value)
+    for q in store.quads_for_pattern(None, terms.RDFS_SUBPROPERTYOF, None, ox.DefaultGraph()):
+        sub, sup = q.subject, q.object
+        if not (isinstance(sub, ox.NamedNode) and isinstance(sup, ox.NamedNode)):
+            continue
+        declared = facets.get(sub.value, {})
+        allowed = facets.get(sup.value, {})
+        for side in ("domain", "range"):
+            offenders = declared.get(side, set())
+            bounds = allowed.get(side, set())
+            if not offenders or not bounds:
+                continue  # nothing declared on one side → nothing to compare
+            for offender in sorted(offenders):
+                if any(offender == b or b in closure(offender) for b in bounds):
+                    continue
+                yield (
+                    sub.value,
+                    {
+                        "parent": _curie_of(ir, sup.value),
+                        "side": side,
+                        "offender": _curie_of(ir, offender),
+                    },
+                )
+
+
+def _shadow_norm(name: str) -> str:
+    """Case/separator-insensitive comparison key (seeAlso == see_also)."""
+    return "".join(ch for ch in name.lower() if ch.isalnum())
+
+
+_SHADOW_CANON: dict[str, str] = {
+    _shadow_norm(n): f"{pfx}:{n}"
+    for pfx, names in (
+        ("rdf", ("type", "value", "subject", "predicate")),
+        (
+            "rdfs",
+            (
+                "label",
+                "comment",
+                "seeAlso",
+                "isDefinedBy",
+                "member",
+                "domain",
+                "range",
+                "subClassOf",
+                "subPropertyOf",
+            ),
+        ),
+        (
+            "owl",
+            (
+                "sameAs",
+                "differentFrom",
+                "inverseOf",
+                "equivalentClass",
+                "equivalentProperty",
+                "disjointWith",
+                "hasKey",
+                "hasValue",
+                "unionOf",
+                "intersectionOf",
+                "oneOf",
+                "complementOf",
+                "versionInfo",
+                "priorVersion",
+                "backwardCompatibleWith",
+                "incompatibleWith",
+                "deprecated",
+                "imports",
+                "Thing",
+                "Nothing",
+            ),
+        ),
+    )
+    for n in names
+}
+
+
+@rule("shadow-vocabulary", "info")
+def _shadow_vocabulary(store: ox.Store, ir: IRBundle) -> Iterable[tuple[str, dict[str, str]]]:
+    """Flag properties whose local name or label shadows rdf/rdfs/owl terms.
+
+    ex:label reads as the real thing to every human and half the tooling.
+    """
+    for e in ir.entities.values():
+        if e.type not in ("ObjectProperty", "DatatypeProperty"):
+            continue
+        local = e.curie.rsplit(":", 1)[-1]
+        names = [local, *e.label.values()]
+        hit = next(
+            (_SHADOW_CANON[_shadow_norm(n)] for n in names if _shadow_norm(n) in _SHADOW_CANON),
+            None,
+        )
+        if hit is not None:
+            yield e.eid, {"term": hit}
 
 
 class CustomRuleSpec(BaseModel):

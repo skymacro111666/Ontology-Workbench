@@ -258,7 +258,7 @@
     "builtin": "内置规则",
     "custom": "自定义规则",
     "ruleName": {
-      "disjoint-parents": "不相交父类",
+      "disjoint-parents": "不相交祖先",
       "instance-disjoint": "实例不相交违反",
       "subclass-cycle": "子类环",
       "domain-range": "domain-range 违反",
@@ -266,12 +266,15 @@
       "missing-version": "缺版本注记",
       "orphan-class": "孤类",
       "unused-property": "未使用属性",
+      "subproperty-expansion": "子属性扩张",
       "undeclared-ref": "未声明引用",
       "duplicate-label": "重复标签",
-      "profile-exit": "profile 出界"
+      "profile-exit": "profile 出界",
+      "redundant-subclass": "冗余父类声明",
+      "shadow-vocabulary": "撞标准词汇"
     },
     "rule": {
-      "disjoint-parents": "父类 {{parent1}} 与 {{parent2}} 互不相交",
+      "disjoint-parents": "祖先闭包包含互不相交的 {{parent1}} 与 {{parent2}}",
       "instance-disjoint": "类型闭包横跨不相交的 {{class1}} 与 {{class2}}",
       "subclass-cycle": "类层次成环",
       "domain-range": "{{property}} 的值 {{value}} 不符声明范围{{expected}}",
@@ -279,9 +282,12 @@
       "missing-version": "未声明 owl:versionInfo（发布前应给本体标版本）",
       "orphan-class": "孤类：无父、无子、无实例、无引用",
       "unused-property": "声明后从未使用",
+      "subproperty-expansion": "{{side}} 越界：{{offender}} 不窄于父属性 {{parent}} 的声明",
       "undeclared-ref": "引用了未声明的 {{ref}}",
       "duplicate-label": "标签「{{label}}」（{{lang}}）被 {{count}} 个实体共用",
-      "profile-exit": "超出 OWL 2 {{profile}} profile 的公理：{{axiom}}"
+      "profile-exit": "超出 OWL 2 {{profile}} profile 的公理：{{axiom}}",
+      "redundant-subclass": "直接父类 {{parent}} 已经由 {{via}} 的祖先链蕴含",
+      "shadow-vocabulary": "命名/标签遮蔽了标准词汇 {{term}}"
     },
     "enabled": "启用",
     "actions": "操作"
