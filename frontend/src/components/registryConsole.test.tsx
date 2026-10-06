@@ -22,8 +22,7 @@ function env(data: RegistryPage | null) {
 function errEnv() {
   return new Response(
     JSON.stringify({ code: 'OFFLINE', message: 'offline', data: null, hint: null, request_id: 'r' }),
-    { headers: { 'Content-Type': 'application/json' } },
-    { status: 503 },
+    { headers: { 'Content-Type': 'application/json' }, status: 503 },
   )
 }
 
