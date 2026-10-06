@@ -41,7 +41,7 @@ const summaryOf = (e: RegistryEvent): string => {
   return e.action
 }
 
-export default function RegistryConsole({ oid }: { oid: string }) {
+function RegistryConsoleImpl({ oid }: { oid: string }) {
   const { t } = useTranslation()
   const setSelected = useBrowseStore((s) => s.setSelected)
   const [older, setOlder] = useState<RegistryPage[]>([])
@@ -143,4 +143,12 @@ export default function RegistryConsole({ oid }: { oid: string }) {
       )}
     </div>
   )
+}
+
+/** The console resets wholly on oid switch (the 2026-10-05 residue
+ *  contract every oid-bound console follows): remount via key so loaded
+ *  older pages and cursors from one ontology never bleed into another's
+ *  journal — same wrapper shape as ValidationConsole. */
+export default function RegistryConsole(props: { oid: string }) {
+  return <RegistryConsoleImpl key={props.oid} {...props} />
 }

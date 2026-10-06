@@ -116,4 +116,43 @@ describe('RegistryConsole', () => {
     expect(await screen.findByText(/offline/)).toBeTruthy()
     expect(screen.queryByText('暂无操作记录')).toBeNull()
   })
+
+  it('drops loaded pages when the oid switches (no cross-ontology residue)', async () => {
+    // oid-1's feed pages carry ex:C*, oid-2's carries ex:D9; the mock
+    // routes by URL so the switch itself exercises the real query path.
+    const pageOf = (curie: string, ids: number[], next: number | null) => ({
+      items: ids.map((id) => ({
+        id,
+        createdAt: '2026-10-06T12:00:00Z',
+        action: 'entity.create',
+        origin: 'manual',
+        source: 'web',
+        detail: { eid: `http://example.org/${curie}`, curie: `ex:${curie}` },
+      })),
+      nextBeforeId: next,
+    })
+    const mock = vi.fn(async (url: string | URL) => {
+      const u = String(url)
+      if (u.includes('oid-2')) return env(pageOf('D9', [9], null))
+      if (u.includes('before_id')) return env(pageOf('C2', [2], null))
+      return env(pageOf('C1', [1], 1))
+    })
+    vi.stubGlobal('fetch', mock)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const tree = (o: string) => (
+      <QueryClientProvider client={qc}>
+        <RegistryConsole oid={o} />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(tree('oid-1'))
+    expect(await screen.findAllByText('ex:C1')).toBeTruthy()
+    // Pull one older page so local pagination state is non-empty…
+    await userEvent.click(screen.getByRole('button', { name: '加载更多' }))
+    expect(await screen.findAllByText('ex:C2')).toBeTruthy()
+    // …then switch ontologies on the same route: nothing of oid-1 survives.
+    rerender(tree('oid-2'))
+    expect(await screen.findAllByText('ex:D9')).toBeTruthy()
+    expect(screen.queryByText('ex:C2')).toBeNull()
+    expect(screen.queryByText('ex:C1')).toBeNull()
+  })
 })
