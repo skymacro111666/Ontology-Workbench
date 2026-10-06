@@ -564,6 +564,7 @@ def create_class(
                 "kind": "Class",
                 "name": body.name,
                 "label": body.label.value if body.label else None,
+                "parents": [p.value for p in parents],
             },
         )
         return respond(
@@ -620,6 +621,8 @@ def create_property(
                 "kind": body.ptype,
                 "name": body.name,
                 "label": body.label.value if body.label else None,
+                "domains": [d.value for d in domains],
+                "ranges": [r.value for r in ranges],
             },
         )
         return respond(

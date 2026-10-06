@@ -10,6 +10,8 @@ class/property concerns stay out of instance concerns.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pyoxigraph as ox
 from fastapi import APIRouter, Depends, Request
 from pydantic import Field, field_validator
@@ -27,6 +29,7 @@ from ontoworkbench.server.routers.entities import (
     _assertions_of,
     _check_revision,
     _classes_of,
+    _comment_of,
     _commit_mutation,
     _edit_store,
     _entity_payload,
@@ -315,6 +318,7 @@ def update_instance(
         iri = _individual(store, eid)
         touched = body.model_fields_set
         classes_before = _classes_of(store, iri)
+        comment_before = _comment_of(store, iri)
         # Validate everything before the first mutation: a late 422 must
         # leave the pooled Store untouched — the pending autosave serializes
         # this very object, so any half-applied edit would land on disk.
@@ -351,7 +355,15 @@ def update_instance(
                 store.add(_quad(iri, terms.RDF_TYPE, cls_iri))
         if plan is not None:
             _apply_assertions(store, iri, plan)
+        # Read the touched facets once after the mutations: from→to per facet,
+        # only the ones that actually moved (spec §8.2).
+        changes: dict[str, Any] = {}
         classes_after = _classes_of(store, iri)
+        if classes_before != classes_after:
+            changes["classes"] = {"from": classes_before, "to": classes_after}
+        comment_after = _comment_of(store, iri)
+        if comment_before != comment_after:
+            changes["comment"] = {"from": comment_before, "to": comment_after}
         row = _commit_mutation(
             request,
             session,
@@ -363,11 +375,7 @@ def update_instance(
             instance_eid=iri.value,
             event_detail={
                 "kind": "Instance",
-                "changes": (
-                    {"classes": {"from": classes_before, "to": classes_after}}
-                    if classes_before != classes_after
-                    else {}
-                ),
+                "changes": changes,
                 "assertions": _assertions_of(store, iri),
             },
         )

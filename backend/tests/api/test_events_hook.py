@@ -10,6 +10,7 @@ from urllib.parse import quote
 from fastapi.testclient import TestClient
 
 from tests.api.test_browse_api import _upload
+from tests.api.test_entities_write import ANIMAL, DOG, TOY
 from tests.api.test_instances_write import _upload as _upload_inst
 
 
@@ -91,6 +92,60 @@ def test_instance_events(client: TestClient) -> None:
     assert top["detail"]["kind"] == "Instance"
     assert top["detail"]["classes"] == ["http://example.org/Novel"]
     assert top["detail"]["curie"] == "ex:BallLightning"
+
+
+def test_entity_create_records_structure(client: TestClient) -> None:
+    """Creates journal the request's structure params: parents, domains, ranges."""
+    oid = _upload(client)
+    r = client.post(
+        f"/api/v1/ontologies/{oid}/classes",
+        json={"name": "Payment", "prefix": "ex", "parents": [ANIMAL], "baseRevision": 0},
+    )
+    assert r.status_code == 200
+    detail = _events(client, oid)[0]["detail"]
+    assert detail["parents"] == [ANIMAL]
+
+    r = client.post(
+        f"/api/v1/ontologies/{oid}/properties",
+        json={
+            "name": "playsWith",
+            "prefix": "ex",
+            "ptype": "ObjectProperty",
+            "domains": [DOG],
+            "ranges": [TOY],
+            "baseRevision": 1,
+        },
+    )
+    assert r.status_code == 200
+    detail = _events(client, oid)[0]["detail"]
+    assert detail["kind"] == "ObjectProperty"
+    assert detail["domains"] == [DOG]
+    assert detail["ranges"] == [TOY]
+
+
+def test_instance_update_comment_event(client: TestClient) -> None:
+    """A comment-only instance edit records comment from→to (spec §8.2)."""
+    oid, meta = _upload_inst(client)
+    r = client.post(
+        f"/api/v1/ontologies/{oid}/instances",
+        json={
+            "name": "BallLightning",
+            "prefix": "ex",
+            "classes": ["http://example.org/Novel"],
+            "baseRevision": meta["revision"],
+        },
+    )
+    assert r.status_code == 200
+    eid = _events(client, oid)[0]["detail"]["eid"]
+    ru = client.put(
+        f"/api/v1/ontologies/{oid}/instances/{quote(eid, safe='')}",
+        json={"comment": "second edition", "baseRevision": 1},
+    )
+    assert ru.status_code == 200
+    top = _events(client, oid)[0]
+    assert top["action"] == "instance.update"
+    changes = top["detail"]["changes"]
+    assert changes["comment"] == {"from": None, "to": "second edition"}
 
 
 def test_events_cursor_pagination(client: TestClient) -> None:
