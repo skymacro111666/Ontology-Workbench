@@ -55,15 +55,15 @@ const fmtValue = (v: unknown): string => {
   return String(v)
 }
 
-/** "label: Payment → Zahlung · parents: A → A, B" — max three fields. */
+/** "label: Payment → Zahlung | comment: ∅ → net" — every field, inline on
+ *  the row; long content wraps rather than being cut (user call 10-06). */
 const changesOf = (e: RegistryEvent): string | null => {
   const ch = e.detail?.changes
   if (!ch || typeof ch !== 'object') return null
   const parts = Object.entries(ch as Record<string, { from?: unknown; to?: unknown }>).map(
     ([field, c]) => `${field}: ${fmtValue(c?.from)} → ${fmtValue(c?.to)}`,
   )
-  if (!parts.length) return null
-  return parts.slice(0, 3).join(' · ') + (parts.length > 3 ? ' …' : '')
+  return parts.length ? parts.join(' | ') : null
 }
 
 function RegistryConsoleImpl({ oid }: { oid: string }) {
@@ -152,12 +152,10 @@ function RegistryConsoleImpl({ oid }: { oid: string }) {
                 >
                   {e.action}
                 </span>
-                <span className="text-ink-2 min-w-0 flex-1">
-                  <span className="block truncate">{summaryOf(e)}</span>
+                <span className="text-ink-2 min-w-0 flex-1 break-all leading-snug">
+                  {summaryOf(e)}
                   {changesOf(e) && (
-                    <span className="text-ink-3 block truncate font-mono text-xs">
-                      {changesOf(e)}
-                    </span>
+                    <span className="text-ink-3 font-mono text-xs"> {changesOf(e)}</span>
                   )}
                 </span>
                 {e.origin === 'agent' && (

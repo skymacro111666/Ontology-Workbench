@@ -111,7 +111,7 @@ describe('RegistryConsole', () => {
     await waitFor(() => expect(screen.getAllByText('entity.create').length).toBe(2))
   })
 
-  it('shows field-level from→to changes on update rows', async () => {
+  it('shows field-level from→to changes inline, pipe-separated, all fields', async () => {
     renderConsole(
       stubFetch(() =>
         env({
@@ -125,7 +125,12 @@ describe('RegistryConsole', () => {
               detail: {
                 eid: 'http://example.org/Payment',
                 curie: 'ex:Payment',
-                changes: { label: { from: { '': 'Payment' }, to: { '': 'Zahlung' } } },
+                changes: {
+                  label: { from: { '': 'Payment' }, to: { '': 'Zahlung' } },
+                  comment: { from: null, to: 'net' },
+                  parents: { from: ['http://example.org/A'], to: ['http://example.org/B'] },
+                  ranges: { from: [], to: ['http://example.org/C'] },
+                },
               },
             },
           ],
@@ -133,8 +138,12 @@ describe('RegistryConsole', () => {
         }),
       ),
     )
-    // The journal's whole point (spec §8.2): what changed, from what to what.
-    expect(await screen.findByText(/label: Payment → Zahlung/)).toBeTruthy()
+    // Inline on the row (same line as the curie), pipe-separated, and NO
+    // three-field cap — the fourth change must survive; long content wraps.
+    expect(
+      await screen.findByText(/label: Payment → Zahlung \| comment: ∅ → net/),
+    ).toBeTruthy()
+    expect(screen.getByText(/ranges: \[\] → http:\/\/example.org\/C/)).toBeTruthy()
   })
 
   it('surfaces fetch failures inline', async () => {
