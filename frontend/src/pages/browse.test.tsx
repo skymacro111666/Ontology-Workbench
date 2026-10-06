@@ -23,6 +23,12 @@ vi.mock('@antv/g6', async () => {
   }
 })
 
+/* The 记录 view's own suite covers RegistryConsole; here it is a stub so
+   the mount test needs no journal endpoint on the fetch stub. */
+vi.mock('../components/RegistryConsole', () => ({
+  default: () => <div>registry-console-stub</div>,
+}))
+
 const EID = 'http://example.org/Dog'
 const ANIMAL = 'http://example.org/Animal'
 
@@ -190,6 +196,13 @@ describe('Browse workspace (overview-only)', () => {
     renderBrowse(stubFetch())
     expect(await screen.findByLabelText('示例查询')).toBeTruthy()
     expect(screen.queryByText('在树或图中选择一个实体')).toBeNull()
+  })
+
+  it('renders the registry view when browseView=registry', async () => {
+    useUiStore.setState({ browseView: 'registry' })
+    renderBrowse(stubFetch())
+    // 记录 mode mounts the journal console in the content column.
+    expect(await screen.findByText('registry-console-stub')).toBeTruthy()
   })
 
   it('canvas node click selects through reveal and walks the tree', async () => {

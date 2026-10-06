@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 /** Workspace content mode for Zone 2 (graph canvas vs source text). */
-export type BrowseView = 'graph' | 'text' | 'query' | 'validate'
+export type BrowseView = 'graph' | 'text' | 'query' | 'validate' | 'registry'
 
 /** Save capability SourceView registers for the switch-guard dialog:
  *  resolves true when the edit was saved, false when it failed. */

@@ -15,6 +15,7 @@ const GraphOverview = lazy(() => import('../components/GraphOverview'))
 const SourceView = lazy(() => import('../components/SourceView'))
 const QueryConsole = lazy(() => import('../components/QueryConsole'))
 const ValidationConsole = lazy(() => import('../components/ValidationConsole'))
+const RegistryConsole = lazy(() => import('../components/RegistryConsole'))
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
@@ -188,8 +189,10 @@ export default function Browse() {
             <SourceView oid={oid} />
           ) : browseView === 'query' ? (
             <QueryConsole oid={oid} />
-          ) : (
+          ) : browseView === 'validate' ? (
             <ValidationConsole oid={oid} />
+          ) : (
+            <RegistryConsole oid={oid} />
           )}
         </Suspense>
       </section>

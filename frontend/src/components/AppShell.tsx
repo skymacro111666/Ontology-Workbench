@@ -5,6 +5,7 @@ import {
   FileIcon,
   FilePlus2Icon,
   FileTextIcon,
+  HistoryIcon,
   KeyRoundIcon,
   LogOutIcon,
   SearchCodeIcon,
@@ -240,6 +241,10 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               <ToggleGroupItem value="validate">
                 <ShieldCheckIcon aria-hidden="true" />
                 {t('shell.viewValidate')}
+              </ToggleGroupItem>
+              <ToggleGroupItem value="registry">
+                <HistoryIcon aria-hidden="true" />
+                {t('shell.viewRegistry')}
               </ToggleGroupItem>
             </ToggleGroup>
           )}
