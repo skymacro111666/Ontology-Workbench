@@ -31,6 +31,7 @@ from ontoworkbench.server.routers import agent_tokens as agent_tokens_router
 from ontoworkbench.server.routers import auth as auth_router
 from ontoworkbench.server.routers import browse as browse_router
 from ontoworkbench.server.routers import entities as entities_router
+from ontoworkbench.server.routers import events as events_router
 from ontoworkbench.server.routers import export as export_router
 from ontoworkbench.server.routers import instances as instances_router
 from ontoworkbench.server.routers import lint as lint_router
@@ -121,6 +122,7 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     app.include_router(validation_router.router)
     app.include_router(export_router.router)
     app.include_router(agent_tokens_router.router)
+    app.include_router(events_router.router)
     configure_metrics(app)
 
     # Inline import per spec §4: keeps the SDK out of no-token boots.
