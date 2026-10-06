@@ -152,6 +152,17 @@ export default function ClassTree({ oid }: { oid: string }) {
     queryKey: ['tree', oid, 'roots'],
     queryFn: () => api.get<TreeNode[]>(`/api/v1/ontologies/${oid}/tree`),
   })
+  // Ask the archive up front (shares loadChildren' cache key, so a later
+  // expand is free): the 已废弃 group renders only when something is
+  // actually archived — a zero-deprecated ontology must not show a bucket
+  // that vanishes the moment it is clicked.
+  const { data: deprecatedNodes } = useQuery({
+    queryKey: ['tree-children', oid, DEPRECATED_GROUP],
+    queryFn: () =>
+      api.get<TreeNode[]>(
+        `/api/v1/ontologies/${oid}/tree?parent=${encodeURIComponent(DEPRECATED_GROUP)}`,
+      ),
+  })
   // Lazy like the old tab contents: fetch only once the tab is opened.
   const { data: propNodes } = useQuery({
     queryKey: ['tree', oid, '__props__'],
@@ -243,21 +254,21 @@ export default function ClassTree({ oid }: { oid: string }) {
   const classRows = useMemo(() => {
     const rows = toRows(roots ?? [], childMap)
     // F6 (user call 2026-09-06, round 2): the 已废弃 group closes the class
-    // list — one expandable sentinel row under the live roots, lazily
-    // loading the flat deprecated classes through the same loadChildren
-    // path. Once loaded empty it drops out (nothing archived here).
-    const loaded = childMap[DEPRECATED_GROUP]
-    if (loaded && loaded.length === 0) return rows
+    // list — one expandable sentinel row under the live roots. It renders
+    // only after the mount-time prefetch (or a lazy load) confirms the
+    // archive is non-empty; zero-deprecated ontologies never see it.
+    const archived = deprecatedNodes ?? childMap[DEPRECATED_GROUP]
+    if (!archived || archived.length === 0) return rows
     rows.push({
       eid: DEPRECATED_GROUP,
       curie: DEPRECATED_GROUP,
       label: {},
       type: 'Class',
-      childrenCount: 1,
-      children: loaded ?? [],
+      childrenCount: archived.length,
+      children: archived,
     })
     return rows
-  }, [roots, childMap])
+  }, [roots, childMap, deprecatedNodes])
   const propRows = useMemo(() => toRows(propNodes ?? [], {}), [propNodes])
 
   // The selection prop applies once per change; re-assert when rows arrive so

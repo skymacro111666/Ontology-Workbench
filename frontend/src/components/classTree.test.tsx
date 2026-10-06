@@ -41,11 +41,12 @@ const META: OntologyMeta = {
   prefixes: { owl: 'http://www.w3.org/2002/07/owl#', ex: 'http://example.org/', '': 'http://example.org/pizza#' },
 }
 
-/** Route the tree's four endpoints: roots, children, __props__, meta. */
+/** Route the tree's endpoints: roots, children, __props__, __deprecated__, meta. */
 function stubFetch() {
   return vi.fn(async (url: string | URL) => {
     const u = String(url)
     if (u.endsWith('/meta')) return ok(META)
+    if (u.includes('parent=__deprecated__')) return ok([])
     if (u.includes('parent=__props__')) {
       return ok([
         node('http://example.org/hasTopping', 'ex:hasTopping', 0, 'ObjectProperty'),
@@ -130,7 +131,7 @@ describe('ClassTree', () => {
     renderTree(fetchMock)
     expect(await screen.findByText('Thing')).toBeTruthy()
 
-    // [0] = the first tree row's chevron (the 已废弃 sentinel adds another).
+    // [0] = the first tree row's chevron (the empty archive adds no sentinel).
     await userEvent.click(screen.getAllByRole('button', { name: '展开' })[0])
 
     expect(await screen.findByText('Animal')).toBeTruthy()
@@ -158,7 +159,7 @@ describe('ClassTree', () => {
     renderTree(fetchMock)
     expect(await screen.findByText('Thing')).toBeTruthy()
 
-    // [0] = the first tree row's chevron (the 已废弃 sentinel adds another).
+    // [0] = the first tree row's chevron (the empty archive adds no sentinel).
     await userEvent.click(screen.getAllByRole('button', { name: '展开' })[0])
     // Let the rejection land; the roots stay interactive afterwards.
     await new Promise((r) => setTimeout(r, 50))
@@ -239,6 +240,24 @@ describe('ClassTree', () => {
       '/api/v1/ontologies/oid-1/tree?parent=__props__',
       expect.anything(),
     )
+  })
+
+  it('hides the 已废弃 group when the ontology has no deprecated classes', async () => {
+    const mock = vi.fn(async (url: string | URL) => {
+      const u = String(url)
+      if (u.endsWith('/meta')) return ok(META)
+      if (u.includes('parent=__deprecated__')) return ok([])
+      if (u.endsWith('/tree')) return ok([node(THING, 'ex:Thing', 1)])
+      throw new Error(`unmocked url: ${u}`)
+    })
+    renderTree(mock)
+    expect(await screen.findByText('Thing')).toBeTruthy()
+    // The mount-time prefetch asks the archive; an honest empty answer
+    // renders no bucket at all (it must not appear-then-vanish on click).
+    await waitFor(() =>
+      expect(mock.mock.calls.some(([u]) => String(u).includes('parent=__deprecated__'))).toBe(true),
+    )
+    expect(screen.queryByText('已废弃')).toBeNull()
   })
 
   it('closes the class tab with an expandable 已废弃 group, rows struck through', async () => {
