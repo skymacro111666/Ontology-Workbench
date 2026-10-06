@@ -11,13 +11,14 @@ from tests.api.conftest import build_app
 from tests.api.test_browse_api import _upload
 
 
-def test_events_empty_list(client: TestClient) -> None:
-    """A fresh ontology serves an empty journal page."""
+def test_events_fresh_ontology_shows_import(client: TestClient) -> None:
+    """A fresh ontology's journal holds exactly its ontology.import row."""
     oid = _upload(client)
     r = client.get(f"/api/v1/ontologies/{oid}/events")
     assert r.status_code == 200
     body = r.json()["data"]
-    assert body == {"items": [], "nextBeforeId": None}
+    assert [e["action"] for e in body["items"]] == ["ontology.import"]
+    assert body["nextBeforeId"] is None
 
 
 def test_events_unknown_oid_404(client: TestClient) -> None:

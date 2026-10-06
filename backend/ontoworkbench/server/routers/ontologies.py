@@ -24,7 +24,11 @@ from ontoworkbench.core.owl2.profile import classify
 from ontoworkbench.core.parsing import sniff_format, timed_parse_store
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
-from ontoworkbench.db.repositories import LayoutRepository, OntologyRepository
+from ontoworkbench.db.repositories import (
+    LayoutRepository,
+    MutationEventRepository,
+    OntologyRepository,
+)
 from ontoworkbench.db.session import get_session
 from ontoworkbench.observability.metrics import ow_build_seconds, ow_parse_seconds, ow_uploads_total
 from ontoworkbench.observability.middleware import request_id_ctx
@@ -290,6 +294,25 @@ def _import_bytes(
         path = store.save(user.id, oid, filename, data)
         store_ms = round((time.perf_counter() - t_store) * 1000, 1)
         t_create = time.perf_counter()
+        # Registry journal rides create()'s commit: one transaction for the
+        # ontology row and its import event (fail-closed, same as the
+        # _commit_mutation pattern in entities.py).
+        MutationEventRepository(session).append(
+            user_id=user.id,
+            ontology_id=oid,
+            action="ontology.import",
+            detail={
+                "filename": filename,
+                "format": fmt,
+                "provenance": source,
+                "counts": {
+                    "classes": ir.counts.class_count,
+                    "properties": ir.counts.property_count,
+                    "instances": ir.counts.individual_count,
+                    "axioms": ir.counts.axiom_count,
+                },
+            },
+        )
         row = repos.create(
             user.id,
             id=oid,
@@ -459,6 +482,24 @@ def replace_source(
     cache.drop_store(str(row.id))
     store.save(user.id, UUID(str(row.id)), row.filename, data)
     repos = OntologyRepository(session)
+    new_hash = LocalUserDirStore.file_hash(data)
+    # Registry journal rides update()'s commit (same fail-closed pattern as
+    # _commit_mutation / _import_bytes): event + row change in one transaction.
+    MutationEventRepository(session).append(
+        user_id=user.id,
+        ontology_id=row.id,
+        action="source.replace",
+        detail={
+            "filename": row.filename,
+            "changes": {"fileHash": {"from": row.file_hash, "to": new_hash}},
+            "counts": {
+                "classes": ir.counts.class_count,
+                "properties": ir.counts.property_count,
+                "instances": ir.counts.individual_count,
+                "axioms": ir.counts.axiom_count,
+            },
+        },
+    )
     row = (
         repos.update(
             row.id,
@@ -469,7 +510,7 @@ def replace_source(
             instance_count=ir.counts.individual_count,
             stats_json={"prefixes": ir.prefixes, "parse_ms": round(parse_ms, 1)},
             file_size_bytes=len(data),
-            file_hash=LocalUserDirStore.file_hash(data),
+            file_hash=new_hash,
         )
         or row
     )  # update() of an owned row cannot miss; keep mypy happy
@@ -503,6 +544,19 @@ def delete_ontology(
     cache: OntologyCache = request.app.state.cache
     layouts = LayoutRepository(session)
     started = time.perf_counter()
+    # Snapshot for the journal before any stage runs: the delete event lands
+    # at user scope (ontology_id NULL, spec §8.1) and must outlive the row.
+    deleted_snapshot = {
+        "ontologyId": str(row.id),
+        "filename": row.filename,
+        "title": row.title,
+        "counts": {
+            "classes": row.class_count,
+            "properties": row.property_count,
+            "instances": row.instance_count,
+            "axioms": row.axiom_count,
+        },
+    }
 
     def _audit_failed(stage: str, exc: Exception) -> None:
         _audit.error(
@@ -547,6 +601,16 @@ def delete_ontology(
         cache_evicted=cache_evicted,
         duration_ms=round((time.perf_counter() - started) * 1000, 1),
     )
+    # Every physical stage succeeded: journal the delete at user scope. No
+    # committing call follows, so commit explicitly (the one place the
+    # fail-closed pattern needs its own commit).
+    MutationEventRepository(session).append(
+        user_id=user.id,
+        ontology_id=None,
+        action="ontology.delete",
+        detail=deleted_snapshot,
+    )
+    session.commit()
     return respond(None)
 
 

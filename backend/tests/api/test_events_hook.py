@@ -35,8 +35,7 @@ def test_entity_create_and_update_events(client: TestClient) -> None:
     )
     assert r.status_code == 200
     ev = _events(client, oid)
-    assert len(ev) == 1
-    assert ev[0]["action"] == "entity.create"
+    assert [e["action"] for e in ev] == ["entity.create", "ontology.import"]
     assert ev[0]["origin"] == "manual" and ev[0]["source"] == "web"
     assert ev[0]["detail"]["eid"].startswith("http://")
     assert ev[0]["detail"]["curie"] == "ex:Payment"
@@ -52,7 +51,7 @@ def test_entity_create_and_update_events(client: TestClient) -> None:
     )
     assert ru.status_code == 200
     ev = _events(client, oid)
-    assert [e["action"] for e in ev] == ["entity.update", "entity.create"]
+    assert [e["action"] for e in ev] == ["entity.update", "entity.create", "ontology.import"]
     # spec §8.2: field-level from→to, read from the store around the edit
     changes = ev[0]["detail"]["changes"]
     assert changes["label"]["from"] == {"": "Payment"}
