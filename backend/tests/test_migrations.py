@@ -84,3 +84,17 @@ def test_validation_shapes_roundtrip(db_session):
     assert row is not None and row.source.startswith("@prefix sh:")
     repo.upsert(oid, "[] a sh:NodeShape .")
     assert repo.get(oid).source == "[] a sh:NodeShape ."
+
+
+def test_mutation_events_detail_matches_statsjson_on_pg() -> None:
+    """0009's detail column mirrors the model's StatsJSON (JSONB on PG).
+
+    SQLite compiles both identically, so the chain test cannot see the
+    drift; a PG deployment migrated by alembic must not land a plain
+    JSON column where create_all would have put JSONB (same source-level
+    assertion trick as the docs-site innerHTML ban).
+    """
+    src = (
+        Path(__file__).parents[1] / "migrations" / "versions" / "0009_mutation_events.py"
+    ).read_text()
+    assert "JSONB" in src and "with_variant" in src

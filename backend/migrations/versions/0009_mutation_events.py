@@ -9,6 +9,12 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.types import JSON
+
+# Mirrors the model's StatsJSON (models.py): JSONB on PostgreSQL, plain
+# JSON elsewhere — migrated PG databases must match create_all-built ones.
+StatsJSON = JSON().with_variant(JSONB(), "postgresql")
 
 # revision identifiers, used by Alembic.
 revision: str = "0009"
@@ -25,7 +31,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column("ontology_id", sa.Uuid(), nullable=True),
         sa.Column("action", sa.String(length=32), nullable=False),
-        sa.Column("detail", sa.JSON(), nullable=True),
+        sa.Column("detail", StatsJSON, nullable=True),
         sa.Column("origin", sa.String(length=8), server_default="manual", nullable=False),
         sa.Column("source", sa.String(length=8), server_default="web", nullable=False),
         sa.Column("request_id", sa.String(length=64), nullable=True),
