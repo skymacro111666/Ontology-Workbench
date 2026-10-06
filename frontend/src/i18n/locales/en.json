@@ -79,6 +79,7 @@
     "viewText": "Text",
     "viewQuery": "Query",
     "viewValidate": "Validate",
+    "viewRegistry": "Registry",
     "themeAria": "Switch theme, current: {{current}} (cycles {{cycle}})",
     "userFallback": "User",
     "avatarFallback": "U",
@@ -435,6 +436,13 @@
     "errorTitle": "Validation failed",
     "ignoreDeprecated": "Ignore deprecated",
     "deprecatedHidden": "{{n}} deprecated-focus results hidden"
+  },
+  "registry": {
+    "title": "Activity",
+    "refresh": "Refresh",
+    "loadMore": "Load more",
+    "empty": "No activity yet",
+    "loadFailed": "Failed to load activity"
   },
   "settings": {
     "title": "Agent tokens",

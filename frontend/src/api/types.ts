@@ -298,3 +298,19 @@ export interface AgentTokenCreated {
   label: string
   token: string
 }
+
+/** One mutation_events row as served by GET /ontologies/{oid}/events. */
+export interface RegistryEvent {
+  id: number
+  createdAt: string | null
+  action: string
+  origin: string
+  source: string
+  detail: Record<string, unknown> | null
+}
+
+/** Cursor page of the journal: items newest-first, nextBeforeId pages down. */
+export interface RegistryPage {
+  items: RegistryEvent[]
+  nextBeforeId: number | null
+}

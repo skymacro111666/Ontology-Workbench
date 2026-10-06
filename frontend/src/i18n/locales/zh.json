@@ -79,6 +79,7 @@
     "viewText": "文本",
     "viewQuery": "查询",
     "viewValidate": "校验",
+    "viewRegistry": "记录",
     "themeAria": "切换主题，当前：{{current}}（依次切换{{cycle}}）",
     "userFallback": "用户",
     "avatarFallback": "用",
@@ -435,6 +436,13 @@
     "errorTitle": "校验失败",
     "ignoreDeprecated": "忽略已废弃",
     "deprecatedHidden": "已忽略 {{n}} 条废弃焦点结果"
+  },
+  "registry": {
+    "title": "操作记录",
+    "refresh": "刷新",
+    "loadMore": "加载更多",
+    "empty": "暂无操作记录",
+    "loadFailed": "操作记录读取失败"
   },
   "settings": {
     "title": "Agent 令牌",
