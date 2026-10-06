@@ -8,7 +8,7 @@
 # 端口与主机沿用 backend/.env(OW_HOST/OW_PORT);docker 部署走 docker-compose.yml,不经此文件。
 # 端口探测基于 127.0.0.1(与 vite 代理一致),且只认环境变量里的 OW_PORT,.env 里的探测不到。
 
-RUN_DIR  := .run
+RUN_DIR  := .makefile
 PID_FILE := $(RUN_DIR)/serve.pid
 LOG_FILE := $(RUN_DIR)/serve.log
 PORT     := $(if $(OW_PORT),$(OW_PORT),8734)
@@ -37,7 +37,7 @@ start:
 		fi; \
 		sleep 0.5; \
 	done; \
-	echo "serving at http://127.0.0.1:$(PORT)/  (log: $(LOG_FILE))"
+	echo "ow serving at http://127.0.0.1:$(PORT)/  (log: $(LOG_FILE))"
 
 stop:
 	@if [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
@@ -45,7 +45,7 @@ stop:
 		if kill -0 $$pid 2>/dev/null; then \
 			echo "pid $$pid still alive after TERM — it may be shutting down gracefully; verify with: ps -p $$pid"; \
 		else \
-			echo "stopped (pid $$pid)"; \
+			echo "ow stopped (pid $$pid)"; \
 		fi; \
 	else \
 		echo "not running"; \

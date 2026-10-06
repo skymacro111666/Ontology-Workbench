@@ -3,6 +3,9 @@ backend/ontoworkbench/data/
 backend/ontoworkbench/logs/
 backend/.env
 
+# Makefile 生命周期产物(pidfile、后台 serve 兜底日志)
+.makefile/
+
 # docker compose 挂载的项目内数据目录
 /data/
 /logs/
