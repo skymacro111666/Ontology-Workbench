@@ -111,6 +111,32 @@ describe('RegistryConsole', () => {
     await waitFor(() => expect(screen.getAllByText('entity.create').length).toBe(2))
   })
 
+  it('shows field-level from→to changes on update rows', async () => {
+    renderConsole(
+      stubFetch(() =>
+        env({
+          items: [
+            {
+              id: 1,
+              createdAt: '2026-10-06T12:00:00Z',
+              action: 'entity.update',
+              origin: 'manual',
+              source: 'web',
+              detail: {
+                eid: 'http://example.org/Payment',
+                curie: 'ex:Payment',
+                changes: { label: { from: { '': 'Payment' }, to: { '': 'Zahlung' } } },
+              },
+            },
+          ],
+          nextBeforeId: null,
+        }),
+      ),
+    )
+    // The journal's whole point (spec §8.2): what changed, from what to what.
+    expect(await screen.findByText(/label: Payment → Zahlung/)).toBeTruthy()
+  })
+
   it('surfaces fetch failures inline', async () => {
     renderConsole(stubFetch(() => errEnv()))
     expect(await screen.findByText(/offline/)).toBeTruthy()

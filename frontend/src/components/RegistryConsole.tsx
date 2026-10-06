@@ -41,6 +41,31 @@ const summaryOf = (e: RegistryEvent): string => {
   return e.action
 }
 
+/** One change value, journal-readable: label maps collapse to their
+ *  values, arrays join, null reads as ∅ (spec §8.2 display side). */
+const fmtValue = (v: unknown): string => {
+  if (v == null) return '∅'
+  if (typeof v === 'string') return v
+  if (Array.isArray(v)) return v.length ? v.map(fmtValue).join(', ') : '[]'
+  if (typeof v === 'object') {
+    const vals = Object.values(v as Record<string, unknown>)
+    if (vals.length && vals.every((x) => typeof x === 'string')) return vals.join(' / ')
+    return JSON.stringify(v)
+  }
+  return String(v)
+}
+
+/** "label: Payment → Zahlung · parents: A → A, B" — max three fields. */
+const changesOf = (e: RegistryEvent): string | null => {
+  const ch = e.detail?.changes
+  if (!ch || typeof ch !== 'object') return null
+  const parts = Object.entries(ch as Record<string, { from?: unknown; to?: unknown }>).map(
+    ([field, c]) => `${field}: ${fmtValue(c?.from)} → ${fmtValue(c?.to)}`,
+  )
+  if (!parts.length) return null
+  return parts.slice(0, 3).join(' · ') + (parts.length > 3 ? ' …' : '')
+}
+
 function RegistryConsoleImpl({ oid }: { oid: string }) {
   const { t } = useTranslation()
   const setSelected = useBrowseStore((s) => s.setSelected)
@@ -127,7 +152,14 @@ function RegistryConsoleImpl({ oid }: { oid: string }) {
                 >
                   {e.action}
                 </span>
-                <span className="text-ink-2 truncate">{summaryOf(e)}</span>
+                <span className="text-ink-2 min-w-0 flex-1">
+                  <span className="block truncate">{summaryOf(e)}</span>
+                  {changesOf(e) && (
+                    <span className="text-ink-3 block truncate font-mono text-xs">
+                      {changesOf(e)}
+                    </span>
+                  )}
+                </span>
                 {e.origin === 'agent' && (
                   <span className="text-ink-3 ml-auto shrink-0 text-xs">agent</span>
                 )}
