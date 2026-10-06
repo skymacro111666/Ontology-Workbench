@@ -24,11 +24,14 @@ from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 from ontoworkbench.server.routers.entities import (
     CamelModel,
+    _assertions_of,
     _check_revision,
+    _classes_of,
     _commit_mutation,
     _edit_store,
     _entity_payload,
     _iri_for,
+    _label_map,
     _owned_row,
     _quad,
     _reject_duplicate,
@@ -229,8 +232,15 @@ def create_instance(
             store,
             prefixes,
             iri,
+            action="instance.create",
             instance_eid=iri,
             individual_delta=1,
+            event_detail={
+                "kind": "Instance",
+                "name": body.name,
+                "classes": [c.value for c in classes],
+                "assertions": _assertions_of(store, ent),
+            },
         )
         return respond(
             {
@@ -258,6 +268,7 @@ def delete_instance(
     _check_revision(baseRevision, row)
     with _edit_store(request, row) as (store, prefixes):
         iri = _individual(store, eid)
+        deleted_label = _label_map(store, iri) or None
         removed = 0
         for q in list(store.quads_for_pattern(iri, None, None, ox.DefaultGraph())):
             store.remove(q)
@@ -280,8 +291,10 @@ def delete_instance(
             store,
             prefixes,
             iri.value,
+            action="instance.delete",
             individual_delta=-1,
             instance_eid=iri.value,
+            event_detail={"kind": "Instance", "label": deleted_label},
         )
         return respond({"removed": removed, "meta": meta_with_state(request, row)})
 
@@ -301,6 +314,7 @@ def update_instance(
     with _edit_store(request, row) as (store, prefixes):
         iri = _individual(store, eid)
         touched = body.model_fields_set
+        classes_before = _classes_of(store, iri)
         # Validate everything before the first mutation: a late 422 must
         # leave the pooled Store untouched — the pending autosave serializes
         # this very object, so any half-applied edit would land on disk.
@@ -337,8 +351,25 @@ def update_instance(
                 store.add(_quad(iri, terms.RDF_TYPE, cls_iri))
         if plan is not None:
             _apply_assertions(store, iri, plan)
+        classes_after = _classes_of(store, iri)
         row = _commit_mutation(
-            request, session, row, store, prefixes, iri.value, instance_eid=iri.value
+            request,
+            session,
+            row,
+            store,
+            prefixes,
+            iri.value,
+            action="instance.update",
+            instance_eid=iri.value,
+            event_detail={
+                "kind": "Instance",
+                "changes": (
+                    {"classes": {"from": classes_before, "to": classes_after}}
+                    if classes_before != classes_after
+                    else {}
+                ),
+                "assertions": _assertions_of(store, iri),
+            },
         )
         payload = _entity_payload(prefixes, iri.value, "Instance")
         return respond({"meta": meta_with_state(request, row), "entity": payload})

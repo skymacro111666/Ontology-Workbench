@@ -30,6 +30,7 @@ import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import pyoxigraph as ox
@@ -53,7 +54,7 @@ from ontoworkbench.core.parsing import serialize_store
 from ontoworkbench.core.prefixes import PrefixMap
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, User
-from ontoworkbench.db.repositories import OntologyRepository
+from ontoworkbench.db.repositories import MutationEventRepository, OntologyRepository
 from ontoworkbench.db.session import get_session, sessionmaker_or_fail
 from ontoworkbench.observability.metrics import ow_uploads_total
 from ontoworkbench.server.cache import OntologyCache, load_store
@@ -292,6 +293,65 @@ def _live_indexes(request: Request, row: Ontology, store: Store, prefixes: Prefi
     return cache.indexes_for(row, lambda r: build_indexes(build_ir_store(store, prefixes)))
 
 
+def _label_map(store: Store, iri: ox.NamedNode) -> dict[str, str]:
+    """All rdfs:label values keyed by language ('' for plain literals)."""
+    out: dict[str, str] = {}
+    for q in store.quads_for_pattern(iri, terms.RDFS_LABEL, None, ox.DefaultGraph()):
+        if isinstance(q.object, ox.Literal):
+            out[q.object.language or ""] = q.object.value
+    return out
+
+
+def _comment_of(store: Store, iri: ox.NamedNode) -> str | None:
+    """First rdfs:comment literal (the payload's single-comment convention)."""
+    for q in store.quads_for_pattern(iri, terms.RDFS_COMMENT, None, ox.DefaultGraph()):
+        if isinstance(q.object, ox.Literal):
+            return q.object.value
+    return None
+
+
+def _urirefs(store: Store, iri: ox.NamedNode, pred: ox.NamedNode) -> list[str]:
+    """Sorted IRI objects for one predicate (parents/domains/ranges readers)."""
+    return sorted(
+        q.object.value
+        for q in store.quads_for_pattern(iri, pred, None, ox.DefaultGraph())
+        if isinstance(q.object, ox.NamedNode)
+    )
+
+
+def _classes_of(store: Store, iri: ox.NamedNode) -> list[str]:
+    """rdf:type objects excluding the NamedIndividual marker, sorted."""
+    return sorted(
+        q.object.value
+        for q in store.quads_for_pattern(iri, terms.RDF_TYPE, None, ox.DefaultGraph())
+        if isinstance(q.object, ox.NamedNode) and q.object != terms.OWL_NAMEDINDIVIDUAL
+    )
+
+
+def _assertions_of(store: Store, iri: ox.NamedNode) -> dict[str, Any]:
+    """Assertion summary for the journal: property → values, capped at 20."""
+    skip = {terms.RDF_TYPE, terms.RDFS_LABEL, terms.RDFS_COMMENT}
+    agg: dict[str, list[str]] = {}
+    for q in store.quads_for_pattern(iri, None, None, ox.DefaultGraph()):
+        pred, obj = q.predicate, q.object
+        if pred in skip or not isinstance(obj, ox.NamedNode | ox.Literal | ox.BlankNode):
+            continue
+        agg.setdefault(pred.value, []).append(obj.value)
+    items = [{"prop": p, "values": vs} for p, vs in sorted(agg.items())]
+    return {"items": items[:20], "truncated": len(items) > 20}
+
+
+def _clip_detail(obj: Any) -> Any:
+    """Truncate string leaves at 200 chars (spec §8.2); pass the rest through."""
+    if isinstance(obj, str):
+        return obj[:200] + "…" if len(obj) > 200 else obj
+    if isinstance(obj, dict):
+        return {k: _clip_detail(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_clip_detail(v) for v in obj]
+    return obj
+
+
 def _commit_mutation(
     request: Request,
     session: Session,
@@ -300,10 +360,12 @@ def _commit_mutation(
     prefixes: PrefixMap,
     eid: str,
     *,
+    action: str,
     class_delta: int = 0,
     prop_delta: int = 0,
     individual_delta: int = 0,
     instance_eid: str | None = None,
+    event_detail: dict[str, Any] | None = None,
 ) -> Ontology:
     """Patch the live IR under the mutation lock, bump revision, debounce save.
 
@@ -314,6 +376,10 @@ def _commit_mutation(
     through refresh_individual — refresh_entities' cascade only
     discovers individuals from the current store, so handlers changing
     an individual's class links must name it (used by instances.py).
+
+    action/event_detail feed the Registry journal: the event rides this
+    session, so a mutation and its journal row commit or roll back
+    together (fail-closed — no edit lands without its event).
     """
     cache: OntologyCache = request.app.state.cache
     oid = str(row.id)
@@ -345,6 +411,25 @@ def _commit_mutation(
         cache.drop(oid)
         request.app.state.autosave.cancel(oid)
         raise
+    prev_revision = row.revision
+    # The journal row flushes first and rides update()'s commit, so the
+    # event and the revision bump land in one transaction (fail-closed:
+    # no bump without its event, no event without its bump).
+    curie = prefixes.curie_for(eid)
+    MutationEventRepository(session).append(
+        user_id=row.owner_user_id,
+        ontology_id=row.id,
+        action=action,
+        detail=_clip_detail(
+            {
+                "eid": eid,
+                **({"curie": f"{curie[0]}:{curie[1]}"} if curie else {}),
+                **(event_detail or {}),
+                "revisionBefore": prev_revision,
+                "revisionAfter": prev_revision + 1,
+            }
+        ),
+    )
     row = (
         OntologyRepository(session).update(
             row.id,
@@ -466,7 +551,21 @@ def create_class(
         _set_comment(store, ent, body.comment)
         for parent in parents:
             store.add(_quad(ent, terms.RDFS_SUBCLASSOF, parent))
-        row = _commit_mutation(request, session, row, store, prefixes, iri, class_delta=1)
+        row = _commit_mutation(
+            request,
+            session,
+            row,
+            store,
+            prefixes,
+            iri,
+            action="entity.create",
+            class_delta=1,
+            event_detail={
+                "kind": "Class",
+                "name": body.name,
+                "label": body.label.value if body.label else None,
+            },
+        )
         return respond(
             {
                 "meta": meta_with_state(request, row),
@@ -508,7 +607,21 @@ def create_property(
             store.add(_quad(ent, terms.RDFS_DOMAIN, d))
         for r in ranges:
             store.add(_quad(ent, terms.RDFS_RANGE, r))
-        row = _commit_mutation(request, session, row, store, prefixes, iri, prop_delta=1)
+        row = _commit_mutation(
+            request,
+            session,
+            row,
+            store,
+            prefixes,
+            iri,
+            action="entity.create",
+            prop_delta=1,
+            event_detail={
+                "kind": body.ptype,
+                "name": body.name,
+                "label": body.label.value if body.label else None,
+            },
+        )
         return respond(
             {
                 "meta": meta_with_state(request, row),
@@ -533,6 +646,15 @@ def update_entity(
         ent = _declared(store, eid)
         kind = _kind_of(store, ent)
         touched = body.model_fields_set
+        # Registry from→to: read the touched facets before any mutation…
+        readers = {
+            "label": lambda: _label_map(store, ent),
+            "comment": lambda: _comment_of(store, ent),
+            "parents": lambda: _urirefs(store, ent, terms.RDFS_SUBCLASSOF),
+            "domains": lambda: _urirefs(store, ent, terms.RDFS_DOMAIN),
+            "ranges": lambda: _urirefs(store, ent, terms.RDFS_RANGE),
+        }
+        before = {f: fn() for f, fn in readers.items() if f in touched}
         # Validate every IRI ref before the first mutation: a late 422 must
         # leave the pooled Store untouched — the pending autosave serializes
         # this very object, so any half-applied edit would land on disk.
@@ -555,7 +677,20 @@ def update_entity(
             _set_uriref_objects(store, ent, terms.RDFS_DOMAIN, body.domains)
         if "ranges" in touched and body.ranges is not None:
             _set_uriref_objects(store, ent, terms.RDFS_RANGE, body.ranges)
-        row = _commit_mutation(request, session, row, store, prefixes, ent.value)
+        # …and again after, so the journal records what actually changed.
+        changes = {
+            f: {"from": before[f], "to": readers[f]()} for f in before if before[f] != readers[f]()
+        }
+        row = _commit_mutation(
+            request,
+            session,
+            row,
+            store,
+            prefixes,
+            ent.value,
+            action="entity.update",
+            event_detail={"kind": kind, "changes": changes},
+        )
         return respond(
             {
                 "meta": meta_with_state(request, row),
@@ -583,6 +718,8 @@ def delete_entity(
     _check_revision(baseRevision, row)
     with _edit_store(request, row) as (store, prefixes):
         iri = _declared(store, eid)
+        deleted_kind = _kind_of(store, iri)
+        deleted_label = _label_map(store, iri) or None
 
         # Count deltas from the type quads themselves, taken before the
         # removal: refresh_entities drops the IR rows, but class/property
@@ -613,7 +750,9 @@ def delete_entity(
             store,
             prefixes,
             iri.value,
+            action="entity.delete",
             class_delta=-1 if is_class else 0,
             prop_delta=-1 if is_prop else 0,
+            event_detail={"kind": deleted_kind, "label": deleted_label},
         )
         return respond({"removed": removed, "meta": meta_with_state(request, row)})
