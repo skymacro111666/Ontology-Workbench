@@ -74,7 +74,7 @@ const SEV_LABEL: Record<string, string> = {
   info: 'border-line text-ink-3',
 }
 
-export default function ValidationConsole({ oid }: { oid: string }) {
+function ValidationConsoleImpl({ oid }: { oid: string }) {
   const { t: tr } = useTranslation()
   const setSelected = useBrowseStore((s) => s.setSelected)
   const holderRef = useRef<HTMLDivElement>(null)
@@ -217,23 +217,6 @@ export default function ValidationConsole({ oid }: { oid: string }) {
       viewRef.current = null
     }
   }, [])
-
-  // The console stays mounted across /browse/{oid} switches; the run result
-  // and the shapes editor both belong to the oid they were created against.
-  // On a switch, drop them — the fill effect below (declared later, so it
-  // runs after this one in the same commit) re-fills from the new oid's
-  // stored shapes. Without this, a run would post the OLD ontology's shapes
-  // against the NEW ontology's data.
-  useEffect(() => {
-    setResult(null)
-    setError(null)
-    setElapsed(0)
-    setShowAll(false)
-    setPresetId('')
-    filledRef.current = false
-    const view = viewRef.current
-    if (view) view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '' } })
-  }, [oid])
 
   useEffect(() => {
     if (filledRef.current || !shapes) return
@@ -590,3 +573,12 @@ const consoleHighlight = HighlightStyle.define([
   { tag: t.atom, color: 'var(--color-edge-sub)' },
   { tag: t.variableName, color: 'var(--color-ink)' },
 ])
+
+/** The console resets wholly on oid switch (2026-10-05 residue contract):
+ *  remount via key instead of a reset effect — fresh state, fresh editor,
+ *  and the fill effect seeds from the new oid's stored shapes. Without the
+ *  reset, a run would post the OLD ontology's shapes against the NEW
+ *  ontology's data. */
+export default function ValidationConsole(props: { oid: string }) {
+  return <ValidationConsoleImpl key={props.oid} {...props} />
+}
