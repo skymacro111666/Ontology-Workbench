@@ -27,11 +27,12 @@ def test_upgrade_head_on_fresh_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         ontology_cols = {row[1] for row in conn.execute(sa.text("PRAGMA table_info(ontologies)"))}
     engine.dispose()
 
-    assert version == "0008"
+    assert version == "0009"
     assert "ontology_layouts" in tables
     assert "lint_rules" in tables
     assert "validation_shapes" in tables
     assert "agent_tokens" in tables
+    assert "mutation_events" in tables
     # 0005: provenance column lands with its upload default (no backfill).
     assert "source" in ontology_cols
     # 0006: edit-axis optimistic lock lands at 0 for every existing row.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from ontoworkbench.db.models import (
     AgentToken,
     LintRule,
+    MutationEvent,
     Ontology,
     OntologyLayout,
     OntologyValidationShape,
@@ -471,3 +473,68 @@ class AgentTokenRepository:
                 return
         row.last_used_at = now
         self._s.commit()
+
+
+class MutationEventRepository:
+    """Append-only writes + newest-first cursor reads for mutation_events.
+
+    The Registry journal (Phase 1): events ride the caller's session, so a
+    mutation and its journal row commit or roll back together (fail-closed —
+    no edit lands without its event). There is deliberately no update or
+    delete path.
+    """
+
+    def __init__(self, session: Session) -> None:
+        """Initialize the repository with a SQLAlchemy session.
+
+        Args:
+            session: SQLAlchemy database session.
+        """
+        self._session = session
+
+    def append(
+        self,
+        *,
+        user_id: UUID,
+        ontology_id: UUID | None,
+        action: str,
+        detail: dict[str, Any],
+        origin: str = "manual",
+        source: str = "web",
+        request_id: str | None = None,
+    ) -> MutationEvent:
+        """Add one journal row; flush so id/created_at are readable in-transaction."""
+        row = MutationEvent(
+            user_id=user_id,
+            ontology_id=ontology_id,
+            action=action,
+            detail=detail,
+            origin=origin,
+            source=source,
+            request_id=request_id,
+        )
+        self._session.add(row)
+        self._session.flush()
+        return row
+
+    def list_before(
+        self,
+        *,
+        user_id: UUID,
+        ontology_id: UUID,
+        limit: int = 50,
+        before_id: int | None = None,
+    ) -> list[MutationEvent]:
+        """Newest-first page of the ontology's journal; before_id pages past it."""
+        stmt = (
+            select(MutationEvent)
+            .where(
+                MutationEvent.user_id == user_id,
+                MutationEvent.ontology_id == ontology_id,
+            )
+            .order_by(MutationEvent.id.desc())
+            .limit(limit)
+        )
+        if before_id is not None:
+            stmt = stmt.where(MutationEvent.id < before_id)
+        return list(self._session.scalars(stmt))

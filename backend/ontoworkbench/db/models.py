@@ -181,3 +181,41 @@ class AgentToken(Base):
     token_prefix: Mapped[str] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())
     last_used_at: Mapped[datetime | None] = mapped_column(DateTimeTZ)
+
+
+class MutationEvent(Base):
+    """Append-only operation journal (Registry Phase 1, spec §8).
+
+    One row per mutation: who (user_id), when (created_at), on what
+    (ontology_id), what action, and field-level change detail. Rows
+    survive the ontology they describe — ontology_id is a plain nullable
+    Uuid with no FK, so ontology.delete lands at user scope (decision ③).
+    origin/source split human vs agent and web vs mcp for the day MCP
+    grows write tools (decision ④).
+    """
+
+    __tablename__ = "mutation_events"
+    __table_args__ = (
+        Index(
+            "ix_mutation_events_user_id_ontology_id",
+            "user_id",
+            "ontology_id",
+            "id",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    ontology_id: Mapped[UUID | None] = mapped_column(Uuid, nullable=True)
+    action: Mapped[str] = mapped_column(String(32))
+    detail: Mapped[dict[str, Any] | None] = mapped_column(StatsJSON)
+    origin: Mapped[str] = mapped_column(
+        String(8), default="manual", server_default=text("'manual'")
+    )
+    source: Mapped[str] = mapped_column(String(8), default="web", server_default=text("'web'"))
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())
