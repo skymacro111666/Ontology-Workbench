@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from ontoworkbench.config import Settings
+from ontoworkbench.db.session import init_engine
 from ontoworkbench.server.app import create_app
 from ontoworkbench.server.envelope import HTTP_OF, ErrorCode
 
@@ -14,6 +15,10 @@ def client(tmp_dir: Path | None = None) -> TestClient:
     overrides: dict = {"db_url": "sqlite:///:memory:"}
     if tmp_dir is not None:
         overrides["log_dir"] = tmp_dir
+    # Order independence: get_session needs the global engine, and in a
+    # file-only run no earlier test has initialized it (conftest's client
+    # fixture is not requested by these tests).
+    init_engine(overrides["db_url"])
     return TestClient(create_app(Settings.load(overrides)))
 
 
