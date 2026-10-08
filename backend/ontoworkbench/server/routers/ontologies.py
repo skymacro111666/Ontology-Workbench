@@ -257,8 +257,12 @@ def _import_bytes(
     data: bytes,
     read_ms: float | None = None,
     source: str = "upload",
+    journal_origin: str = "manual",
 ) -> Ontology:
     """Shared import path for uploads and samples: parse, store, register.
+
+    journal_origin tags the Registry row: "manual" for human uploads, "agent"
+    when the AI drafting wizard lands its checked subset.
 
     Both outcomes leave an ops trace on ow.imports: success carries file,
     staged timings (read/parse/ir/store/db/index, spec observability §3) and
@@ -301,10 +305,12 @@ def _import_bytes(
             user_id=user.id,
             ontology_id=oid,
             action="ontology.import",
+            origin=journal_origin,
             detail={
                 "filename": filename,
                 "format": fmt,
                 "provenance": source,
+                "origin": journal_origin,
                 "counts": {
                     "classes": ir.counts.class_count,
                     "properties": ir.counts.property_count,

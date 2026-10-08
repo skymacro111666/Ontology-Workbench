@@ -26,12 +26,14 @@ from ontoworkbench.observability.middleware import (
 )
 from ontoworkbench.server.autosave import AutosaveManager
 from ontoworkbench.server.cache import OntologyCache
+from ontoworkbench.server.drafting_jobs import DraftJobRunner
 from ontoworkbench.server.envelope import HTTP_OF, ApiError, ErrorCode, error_body, respond
 from ontoworkbench.server.routers import agent_tokens as agent_tokens_router
 from ontoworkbench.server.routers import ai_settings as ai_settings_router
 from ontoworkbench.server.routers import auth as auth_router
 from ontoworkbench.server.routers import browse as browse_router
 from ontoworkbench.server.routers import db_connections as db_connections_router
+from ontoworkbench.server.routers import drafting as drafting_router
 from ontoworkbench.server.routers import entities as entities_router
 from ontoworkbench.server.routers import events as events_router
 from ontoworkbench.server.routers import export as export_router
@@ -101,6 +103,7 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     app.state.store = LocalUserDirStore(settings.data_dir)
     app.state.cache = OntologyCache()
     app.state.autosave = AutosaveManager(debounce_s=settings.autosave_debounce_s)
+    app.state.draft_jobs = DraftJobRunner()
 
     # Register order matters: the LAST registered runs outermost. request-id
     # must be outermost so the access log (inner) inherits its contextvar.
@@ -127,6 +130,7 @@ def create_app(settings: Settings, spa_dist: Path | None = None) -> FastAPI:
     app.include_router(events_router.router)
     app.include_router(ai_settings_router.router)
     app.include_router(db_connections_router.router)
+    app.include_router(drafting_router.router)
     configure_metrics(app)
 
     # Inline import per spec §4: keeps the SDK out of no-token boots.

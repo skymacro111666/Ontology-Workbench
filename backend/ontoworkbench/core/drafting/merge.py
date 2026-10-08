@@ -8,9 +8,10 @@ blank_skeleton dialect of Turtle.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from ontoworkbench.core.drafting.models import (
+    CamelModel,
     ClassDecision,
     DataPropertyDecision,
     DecisionSet,
@@ -19,8 +20,8 @@ from ontoworkbench.core.drafting.models import (
 )
 
 
-class MergedDraft(BaseModel):
-    """The merged, cascade-safe drafting result."""
+class MergedDraft(CamelModel):
+    """The merged, cascade-safe drafting result (camelCase on the wire)."""
 
     classes: list[ClassDecision] = Field(default_factory=list)
     object_properties: list[ObjectPropertyDecision] = Field(default_factory=list)
