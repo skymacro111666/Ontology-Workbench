@@ -263,6 +263,7 @@
     "import": "导入",
     "importedToast": "已导入 {{name}}",
     "importedSub": "{{classes}} 类 · {{objProps}} 对象属性 · {{dataProps}} 数据属性 · lint {{lint}} 条",
+    "selectedCount": "已选 {{n}}/{{max}}",
     "tableCapHint": "最多 {{max}} 张表，当前 {{n}}",
     "aiNotConfigured": "AI 未配置——生成草稿需要先配置模型",
     "goSettings": "去配置",

@@ -1,10 +1,10 @@
-import { Loader2Icon, RefreshCwIcon } from 'lucide-react'
+import { Loader2Icon, RefreshCwIcon, SearchIcon, SparklesIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiErr, api } from '../api/client'
 import { errText } from '../i18n/errText'
-import type { DbConnectionSummary, DbEngine, SchemaModel } from '../api/types'
+import type { AiStatus, DbConnectionSummary, DbEngine, DraftJob, DraftResult, SchemaModel } from '../api/types'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -25,9 +25,10 @@ const labelCls = 'text-ink-2 text-xs font-medium'
  *  build on the SchemaModel held in state. Save-connection fires only after
  *  a successful read — bad credentials are never persisted. */
 export default function DraftFromDbDialog() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const open = useUiStore((s) => s.draftOpen)
   const setDraftOpen = useUiStore((s) => s.setDraftOpen)
+  const setAiSettingsOpen = useUiStore((s) => s.setAiSettingsOpen)
   const queryClient = useQueryClient()
 
   const [step, setStep] = useState(1)
@@ -43,6 +44,13 @@ export default function DraftFromDbDialog() {
   const [schema, setSchema] = useState<SchemaModel | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Step 2: table selection, wizard options, generate-job state.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [search, setSearch] = useState('')
+  const [namespace, setNamespace] = useState('')
+  const [labelLang, setLabelLang] = useState<'' | 'zh' | 'en'>('')
+  const [progress, setProgress] = useState<{ batch: number; batchCount: number } | null>(null)
+  const [result, setResult] = useState<DraftResult | null>(null)
 
   // Store-opened dialog (no DialogTrigger): Radix only delivers `false` via
   // onOpenChange, so reset on the closed→open transition in render time —
@@ -64,6 +72,12 @@ export default function DraftFromDbDialog() {
       setSchema(null)
       setBusy(false)
       setError(null)
+      setSelected(new Set())
+      setSearch('')
+      setNamespace('')
+      setLabelLang('')
+      setProgress(null)
+      setResult(null)
     }
   }
 
@@ -76,6 +90,11 @@ export default function DraftFromDbDialog() {
     queryKey: ['db-connections'],
     queryFn: () => api.get<DbConnectionSummary[]>('/api/v1/db-connections'),
     enabled: open,
+  })
+  const aiStatus = useQuery({
+    queryKey: ['ai-status'],
+    queryFn: () => api.get<AiStatus>('/api/v1/ai/status'),
+    enabled: open && step === 2,
   })
 
   const installed = (engines.data ?? []).filter((e) => e.installed)
@@ -112,7 +131,50 @@ export default function DraftFromDbDialog() {
         void queryClient.invalidateQueries({ queryKey: ['db-connections'] })
       }
       setSchema(data.schema)
+      setSelected(new Set(data.schema.tables.map((t) => t.name)))
+      setNamespace(`https://local/${data.schema.databaseName}#`)
       setStep(2)
+    } catch (e) {
+      setError(e instanceof ApiErr ? errText(e, t) : t('shell.loadFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const generate = async () => {
+    if (busy || !schema) return
+    setBusy(true)
+    setError(null)
+    setProgress(null)
+    try {
+      const lang =
+        labelLang || (i18n.resolvedLanguage?.startsWith('zh') ? 'zh' : 'en')
+      const subset: SchemaModel = {
+        databaseName: schema.databaseName,
+        tables: schema.tables.filter((t) => selected.has(t.name)),
+      }
+      const { jobId } = await api.post<{ jobId: string }>(
+        '/api/v1/ontologies/drafting/generate',
+        { schema: subset, namespace, labelLanguage: lang },
+      )
+      // Poll until done/failed; the loop also aborts when the dialog closes.
+      for (;;) {
+        if (!useUiStore.getState().draftOpen) return
+        const job = await api.get<DraftJob>(`/api/v1/ontologies/drafting/jobs/${jobId}`)
+        if (job.status === 'done') {
+          setResult(job.result ?? null)
+          setStep(3)
+          return
+        }
+        if (job.status === 'failed') {
+          setError(
+            job.code && i18n.exists(`err.${job.code}`) ? t(`err.${job.code}`) : job.message ?? '',
+          )
+          return
+        }
+        setProgress({ batch: job.batch, batchCount: job.batchCount })
+        await new Promise((r) => setTimeout(r, 300))
+      }
     } catch (e) {
       setError(e instanceof ApiErr ? errText(e, t) : t('shell.loadFailed'))
     } finally {
@@ -125,7 +187,7 @@ export default function DraftFromDbDialog() {
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t('draftDialog.title')}</DialogTitle>
-          <DialogDescription>
+          <DialogDescription data-step-name>
             {step === 1 ? t('draftDialog.stepConnection') : step === 2 ? t('draftDialog.stepTables') : t('draftDialog.stepPreview')}
           </DialogDescription>
         </DialogHeader>
@@ -245,16 +307,121 @@ export default function DraftFromDbDialog() {
         )}
 
         {step === 2 && schema && (
-          // Step 2 选表 lands in the next task; the heading + count confirm
-          // the reflect succeeded and the wizard advanced.
-          <div className="flex flex-col gap-2">
-            <div className="font-mono text-ink-2 text-xs">
-              {schema.databaseName} · {schema.tables.length}
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <SearchIcon aria-hidden="true" className="text-ink-3 pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  aria-label={t('draftDialog.searchTables')}
+                  placeholder={t('draftDialog.searchTables')}
+                  className="text-ink pl-7 text-xs"
+                />
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelected(new Set(schema.tables.map((tb) => tb.name)))}
+              >
+                {t('draftDialog.selectAll')}
+              </Button>
             </div>
+
+            <div className="border-line max-h-56 overflow-auto rounded-ctl border">
+              {schema.tables
+                .filter((t) =>
+                  search.trim()
+                    ? (t.name + ' ' + (t.comment ?? '')).toLowerCase().includes(search.trim().toLowerCase())
+                    : true,
+                )
+                .map((tbl) => (
+                  <label key={tbl.name} className="hover:bg-panel-2 flex cursor-pointer items-center gap-2 border-b border-dashed px-2 py-1.5 text-xs last:border-0">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(tbl.name)}
+                      onChange={(e) =>
+                        setSelected((prev) => {
+                          const next = new Set(prev)
+                          if (e.target.checked) next.add(tbl.name)
+                          else next.delete(tbl.name)
+                          return next
+                        })
+                      }
+                      className="accent-primary"
+                      aria-label={tbl.name}
+                    />
+                    <span className="text-ink font-mono">{tbl.name}</span>
+                    <span className="text-ink-2 flex-1 truncate">{tbl.comment}</span>
+                    <span className="text-ink-3 font-mono">{t('draftDialog.columnsCount', { n: tbl.columns.length })}</span>
+                    {tbl.foreignKeys.length > 0 && (
+                      <span className="text-primary font-mono">{t('draftDialog.fkCount', { n: tbl.foreignKeys.length })}</span>
+                    )}
+                  </label>
+                ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-[6rem_1fr] items-center gap-2">
+                <span className={labelCls}>{t('draftDialog.namespace')}</span>
+                <Input
+                  value={namespace}
+                  onChange={(e) => setNamespace(e.target.value)}
+                  aria-label={t('draftDialog.namespace')}
+                  className="text-ink text-xs"
+                />
+              </div>
+              <div className="grid grid-cols-[6rem_1fr] items-center gap-2">
+                <span className={labelCls}>{t('draftDialog.labelLanguage')}</span>
+                <select
+                  value={labelLang}
+                  onChange={(e) => setLabelLang(e.target.value as '' | 'zh' | 'en')}
+                  className={fieldCls}
+                  aria-label={t('draftDialog.labelLanguage')}
+                >
+                  <option value="">{t('draftDialog.followUi')}</option>
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+            </div>
+
+            {aiStatus.data && !aiStatus.data.configured && (
+              <div className="border-line bg-panel-2 flex items-center gap-2 rounded-ctl border px-2 py-1.5 text-xs">
+                <span className="text-ink-2 flex-1">{t('draftDialog.aiNotConfigured')}</span>
+                <Button variant="outline" size="sm" onClick={() => setAiSettingsOpen(true)}>
+                  {t('draftDialog.goSettings')}
+                </Button>
+              </div>
+            )}
+
+            {busy && progress && (
+              <div className="text-primary flex items-center gap-2 text-xs">
+                <Loader2Icon aria-hidden="true" className="size-3.5 animate-spin" />
+                {t('draftDialog.generatingBatch', { k: progress.batch, n: progress.batchCount })}
+              </div>
+            )}
+
+            {error && (
+              <div role="alert" className="text-destructive text-xs">
+                {error}
+              </div>
+            )}
           </div>
         )}
 
+        {step === 3 && result && (
+          // Step 3 预览 lands in the next task; the heading confirms the job
+          // finished and the wizard advanced.
+          <div className="font-mono text-ink-2 text-xs">{result.stats.classCount}</div>
+        )}
+
         <DialogFooter>
+          {step === 2 && schema && (
+            <span className="text-ink-2 mr-auto text-xs">
+              {t('draftDialog.selectedCount', { n: selected.size, max: 500 })}
+            </span>
+          )}
           <Button variant="outline" onClick={() => setDraftOpen(false)} disabled={busy}>
             {t('common.cancel')}
           </Button>
@@ -262,6 +429,15 @@ export default function DraftFromDbDialog() {
             <Button onClick={() => void readSchema()} disabled={busy || (!picked && !database)}>
               {busy ? <Loader2Icon aria-hidden="true" className="animate-spin" /> : <RefreshCwIcon aria-hidden="true" />}
               {busy ? t('draftDialog.reading') : t('draftDialog.readSchema')}
+            </Button>
+          )}
+          {step === 2 && (
+            <Button
+              onClick={() => void generate()}
+              disabled={busy || selected.size === 0 || !aiStatus.data?.configured}
+            >
+              {busy ? <Loader2Icon aria-hidden="true" className="animate-spin" /> : <SparklesIcon aria-hidden="true" />}
+              {t('draftDialog.generate')}
             </Button>
           )}
         </DialogFooter>

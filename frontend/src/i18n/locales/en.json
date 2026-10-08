@@ -263,6 +263,7 @@
     "import": "Import",
     "importedToast": "Imported {{name}}",
     "importedSub": "{{classes}} classes · {{objProps}} object props · {{dataProps}} data props · {{lint}} lint findings",
+    "selectedCount": "{{n}}/{{max}} selected",
     "tableCapHint": "At most {{max}} tables, currently {{n}}",
     "aiNotConfigured": "AI is not configured — set up a model before generating drafts",
     "goSettings": "Open settings",

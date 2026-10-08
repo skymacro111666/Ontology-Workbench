@@ -54,8 +54,7 @@ afterEach(() => {
   useUiStore.getState().setDraftOpen(false)
 })
 
-describe('DraftFromDbDialog — step 1 连接', () => {
-  it('renders the dialog from the store flag with engines fetched', async () => {
+describe('DraftFromDbDialog — step 1 连接', () => {  it('renders the dialog from the store flag with engines fetched', async () => {
     const fetchMock = vi.fn(async (url: string) => {
       if (String(url).includes('/db-connections/engines')) return ok(ENGINES)
       return ok([])
@@ -111,5 +110,140 @@ describe('DraftFromDbDialog — step 1 连接', () => {
     // still on step 1: the connection form is intact for a retry
     expect(screen.getByLabelText('路径')).toBeTruthy()
     expect(screen.getByRole('button', { name: '读取表结构' })).toBeTruthy()
+  })
+})
+
+const SCHEMA2 = {
+  databaseName: 'shop',
+  tables: [
+    {
+      name: 'customer',
+      comment: '客户',
+      columns: [
+        { name: 'id', type: 'INTEGER', nullable: false, primaryKey: true, unique: false, comment: null },
+        { name: 'name', type: 'VARCHAR(80)', nullable: true, primaryKey: false, unique: false, comment: null },
+      ],
+      foreignKeys: [],
+    },
+    {
+      name: 'orders',
+      comment: '订单',
+      columns: [{ name: 'id', type: 'INTEGER', nullable: false, primaryKey: true, unique: false, comment: null }],
+      foreignKeys: [{ column: 'customer_id', refTable: 'customer', refColumn: 'id' }],
+    },
+  ],
+}
+
+/** Router carrying the dialog to step 2: engines + reflect + (optional) AI status. */
+function step2Router(opts: { configured?: boolean } = {}) {
+  let polls = 0
+  const calls: { generate: unknown[]; jobs: string[] } = { generate: [], jobs: [] }
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    const u = String(url)
+    if (u.includes('/db-connections/engines')) return ok(ENGINES)
+    if (u.includes('/db-connections')) return ok([])
+    if (u.includes('/ai/status')) return ok({ configured: opts.configured ?? true, provider: 'openai', model: 'm', source: 'env' })
+    if (u.includes('/drafting/schema')) return ok({ schema: SCHEMA2, tableCount: 2 })
+    if (u.includes('/drafting/generate')) {
+      calls.generate.push(JSON.parse(String(init?.body)))
+      return ok({ jobId: 'job-1' })
+    }
+    if (u.includes('/drafting/jobs/')) {
+      calls.jobs.push(u)
+      polls += 1
+      if (polls === 1) return ok({ status: 'running', batch: 1, batchCount: 2 })
+      return ok({
+        status: 'done',
+        batch: 2,
+        batchCount: 2,
+        result: { decisions: { classes: [], objectProperties: [], dataProperties: [] }, ttl: '', lintFindings: [], stats: {} },
+      })
+    }
+    return ok(null)
+  })
+  return { fetchMock, calls }
+}
+
+/** Drive the dialog to step 2 (reflect done) and hand back the screen. */
+async function atStep2() {
+  renderDialog()
+  await screen.findByLabelText('路径')
+  await userEvent.type(screen.getByLabelText('路径'), '/tmp/shop.db')
+  await userEvent.click(screen.getByRole('button', { name: '读取表结构' }))
+  await screen.findByText('customer')
+}
+
+describe('DraftFromDbDialog — step 2 选表与生成', () => {
+  it('renders the table list with comments, counts, search and 已选 counter', async () => {
+    const { fetchMock } = step2Router()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep2()
+
+    expect(screen.getByText('客户')).toBeTruthy()
+    expect(screen.getByText('订单')).toBeTruthy()
+    expect(screen.getByText('2 列')).toBeTruthy()
+    expect(screen.getByText('FK ×1')).toBeTruthy()
+    expect(screen.getByText('已选 2/500')).toBeTruthy()
+
+    // search narrows the list; the hidden row leaves the tree
+    await userEvent.type(screen.getByLabelText('搜索表名 / 注释…'), 'cust')
+    expect(screen.getByText('customer')).toBeTruthy()
+    expect(screen.queryByText('订单')).toBeNull()
+
+    // 全选 re-checks everything visible
+    await userEvent.click(screen.getByRole('button', { name: '全选' }))
+    expect(screen.getByText('已选 2/500')).toBeTruthy()
+  })
+
+  it('namespace defaults from the database name and is editable', async () => {
+    const { fetchMock } = step2Router()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep2()
+
+    const ns = screen.getByLabelText('命名空间') as HTMLInputElement
+    expect(ns.value).toBe('https://local/shop#')
+    await userEvent.clear(ns)
+    await userEvent.type(ns, 'https://ex.org/x#')
+    expect(ns.value).toBe('https://ex.org/x#')
+  })
+
+  it('disables 生成草稿 without AI and 去配置 opens the AI settings dialog', async () => {
+    const { fetchMock } = step2Router({ configured: false })
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep2()
+
+    const btn = screen.getByRole('button', { name: '生成草稿' }) as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    expect(screen.getByText('AI 未配置——生成草稿需要先配置模型')).toBeTruthy()
+
+    useUiStore.getState().setAiSettingsOpen(false)
+    await userEvent.click(screen.getByRole('button', { name: '去配置' }))
+    expect(useUiStore.getState().aiSettingsOpen).toBe(true)
+  })
+
+  it('generates with the selected subset and polls the job to done', async () => {
+    const { fetchMock, calls } = step2Router()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep2()
+
+    // deselect orders: the generate body must carry only customer
+    const rows = screen.getAllByRole('checkbox')
+    await userEvent.click(rows[rows.length - 1])
+    expect(screen.getByText('已选 1/500')).toBeTruthy()
+
+    await userEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+
+    // mid-poll: the first running response shows the batch line
+    expect(await screen.findByText('正在生成草稿… 第 1/2 批')).toBeTruthy()
+
+    // then the done poll advances to step 3 (preview pane stub)
+    expect(await screen.findByText('预览与导入', { selector: '[data-step-name]' })).toBeTruthy()
+
+    expect(calls.generate).toHaveLength(1)
+    expect(calls.generate[0]).toEqual({
+      schema: { databaseName: 'shop', tables: [SCHEMA2.tables[0]] },
+      namespace: 'https://local/shop#',
+      labelLanguage: 'zh',
+    })
   })
 })
