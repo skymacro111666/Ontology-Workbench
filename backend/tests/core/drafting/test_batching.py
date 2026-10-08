@@ -10,7 +10,7 @@ def _t(name: str, *fks: tuple[str, str]) -> TableSpec:
         name=name,
         comment=None,
         columns=[
-            ColumnSpec(name="id", type_="INTEGER", nullable=False, primary_key=True, unique=False)
+            ColumnSpec(name="id", type="INTEGER", nullable=False, primary_key=True, unique=False)
         ],
         foreign_keys=[
             ForeignKeySpec(column=f"c{i}", ref_table=ref, ref_column="id")

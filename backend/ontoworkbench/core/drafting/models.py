@@ -20,7 +20,7 @@ class ColumnSpec(CamelModel):
     """One reflected column."""
 
     name: str
-    type_: str = Field(alias="type")
+    type: str
     nullable: bool
     primary_key: bool
     unique: bool

@@ -27,14 +27,14 @@ def _columns(inspector: Inspector, table: str) -> list[ColumnSpec]:
     uniques: set[str] = set()
     for ix in inspector.get_indexes(table):
         cols = ix.get("column_names") or []
-        if ix.get("unique") and len(cols) == 1:
+        if ix.get("unique") and len(cols) == 1 and cols[0] is not None:
             uniques.add(cols[0])
     out: list[ColumnSpec] = []
     for col in inspector.get_columns(table):
         out.append(
             ColumnSpec(
                 name=col["name"],
-                type_=str(col["type"]),
+                type=str(col["type"]),
                 nullable=bool(col.get("nullable", True)),
                 primary_key=col["name"] in pk,
                 unique=col["name"] in uniques,

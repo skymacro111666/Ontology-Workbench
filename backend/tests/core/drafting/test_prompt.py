@@ -16,11 +16,11 @@ SCHEMA = SchemaModel(
             comment="买方",
             columns=[
                 ColumnSpec(
-                    name="id", type_="INTEGER", nullable=False, primary_key=True, unique=True
+                    name="id", type="INTEGER", nullable=False, primary_key=True, unique=True
                 ),
                 ColumnSpec(
                     name="name",
-                    type_="VARCHAR(80)",
+                    type="VARCHAR(80)",
                     nullable=False,
                     primary_key=False,
                     unique=False,
@@ -33,18 +33,18 @@ SCHEMA = SchemaModel(
             comment=None,
             columns=[
                 ColumnSpec(
-                    name="id", type_="INTEGER", nullable=False, primary_key=True, unique=False
+                    name="id", type="INTEGER", nullable=False, primary_key=True, unique=False
                 ),
                 ColumnSpec(
                     name="customer_id",
-                    type_="INTEGER",
+                    type="INTEGER",
                     nullable=False,
                     primary_key=False,
                     unique=False,
                 ),
                 ColumnSpec(
                     name="status",
-                    type_="VARCHAR(20)",
+                    type="VARCHAR(20)",
                     nullable=True,
                     primary_key=False,
                     unique=False,
