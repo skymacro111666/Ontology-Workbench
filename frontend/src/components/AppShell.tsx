@@ -1,6 +1,7 @@
 import {
   BotIcon,
   CloudUploadIcon,
+  DatabaseIcon,
   DownloadIcon,
   FileIcon,
   FilePlus2Icon,
@@ -73,6 +74,8 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const setImportOpen = useUiStore((s) => s.setImportOpen)
   const setBlankOpen = useUiStore((s) => s.setBlankOpen)
   const setExportOpen = useUiStore((s) => s.setExportOpen)
+  const setDraftOpen = useUiStore((s) => s.setDraftOpen)
+  const setAiSettingsOpen = useUiStore((s) => s.setAiSettingsOpen)
   const browseView = useUiStore((s) => s.browseView)
   const setBrowseView = useUiStore((s) => s.setBrowseView)
   const pendingView = useUiStore((s) => s.pendingView)
@@ -175,10 +178,22 @@ export default function AppShell({ children }: { children?: ReactNode }) {
             <DropdownMenuContent align="end">
               {/* text-xs per item: the item base class ships text-sm, so a
                   font-size on the content element never reaches the items. */}
-              <DropdownMenuItem className="text-xs" onSelect={() => setBlankOpen(true)}>
-                <FilePlus2Icon />
-                {t('shell.newBlank')}
-              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="text-xs">
+                  <FilePlus2Icon />
+                  {t('shell.new')}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem className="text-xs" onSelect={() => setBlankOpen(true)}>
+                    <FilePlus2Icon />
+                    {t('shell.newBlank')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-xs" onSelect={() => setDraftOpen(true)}>
+                    <DatabaseIcon />
+                    {t('shell.newFromDb')}
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               <DropdownMenuItem className="text-xs" onSelect={() => setImportOpen(true)}>
                 <CloudUploadIcon />
                 {t('shell.importFile')}
@@ -272,6 +287,10 @@ export default function AppShell({ children }: { children?: ReactNode }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <div className="text-ink-2 px-2 py-1 text-xs">{user?.username ?? t('shell.userFallback')}</div>
+              <DropdownMenuItem className="text-xs" onSelect={() => setAiSettingsOpen(true)}>
+                <BotIcon />
+                {t('shell.aiSettings')}
+              </DropdownMenuItem>
               <DropdownMenuItem className="text-xs" onSelect={() => setPwdOpen(true)}>
                 <KeyRoundIcon />
                 {t('shell.changePwd')}

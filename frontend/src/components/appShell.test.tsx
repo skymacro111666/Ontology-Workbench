@@ -33,6 +33,8 @@ afterEach(() => {
     importOpen: false,
     blankOpen: false,
     exportOpen: false,
+    draftOpen: false,
+    aiSettingsOpen: false,
     sourceDirty: false,
     pendingView: null,
     sourceSaveFn: null,
@@ -223,12 +225,29 @@ it('hides the 图形/文本 switch outside the workspace', () => {
   expect(screen.queryByRole('radio', { name: /文本/ })).toBeNull()
 })
 
-it('opens the blank-create dialog from the file menu', async () => {
+it('opens the blank-create dialog from the file menu 新建 submenu', async () => {
   shell('/')
   await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))
+  await userEvent.hover(await screen.findByText('新建'))
   await userEvent.click(await screen.findByText('新建空白本体…'))
   expect(await screen.findByRole('dialog')).toBeTruthy()
   expect(screen.getByText('新建空白本体')).toBeTruthy()
+})
+
+it('file menu 新建 ▸ 从数据库起草 sets the draft dialog flag', async () => {
+  shell('/')
+  await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))
+  await userEvent.hover(await screen.findByText('新建'))
+  await userEvent.click(await screen.findByText('从数据库起草本体…'))
+  // The dialog itself mounts in a later task; the menu contract is the flag.
+  expect(useUiStore.getState().draftOpen).toBe(true)
+})
+
+it('account menu carries the AI settings entry', async () => {
+  shell('/')
+  await userEvent.click(screen.getByRole('button', { name: /菜单/ }))
+  await userEvent.click(await screen.findByText('AI 设置'))
+  expect(useUiStore.getState().aiSettingsOpen).toBe(true)
 })
 
 it('workspace topbar switches the browse view mode through the store', async () => {

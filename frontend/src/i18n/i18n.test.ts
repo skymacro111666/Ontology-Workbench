@@ -17,6 +17,35 @@ it('carries the axiom panel keys in both languages (OWL 2 M1)', () => {
   }
 })
 
+it('carries the draft wizard and AI settings keys in both languages', () => {
+  const keys = [
+    'draftDialog.title',
+    'draftDialog.stepConnection',
+    'draftDialog.stepTables',
+    'draftDialog.stepPreview',
+    'draftDialog.readSchema',
+    'draftDialog.generate',
+    'draftDialog.generatingBatch',
+    'draftDialog.import',
+    'draftDialog.importedToast',
+    'draftDialog.aiNotConfigured',
+    'draftDialog.goSettings',
+    'aiSettings.title',
+    'aiSettings.apiKey',
+    'aiSettings.test',
+    'shell.new',
+    'shell.newFromDb',
+    'shell.aiSettings',
+    'home.agentTag',
+  ]
+  for (const key of keys) {
+    const zh = i18n.t(key, { lng: 'zh' })
+    const en = i18n.t(key, { lng: 'en' })
+    expect(zh, key).not.toBe(key)
+    expect(en, key).not.toBe(key)
+  }
+})
+
 it('maps every error code in both languages', () => {
   const codes = [
     'AUTH_REQUIRED',
@@ -32,6 +61,12 @@ it('maps every error code in both languages', () => {
     'UNSUPPORTED_FORMAT',
     'VALIDATION_ERROR',
     'INTERNAL_ERROR',
+    'AI_NOT_CONFIGURED',
+    'AI_REQUEST_FAILED',
+    'AI_TIMEOUT',
+    'LLM_OUTPUT_INVALID',
+    'DB_DRIVER_MISSING',
+    'DB_CONNECT_FAILED',
   ]
   for (const c of codes) {
     const zh = i18n.t(`err.${c}`, { lng: 'zh' })

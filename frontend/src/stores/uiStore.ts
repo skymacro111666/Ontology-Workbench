@@ -34,7 +34,8 @@ export interface InstanceDialogState {
   eid?: string
 }
 
-/** Cross-component UI state (import/blank-create dialog flags, view mode). */
+/** Cross-component UI state (import/blank-create/draft/AI-settings dialog
+ *  flags, view mode). */
 export const useUiStore = create<{
   importOpen: boolean
   setImportOpen: (open: boolean) => void
@@ -42,6 +43,10 @@ export const useUiStore = create<{
   setBlankOpen: (open: boolean) => void
   exportOpen: boolean
   setExportOpen: (open: boolean) => void
+  draftOpen: boolean
+  setDraftOpen: (open: boolean) => void
+  aiSettingsOpen: boolean
+  setAiSettingsOpen: (open: boolean) => void
   browseView: BrowseView
   setBrowseView: (view: BrowseView) => void
   /** Sidebar collapse (rail mode): collapsed panels stay mounted, hidden. */
@@ -71,6 +76,10 @@ export const useUiStore = create<{
   setBlankOpen: (blankOpen) => set({ blankOpen }),
   exportOpen: false,
   setExportOpen: (exportOpen) => set({ exportOpen }),
+  draftOpen: false,
+  setDraftOpen: (draftOpen) => set({ draftOpen }),
+  aiSettingsOpen: false,
+  setAiSettingsOpen: (aiSettingsOpen) => set({ aiSettingsOpen }),
   browseView: 'graph',
   setBrowseView: (browseView) => set({ browseView }),
   leftCollapsed: false,

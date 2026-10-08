@@ -314,3 +314,137 @@ export interface RegistryPage {
   items: RegistryEvent[]
   nextBeforeId: number | null
 }
+
+/* ---- AI / drafting (wire camelCase; the API key is write-only) ---- */
+
+/** GET /ai/settings: never carries the key, only hasKey + last 4. */
+export interface AiSettings {
+  provider: string
+  baseUrl: string | null
+  model: string
+  hasKey: boolean
+  keyLast4: string | null
+  source: 'env' | 'db'
+}
+
+/** Cheap configured-check for panels and wizards (GET /ai/status). */
+export interface AiStatus {
+  configured: boolean
+  provider: string
+  model: string
+  source: 'env' | 'db'
+}
+
+/** Saved DB connection profile (GET /db-connections); no password material. */
+export interface DbConnectionSummary {
+  id: string
+  name: string
+  dbType: string
+  host: string | null
+  port: number | null
+  database: string
+  username: string | null
+  hasPassword: boolean
+  createdAt: string
+}
+
+/** Dialect registry entry for the wizard's dbType dropdown. */
+export interface DbEngine {
+  dbType: string
+  label: string
+  installed: boolean
+}
+
+/** One reflected column. */
+export interface ColumnSpec {
+  name: string
+  type: string
+  nullable: boolean
+  primaryKey: boolean
+  unique: boolean
+  comment: string | null
+}
+
+/** One FK edge: this column → that table.column. */
+export interface ForeignKeySpec {
+  column: string
+  refTable: string
+  refColumn: string
+}
+
+/** One reflected table. */
+export interface TableSpec {
+  name: string
+  comment: string | null
+  columns: ColumnSpec[]
+  foreignKeys: ForeignKeySpec[]
+}
+
+/** A reflected database (possibly the user-selected subset). */
+export interface SchemaModel {
+  databaseName: string
+  tables: TableSpec[]
+}
+
+/** The LLM's (or merger's fallback) verdict on one table → class. */
+export interface ClassDecision {
+  name: string
+  label: string
+  comment: string | null
+  sourceTable: string
+  parentName: string | null
+}
+
+/** One FK → object property decision; sourceFk is "table.column". */
+export interface ObjectPropertyDecision {
+  name: string
+  label: string | null
+  domain: string
+  range: string
+  sourceFk: string
+}
+
+/** One column → data property decision. */
+export interface DataPropertyDecision {
+  name: string
+  label: string | null
+  domain: string
+  datatype: string
+  sourceColumn: string
+}
+
+/** One batch's structured output (or the wizard's checked subset). */
+export interface DecisionSet {
+  classes: ClassDecision[]
+  objectProperties: ObjectPropertyDecision[]
+  dataProperties: DataPropertyDecision[]
+}
+
+/** Generate-job stats block (classCount… batchCount, camelCase on wire). */
+export interface DraftStats {
+  classCount: number
+  objectPropertyCount: number
+  dataPropertyCount: number
+  elapsedMs: number
+  inTokens: number
+  outTokens: number
+  batchCount: number
+}
+
+/** Done-payload of a generate job (ttl decoded to string on the wire). */
+export interface DraftResult {
+  decisions: DecisionSet
+  ttl: string
+  lintFindings: LintRuleResultT[]
+  stats: DraftStats
+}
+
+/** Polled generate job (GET /drafting/jobs/{id}). */
+export interface DraftJob {
+  status: 'running' | 'done' | 'failed'
+  batch: number
+  batchCount: number
+  result?: DraftResult
+  code?: string
+  message?: string
+}
