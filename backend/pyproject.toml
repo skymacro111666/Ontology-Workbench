@@ -35,6 +35,9 @@ dev = [
   "import-linter>=2", "pre-commit",
 ]
 
+[project.optional-dependencies]
+ai = ["openai>=1.50", "anthropic>=0.40"]
+
 [project.scripts]
 ow = "ontoworkbench.cli:app"
 
