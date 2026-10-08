@@ -219,3 +219,54 @@ class MutationEvent(Base):
     source: Mapped[str] = mapped_column(String(8), default="web", server_default=text("'web'"))
     request_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())
+
+
+class AiSetting(Base):
+    """A user's ModelProvider config (spec §2): one row per user, DB over env.
+
+    The API key is write-only through the API (GET returns hasKey + last 4);
+    it lands plaintext in ow.db by the same threat model as .env (spec §2).
+    """
+
+    __tablename__ = "ai_settings"
+
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    provider: Mapped[str] = mapped_column(
+        String(16), default="openai", server_default=text("'openai'")
+    )
+    base_url: Mapped[str | None] = mapped_column(String(512))
+    api_key: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(String(128))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTimeTZ, server_default=func.now(), onupdate=_now
+    )
+
+
+class DbConnection(Base):
+    """A saved database connection profile (spec §3): password Fernet-encrypted.
+
+    Owner-scoped like agent tokens; the cipher text never leaves the backend
+    (list payloads omit it; reflection decrypts in-request only).
+    """
+
+    __tablename__ = "db_connections"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_db_connections_user_id_name"),
+        Index("ix_db_connections_user_id", "user_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(64))
+    db_type: Mapped[str] = mapped_column(String(16))
+    host: Mapped[str | None] = mapped_column(String(255))
+    port: Mapped[int | None] = mapped_column(Integer)
+    database_name: Mapped[str] = mapped_column(String(255))
+    username: Mapped[str | None] = mapped_column(String(128))
+    password_cipher: Mapped[str] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTimeTZ, server_default=func.now(), onupdate=_now
+    )

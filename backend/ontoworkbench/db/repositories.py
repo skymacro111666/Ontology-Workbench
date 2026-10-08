@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from ontoworkbench.db.models import (
     AgentToken,
+    AiSetting,
+    DbConnection,
     LintRule,
     MutationEvent,
     Ontology,
@@ -538,3 +540,75 @@ class MutationEventRepository:
         if before_id is not None:
             stmt = stmt.where(MutationEvent.id < before_id)
         return list(self._session.scalars(stmt))
+
+
+class AiSettingsRepository:
+    """Per-user single-row ModelProvider settings (upsert semantics)."""
+
+    def __init__(self, session: Session) -> None:
+        """Initialize with the shared session; callers own commit."""
+        self._s = session
+
+    def get(self, user_id: UUID) -> AiSetting | None:
+        """Return the user's settings row, if any."""
+        return self._s.scalars(select(AiSetting).where(AiSetting.user_id == user_id)).first()
+
+    def upsert(self, *, user_id: UUID, **fields: Any) -> AiSetting:
+        """Create or partially update the single row; omitted fields keep their values."""
+        row = self.get(user_id)
+        if row is None:
+            row = AiSetting(user_id=user_id)
+            self._s.add(row)
+        for key, value in fields.items():
+            if hasattr(AiSetting, key):
+                setattr(row, key, value)
+        self._s.flush()
+        return row
+
+
+class DbConnectionRepository:
+    """Owner-scoped database connection profiles."""
+
+    def __init__(self, session: Session) -> None:
+        """Initialize with the shared session; callers own commit."""
+        self._s = session
+
+    def list_by_user(self, user_id: UUID) -> list[DbConnection]:
+        """The user's saved connections, newest first."""
+        stmt = (
+            select(DbConnection)
+            .where(DbConnection.user_id == user_id)
+            .order_by(DbConnection.created_at.desc())
+        )
+        return list(self._s.scalars(stmt))
+
+    def get_owned(self, user_id: UUID, connection_id: UUID) -> DbConnection | None:
+        """Fetch one connection only when it belongs to the user."""
+        return self._s.scalars(
+            select(DbConnection).where(
+                DbConnection.user_id == user_id, DbConnection.id == connection_id
+            )
+        ).first()
+
+    def create(self, *, user_id: UUID, **fields: Any) -> DbConnection:
+        """Stage a new connection row (caller commits)."""
+        row = DbConnection(user_id=user_id, **fields)
+        self._s.add(row)
+        self._s.flush()
+        return row
+
+    def update(self, row: DbConnection, **fields: Any) -> None:
+        """Replace the given fields on an owned row (caller commits)."""
+        for key, value in fields.items():
+            if hasattr(DbConnection, key):
+                setattr(row, key, value)
+        self._s.flush()
+
+    def delete(self, user_id: UUID, connection_id: UUID) -> bool:
+        """Hard-delete an owned connection; False for unknown/foreign ids."""
+        row = self.get_owned(user_id, connection_id)
+        if row is None:
+            return False
+        self._s.delete(row)
+        self._s.flush()
+        return True
