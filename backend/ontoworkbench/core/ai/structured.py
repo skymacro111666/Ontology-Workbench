@@ -7,12 +7,15 @@ error → CoreError.
 from __future__ import annotations
 
 import json
+from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 from ontoworkbench.core.ai.base import ModelProvider
 from ontoworkbench.core.ai.types import ModelRequest, ModelResponse
 from ontoworkbench.core.errors import CoreError
+
+T = TypeVar("T", bound=BaseModel)
 
 
 def parse_json_block(text: str) -> dict:
@@ -32,10 +35,10 @@ def parse_json_block(text: str) -> dict:
 async def complete_json(
     provider: ModelProvider,
     req: ModelRequest,
-    schema: type[BaseModel],
+    schema: type[T],
     retries: int = 1,
     usage_sink: list[ModelResponse] | None = None,
-) -> BaseModel:
+) -> T:
     """Complete and validate against a pydantic schema, retrying once.
 
     usage_sink (when given) collects every raw ModelResponse so the caller

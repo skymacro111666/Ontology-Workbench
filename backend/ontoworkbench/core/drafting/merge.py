@@ -133,6 +133,7 @@ def render_ttl(
         "@prefix dcterms: <http://purl.org/dc/terms/> .",
         "@prefix owl: <http://www.w3.org/2002/07/owl#> .",
         "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .",
+        "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .",
         f"@prefix {prefix}: <{namespace}> .",
         "",
         f"<{onto_iri}> a owl:Ontology ;",
