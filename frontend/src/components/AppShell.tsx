@@ -26,6 +26,7 @@ import logoMark from '../assets/logo-mark.png'
 import { cn } from '@/lib/utils'
 import CommandPalette from './CommandPalette'
 import BlankOntologyDialog from './BlankOntologyDialog'
+import DraftFromDbDialog from './DraftFromDbDialog'
 import ExportDialog from './ExportDialog'
 import ImportDialog from './ImportDialog'
 import OntologySwitcher from './OntologySwitcher'
@@ -320,6 +321,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
       <ImportDialog />
       <BlankOntologyDialog />
       <ExportDialog />
+      <DraftFromDbDialog />
       <CommandPalette />
       <PasswordDialog open={pwdOpen} onClose={() => setPwdOpen(false)} />
 
