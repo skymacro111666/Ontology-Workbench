@@ -38,6 +38,8 @@ dev = [
 
 [project.optional-dependencies]
 ai = ["openai>=1.50", "anthropic>=0.40"]
+postgres = ["psycopg[binary]>=3.2"]
+mysql = ["pymysql>=1.1"]
 
 [project.scripts]
 ow = "ontoworkbench.cli:app"
