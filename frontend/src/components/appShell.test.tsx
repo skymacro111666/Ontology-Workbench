@@ -11,7 +11,11 @@ import { useUiStore } from '../stores/uiStore'
 
 vi.mock('../api/client', () => ({
   api: {
-    get: vi.fn(async () => ({ items: [], total: 0 })),
+    // DraftFromDbDialog (mounted by the shell) expects array payloads for
+    // its connection/engine lists; the switcher still gets {items,total}.
+    get: vi.fn(async (url: string) =>
+      String(url).includes('/db-connections') ? [] : { items: [], total: 0 },
+    ),
     download: vi.fn(async () => 'mini.jsonld'),
   },
   ApiErr: class extends Error {},
