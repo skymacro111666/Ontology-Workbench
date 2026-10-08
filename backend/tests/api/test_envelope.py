@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from ontoworkbench.config import Settings
 from ontoworkbench.server.app import create_app
+from ontoworkbench.server.envelope import HTTP_OF, ErrorCode
 
 
 def client(tmp_dir: Path | None = None) -> TestClient:
@@ -84,3 +85,16 @@ def test_client_supplied_request_id_is_sanitized(tmp_path: Path) -> None:
         rid = r.headers["x-request-id"]
         assert rid == r.json()["request_id"]
         assert "<script>" not in rid and " " not in rid
+
+
+def test_ai_and_db_error_codes_have_http_mapping() -> None:
+    """Every new code resolves to its mapped status (CoreError passthrough)."""
+    for code, status in [
+        ("AI_NOT_CONFIGURED", 503),
+        ("AI_REQUEST_FAILED", 502),
+        ("AI_TIMEOUT", 504),
+        ("LLM_OUTPUT_INVALID", 502),
+        ("DB_DRIVER_MISSING", 400),
+        ("DB_CONNECT_FAILED", 502),
+    ]:
+        assert HTTP_OF[ErrorCode(code)] == status
