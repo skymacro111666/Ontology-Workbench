@@ -7,7 +7,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
-      - run: uv sync
+      - run: uv sync --extra ai
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy ontoworkbench
