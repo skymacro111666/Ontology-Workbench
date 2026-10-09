@@ -270,3 +270,45 @@ class DbConnection(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTimeTZ, server_default=func.now(), onupdate=_now
     )
+
+
+class ChatSession(Base):
+    """One chat conversation about one ontology (spec-2 §4).
+
+    Sessions die with their ontology (unlike mutation_events, chat history
+    has no audit value); rows appear only when a first message is sent —
+    the UI never creates empty sessions.
+    """
+
+    __tablename__ = "chat_sessions"
+    __table_args__ = (Index("ix_chat_sessions_user_id_ontology_id", "user_id", "ontology_id"),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    ontology_id: Mapped[UUID] = mapped_column(ForeignKey("ontologies.id", ondelete="CASCADE"))
+    title: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTimeTZ, server_default=func.now(), onupdate=_now
+    )
+
+
+class ChatMessage(Base):
+    """One turn of a chat session: user / assistant text or a tool row.
+
+    Tool rows store `{"name", "ok", "result"}` JSON as content so reopening
+    the panel re-renders the collapsed tool rows verbatim (spec-2 §4).
+    """
+
+    __tablename__ = "chat_messages"
+    __table_args__ = (Index("ix_chat_messages_session_id_id", "session_id", "id"),)
+
+    id: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    session_id: Mapped[UUID] = mapped_column(ForeignKey("chat_sessions.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String(16))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())

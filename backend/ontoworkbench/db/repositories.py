@@ -6,12 +6,14 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ontoworkbench.db.models import (
     AgentToken,
     AiSetting,
+    ChatMessage,
+    ChatSession,
     DbConnection,
     LintRule,
     MutationEvent,
@@ -612,3 +614,94 @@ class DbConnectionRepository:
         self._s.delete(row)
         self._s.flush()
         return True
+
+
+class ChatSessionRepository:
+    """Owner-scoped chat sessions per ontology (spec-2 §4).
+
+    Rows are created lazily by the SSE endpoint's first successful send;
+    delete cascades messages explicitly (SQLite runs without FK enforcement
+    in dev/test, so the repository owns the cascade semantics).
+    """
+
+    def __init__(self, session: Session) -> None:
+        """Bind to the caller's session (caller owns commit)."""
+        self._s = session
+
+    def list_by_ontology(self, user_id: UUID, ontology_id: UUID) -> list[ChatSession]:
+        """Sessions newest-first; message_count rides each row as a subquery."""
+        count = (
+            select(func.count(ChatMessage.id))
+            .where(ChatMessage.session_id == ChatSession.id)
+            .scalar_subquery()
+        )
+        rows = self._s.execute(
+            select(ChatSession, count)
+            .where(ChatSession.user_id == user_id, ChatSession.ontology_id == ontology_id)
+            .order_by(ChatSession.updated_at.desc())
+        ).all()
+        out: list[ChatSession] = []
+        for s, n in rows:
+            s.message_count = n  # type: ignore[attr-defined]
+            out.append(s)
+        return out
+
+    def get_owned(self, user_id: UUID, ontology_id: UUID, session_id: UUID) -> ChatSession | None:
+        """The session when it belongs to (user, ontology); None otherwise."""
+        return self._s.scalar(
+            select(ChatSession).where(
+                ChatSession.id == session_id,
+                ChatSession.user_id == user_id,
+                ChatSession.ontology_id == ontology_id,
+            )
+        )
+
+    def create(self, user_id: UUID, ontology_id: UUID, title: str | None) -> ChatSession:
+        """Stage a new session (caller commits)."""
+        row = ChatSession(user_id=user_id, ontology_id=ontology_id, title=title)
+        self._s.add(row)
+        self._s.flush()
+        return row
+
+    def rename(self, row: ChatSession, title: str) -> None:
+        """Set the title (touches updated_at via onupdate)."""
+        row.title = title
+
+    def touch(self, row: ChatSession) -> None:
+        """Bump updated_at so the list re-sorts to the top."""
+        row.updated_at = _now_utc()
+
+    def delete(self, user_id: UUID, ontology_id: UUID, session_id: UUID) -> bool:
+        """Delete an owned session and its messages; False for unknown ids."""
+        row = self.get_owned(user_id, ontology_id, session_id)
+        if row is None:
+            return False
+        self._s.execute(delete(ChatMessage).where(ChatMessage.session_id == session_id))
+        self._s.delete(row)
+        self._s.flush()
+        return True
+
+
+class ChatMessageRepository:
+    """Ordered chat turns of one session (spec-2 §4)."""
+
+    def __init__(self, session: Session) -> None:
+        """Bind to the caller's session (caller owns commit)."""
+        self._s = session
+
+    def append(self, session_id: UUID, role: str, content: str) -> ChatMessage:
+        """Stage one message (caller commits)."""
+        row = ChatMessage(session_id=session_id, role=role, content=content)
+        self._s.add(row)
+        self._s.flush()
+        return row
+
+    def list_for(self, session_id: UUID) -> list[ChatMessage]:
+        """The session's messages oldest-first."""
+        return list(
+            self._s.scalars(
+                select(ChatMessage)
+                .where(ChatMessage.session_id == session_id)
+                .order_by(ChatMessage.id.asc())
+            )
+        )
