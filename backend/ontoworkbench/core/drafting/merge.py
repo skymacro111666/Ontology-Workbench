@@ -121,8 +121,18 @@ def apply_rejections(draft: MergedDraft, rejected: set[str]) -> None:
 
 
 def _esc(s: str) -> str:
-    """Turtle literal escaping (blank_skeleton dialect)."""
-    return s.replace("\\", "\\\\").replace('"', '\\"')
+    """Turtle literal escaping (blank_skeleton dialect).
+
+    Raw newlines/carriage returns are illegal inside quoted Turtle string
+    literals — one LLM newline in a label would otherwise fail the parse.
+    """
+    return (
+        s.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
 
 
 def render_ttl(

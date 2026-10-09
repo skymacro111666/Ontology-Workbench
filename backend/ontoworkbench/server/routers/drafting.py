@@ -31,6 +31,7 @@ from ontoworkbench.server.crypto import decrypt_str, fernet_from_jwt_secret
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 from ontoworkbench.server.routers.ai_settings import get_ai_provider
+from ontoworkbench.server.routers.browse import _camel
 from ontoworkbench.server.routers.ontologies import _import_bytes
 
 router = APIRouter(prefix="/api/v1/ontologies/drafting", tags=["drafting"])
@@ -70,6 +71,7 @@ class ImportIn(CamelModel):
     rejected_class_names: list[str] = Field(default_factory=list)
     namespace: str = Field(min_length=1, max_length=512)
     filename: str | None = Field(default=None, max_length=255)
+    label_language: str = Field(default="zh", pattern="^(zh|en)$")
 
 
 def _dialect(db_type: str | None) -> Dialect:
@@ -153,7 +155,7 @@ def generate_endpoint(
             return {
                 "decisions": r.decisions.model_dump(by_alias=True),
                 "ttl": r.ttl.decode("utf-8"),
-                "lintFindings": r.lint_findings,
+                "lintFindings": [_camel(f) for f in r.lint_findings],
                 "stats": r.stats,
             }
 
@@ -197,8 +199,9 @@ def import_endpoint(
         namespace=body.namespace,
         prefix=_prefix_for(body.schema_.database_name),
         title=body.schema_.database_name,
+        label_language=body.label_language,
     )
-    findings = run_guardrails(ttl)
+    findings = [_camel(f) for f in run_guardrails(ttl)]
     row = _import_bytes(
         request,
         user,

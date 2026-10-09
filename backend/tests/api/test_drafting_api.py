@@ -168,3 +168,106 @@ def test_import_rejection_cascades(client: TestClient, shop_db: Path) -> None:
     assert "shop:Customer" not in src
     assert "hasCustomer" not in src
     assert "shop:Order" in src  # the survivor stays
+
+
+def _import_body(client: TestClient, shop_db: Path, decisions: dict, **over: object) -> dict:
+    """Standard import body with per-test overrides."""
+    body: dict = {
+        "schema": _reflected(client, shop_db),
+        "decisions": decisions,
+        "rejectedClassNames": [],
+        "namespace": "https://local/shop#",
+    }
+    body.update(over)
+    return body
+
+
+def _export_turtle(client: TestClient, oid: str) -> str:
+    return client.get(f"/api/v1/ontologies/{oid}/export/file", params={"format": "turtle"}).json()[
+        "data"
+    ]["content"]
+
+
+def test_import_lint_findings_wire_camel(client: TestClient, shop_db: Path) -> None:
+    """Guardrail findings ride the camelCase wire like every other lint surface.
+
+    missing-version fires on every draft, so findings are never empty here.
+    """
+    r = client.post(
+        "/api/v1/ontologies/drafting/import",
+        json=_import_body(client, shop_db, DECISIONS_OBJ),
+    )
+    assert r.status_code == 201
+    findings = r.json()["data"]["lintFindings"]
+    assert findings
+    for f in findings:
+        assert "ruleId" in f and "rule_id" not in f
+        assert "durationMs" in f and "duration_ms" not in f
+        for hit in f["findings"]:
+            assert "subjectCurie" in hit and "subject_curie" not in hit
+
+
+def test_import_honors_label_language(client: TestClient, shop_db: Path) -> None:
+    """labelLanguage=en tags rendered labels @en instead of the zh default."""
+    r = client.post(
+        "/api/v1/ontologies/drafting/import",
+        json=_import_body(client, shop_db, DECISIONS_OBJ, labelLanguage="en"),
+    )
+    assert r.status_code == 201
+    src = _export_turtle(client, r.json()["data"]["ontologyId"])
+    assert '"客户"@en' in src
+    assert "@zh" not in src
+
+
+def test_import_escapes_multiline_label(client: TestClient, shop_db: Path) -> None:
+    """A newline inside an LLM label must not kill the whole run at parse."""
+    decisions = {
+        "classes": [
+            {
+                "name": "Customer",
+                "label": "客户\n备注行",
+                "comment": None,
+                "sourceTable": "customer",
+                "parentName": None,
+            },
+            {
+                "name": "Order",
+                "label": "订单",
+                "comment": None,
+                "sourceTable": "orders",
+                "parentName": None,
+            },
+        ],
+        "objectProperties": [],
+        "dataProperties": [],
+    }
+    r = client.post(
+        "/api/v1/ontologies/drafting/import",
+        json=_import_body(client, shop_db, decisions),
+    )
+    assert r.status_code == 201
+    src = _export_turtle(client, r.json()["data"]["ontologyId"])
+    assert "备注行" in src  # the label survived, escaped or long-form quoted
+
+
+def test_import_rejects_ttl_breaking_names(client: TestClient, shop_db: Path) -> None:
+    """A whitespace-bearing name 422s naming the field, not an opaque parse death."""
+    decisions = {
+        "classes": [
+            {
+                "name": "Bad Name",
+                "label": "坏名字",
+                "comment": None,
+                "sourceTable": "customer",
+                "parentName": None,
+            }
+        ],
+        "objectProperties": [],
+        "dataProperties": [],
+    }
+    r = client.post(
+        "/api/v1/ontologies/drafting/import",
+        json=_import_body(client, shop_db, decisions),
+    )
+    assert r.status_code == 422
+    assert r.json()["code"] == "VALIDATION_ERROR"

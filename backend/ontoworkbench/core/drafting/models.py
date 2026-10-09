@@ -9,6 +9,10 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
+# Names interpolate into "prefix:Name" Turtle positions unquoted: no
+# whitespace, quotes, angle brackets or backslashes may ride along.
+NAME_SAFE = r"^[^\s\"'<>\\]+$"
+
 
 class CamelModel(BaseModel):
     """Wire style: camelCase aliases, snake_case accepted."""
@@ -54,29 +58,32 @@ class SchemaModel(CamelModel):
 class ClassDecision(CamelModel):
     """The LLM's verdict on one table → class."""
 
-    name: str
+    # Names land raw in "prefix:Name" positions of the Turtle render, so a
+    # name carrying whitespace/quotes would kill the parse — reject here with
+    # a named field instead (generate retries, import 422s).
+    name: str = Field(pattern=NAME_SAFE)
     label: str
     comment: str | None = None
     source_table: str
-    parent_name: str | None = None
+    parent_name: str | None = Field(default=None, pattern=NAME_SAFE)
 
 
 class ObjectPropertyDecision(CamelModel):
     """The LLM's verdict (or the merger's fallback) on one FK → property."""
 
-    name: str
+    name: str = Field(pattern=NAME_SAFE)
     label: str | None = None
-    domain: str
-    range: str
+    domain: str = Field(pattern=NAME_SAFE)
+    range: str = Field(pattern=NAME_SAFE)
     source_fk: str  # "table.column" of the FK edge
 
 
 class DataPropertyDecision(CamelModel):
     """The LLM's verdict on one column → data property."""
 
-    name: str
+    name: str = Field(pattern=NAME_SAFE)
     label: str | None = None
-    domain: str
+    domain: str = Field(pattern=NAME_SAFE)
     datatype: str
     source_column: str  # "table.column"
 
