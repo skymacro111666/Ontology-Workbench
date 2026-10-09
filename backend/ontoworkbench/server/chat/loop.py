@@ -33,8 +33,13 @@ async def run_chat(
     content: str,
     ctx: ChatToolContext,
     max_rounds: int | None = None,
+    tool_sink: list[dict] | None = None,
 ) -> AsyncIterator[tuple[str, dict]]:
-    """Drive the model until a tool-free round; yield neutral events."""
+    """Drive the model until a tool-free round; yield neutral events.
+
+    tool_sink (optional) collects {"name", "ok", "result"} per executed call
+    for persistence — tool_end stays summary-only on the wire (spec §2).
+    """
     rounds = max_rounds or int(os.environ.get("AI_CHAT_MAX_ROUNDS", "16"))
     messages: list[dict] = [*history[-_HISTORY_WINDOW:], {"role": "user", "content": content}]
     in_tokens = 0
@@ -77,11 +82,14 @@ async def run_chat(
             )
             result = await asyncio.to_thread(execute_tool, call.name, dict(call.arguments), ctx)
             clipped = clip_result(result)
+            ok = '"error"' not in clipped[:80]
+            if tool_sink is not None:
+                tool_sink.append({"name": call.name, "ok": ok, "result": clipped[:8192]})
             yield (
                 "tool_end",
                 {
                     "name": call.name,
-                    "ok": '"error"' not in clipped[:80],
+                    "ok": ok,
                     "summary": _summary(call.name, result),
                 },
             )
