@@ -274,6 +274,8 @@
   "aiSettings": {
     "title": "AI 设置",
     "provider": "提供方",
+    "providerOpenai": "OpenAI 兼容",
+    "providerAnthropic": "Anthropic",
     "baseUrl": "Base URL",
     "apiKey": "API Key",
     "keyKeep": "留空保持不变",

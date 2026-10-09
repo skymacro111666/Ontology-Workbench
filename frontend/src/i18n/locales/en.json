@@ -274,6 +274,8 @@
   "aiSettings": {
     "title": "AI settings",
     "provider": "Provider",
+    "providerOpenai": "OpenAI-compatible",
+    "providerAnthropic": "Anthropic",
     "baseUrl": "Base URL",
     "apiKey": "API key",
     "keyKeep": "Leave empty to keep the stored key",

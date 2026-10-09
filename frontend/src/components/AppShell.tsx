@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils'
 import CommandPalette from './CommandPalette'
 import BlankOntologyDialog from './BlankOntologyDialog'
 import DraftFromDbDialog from './DraftFromDbDialog'
+import AiSettingsDialog from './AiSettingsDialog'
 import ExportDialog from './ExportDialog'
 import ImportDialog from './ImportDialog'
 import OntologySwitcher from './OntologySwitcher'
@@ -322,6 +323,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
       <BlankOntologyDialog />
       <ExportDialog />
       <DraftFromDbDialog />
+      <AiSettingsDialog />
       <CommandPalette />
       <PasswordDialog open={pwdOpen} onClose={() => setPwdOpen(false)} />
 
