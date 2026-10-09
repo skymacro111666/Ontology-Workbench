@@ -268,6 +268,7 @@
     "aiNotConfigured": "AI is not configured — set up a model before generating drafts",
     "goSettings": "Open settings",
     "sourceAgent": "Source · agent",
+    "ttlPreview": "TTL preview",
     "keepHint": "Keep the checked items; unchecked classes are dropped (properties cascade)"
   },
   "aiSettings": {

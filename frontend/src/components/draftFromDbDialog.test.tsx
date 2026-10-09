@@ -1,6 +1,8 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { MemoryRouter, useLocation } from 'react-router'
+import { api } from '../api/client'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import DraftFromDbDialog from './DraftFromDbDialog'
 import { useUiStore } from '../stores/uiStore'
@@ -40,7 +42,9 @@ function renderDialog() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <DraftFromDbDialog />
+      <MemoryRouter>
+        <DraftFromDbDialog />
+      </MemoryRouter>
     </QueryClientProvider>,
   )
 }
@@ -245,5 +249,146 @@ describe('DraftFromDbDialog — step 2 选表与生成', () => {
       namespace: 'https://local/shop#',
       labelLanguage: 'zh',
     })
+  })
+})
+
+const RESULT = {
+  decisions: {
+    classes: [
+      { name: 'Customer', label: '客户', comment: null, sourceTable: 'customer', parentName: null },
+      { name: 'Order', label: '订单', comment: null, sourceTable: 'orders', parentName: null },
+    ],
+    objectProperties: [
+      { name: 'hasCustomer', label: null, domain: 'Order', range: 'Customer', sourceFk: 'orders.customer_id' },
+    ],
+    dataProperties: [
+      { name: 'name', label: null, domain: 'Customer', datatype: 'xsd:string', sourceColumn: 'customer.name' },
+    ],
+  },
+  ttl: 'shop:Customer a owl:Class .',
+  lintFindings: [
+    {
+      ruleId: 'missing-label',
+      name: null,
+      severity: 'warning',
+      durationMs: 0,
+      findings: [{ ruleId: 'missing-label', severity: 'warning', subject: 'Order', subjectCurie: 'shop:Order', params: {} }],
+      total: 1,
+      truncated: false,
+      error: null,
+    },
+  ],
+  stats: { classCount: 2, objectPropertyCount: 1, dataPropertyCount: 1, elapsedMs: 900, inTokens: 10, outTokens: 5, batchCount: 1 },
+}
+
+/** Router carrying the dialog through generate to step 3. */
+function step3Router() {
+  const imports: unknown[] = []
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    const u = String(url)
+    if (u.includes('/db-connections/engines')) return ok(ENGINES)
+    if (u.includes('/db-connections')) return ok([])
+    if (u.includes('/ai/status')) return ok({ configured: true, provider: 'openai', model: 'm', source: 'env' })
+    if (u.includes('/drafting/schema')) return ok({ schema: SCHEMA2, tableCount: 2 })
+    if (u.includes('/drafting/generate')) return ok({ jobId: 'job-9' })
+    if (u.includes('/drafting/jobs/')) return ok({ status: 'done', batch: 1, batchCount: 1, result: RESULT })
+    if (u.includes('/drafting/import') && init?.method === 'POST') {
+      imports.push(JSON.parse(String(init.body)))
+      return ok({ ontologyId: 'oid-9', title: 'shop', lintFindings: [] })
+    }
+    if (u === '/api/v1/ontologies') return ok({ items: [], total: 0 })
+    return ok(null)
+  })
+  return { fetchMock, imports }
+}
+
+/** Location + ontologies-list probes so navigation and invalidation show. */
+function LocationProbe() {
+  const loc = useLocation()
+  return <span data-testid="loc">{loc.pathname}</span>
+}
+
+function renderWizard() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const OntologiesProbe = () => {
+    useQuery({ queryKey: ['ontologies'], queryFn: () => api.get('/api/v1/ontologies') })
+    return null
+  }
+  render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={['/']}>
+        <LocationProbe />
+        <OntologiesProbe />
+        <DraftFromDbDialog />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+async function atStep3() {
+  renderWizard()
+  await screen.findByLabelText('路径')
+  await userEvent.type(screen.getByLabelText('路径'), '/tmp/shop.db')
+  await userEvent.click(screen.getByRole('button', { name: '读取表结构' }))
+  await screen.findByText('customer')
+  await userEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+  await screen.findByText('hasCustomer')
+}
+
+describe('DraftFromDbDialog — step 3 预览与导入', () => {
+  it('renders decision groups, lint findings and the TTL preview', async () => {
+    const { fetchMock } = step3Router()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep3()
+
+    expect(screen.getByText('Customer')).toBeTruthy()
+    expect(screen.getByText('订单')).toBeTruthy()
+    expect(screen.getByText('hasCustomer')).toBeTruthy()
+    expect(screen.getByText('Order → Customer')).toBeTruthy()
+    expect(screen.getByText('missing-label')).toBeTruthy()
+    expect(screen.getByText('shop:Customer a owl:Class .')).toBeTruthy()
+    // stats tiles
+    expect(screen.getByText('2')).toBeTruthy()
+  })
+
+  it('imports the kept subset with rejectedClassNames and jumps to the ontology', async () => {
+    const { fetchMock, imports } = step3Router()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep3()
+
+    // reject Customer: its row leaves the kept set
+    await userEvent.click(screen.getByLabelText('Customer'))
+
+    await userEvent.click(screen.getByRole('button', { name: '导入' }))
+
+    // navigation + last-oid + dialog closed
+    await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/browse/oid-9'))
+    expect(localStorage.getItem('ow_last')).toBe('oid-9')
+    await waitFor(() => expect(useUiStore.getState().draftOpen).toBe(false))
+
+    expect(imports).toHaveLength(1)
+    expect(imports[0]).toEqual({
+      schema: SCHEMA2,
+      decisions: {
+        classes: [RESULT.decisions.classes[1]],
+        objectProperties: RESULT.decisions.objectProperties,
+        dataProperties: RESULT.decisions.dataProperties,
+      },
+      rejectedClassNames: ['Customer'],
+      namespace: 'https://local/shop#',
+      filename: 'shop-draft.ttl',
+    })
+  })
+
+  it('重新生成 returns to step 2 with the table selections kept', async () => {
+    const { fetchMock } = step3Router()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep3()
+
+    await userEvent.click(screen.getByRole('button', { name: '重新生成' }))
+
+    expect(await screen.findByText('customer')).toBeTruthy()
+    expect(screen.getByText('已选 2/500')).toBeTruthy()
+    expect(screen.queryByText('hasCustomer')).toBeNull()
   })
 })

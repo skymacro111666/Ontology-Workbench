@@ -157,6 +157,28 @@ describe('Home', () => {
     expect(screen.getAllByRole('button', { name: '载入' })).toHaveLength(4)
   })
 
+  it('badges agent-drafted ontology cards', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        ok({
+          items: [
+            summary('draft1', { title: 'Shop draft', filename: 'shop-draft.ttl', source: 'agent' }),
+            summary('mine', { title: 'Mine', filename: 'mini.ttl' }),
+          ],
+          total: 2,
+        }),
+      ),
+    )
+    renderHome()
+
+    await screen.findByText('Shop draft')
+    const draft = screen.getByRole('button', { name: '打开 Shop draft' })
+    expect(within(draft).getByText('AI 起草')).toBeTruthy()
+    const mine = screen.getByRole('button', { name: '打开 Mine' })
+    expect(within(mine).queryByText('AI 起草')).toBeNull()
+  })
+
   it('hides a sample card once its ontology is imported', async () => {
     vi.stubGlobal(
       'fetch',

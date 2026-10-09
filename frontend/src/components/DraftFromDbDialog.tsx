@@ -1,10 +1,14 @@
 import { Loader2Icon, RefreshCwIcon, SearchIcon, SparklesIcon } from 'lucide-react'
 import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
 import { errText } from '../i18n/errText'
+import { LAST_OID_KEY } from '../auth/AuthContext'
 import type { AiStatus, DbConnectionSummary, DbEngine, DraftJob, DraftResult, SchemaModel } from '../api/types'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -26,6 +30,7 @@ const labelCls = 'text-ink-2 text-xs font-medium'
  *  a successful read — bad credentials are never persisted. */
 export default function DraftFromDbDialog() {
   const { t, i18n } = useTranslation()
+  const navigate = useNavigate()
   const open = useUiStore((s) => s.draftOpen)
   const setDraftOpen = useUiStore((s) => s.setDraftOpen)
   const setAiSettingsOpen = useUiStore((s) => s.setAiSettingsOpen)
@@ -51,6 +56,8 @@ export default function DraftFromDbDialog() {
   const [labelLang, setLabelLang] = useState<'' | 'zh' | 'en'>('')
   const [progress, setProgress] = useState<{ batch: number; batchCount: number } | null>(null)
   const [result, setResult] = useState<DraftResult | null>(null)
+  // Step 3: checked class names — the kept set the import body carries.
+  const [kept, setKept] = useState<Set<string>>(new Set())
 
   // Store-opened dialog (no DialogTrigger): Radix only delivers `false` via
   // onOpenChange, so reset on the closed→open transition in render time —
@@ -78,6 +85,7 @@ export default function DraftFromDbDialog() {
       setLabelLang('')
       setProgress(null)
       setResult(null)
+      setKept(new Set())
     }
   }
 
@@ -163,6 +171,7 @@ export default function DraftFromDbDialog() {
         const job = await api.get<DraftJob>(`/api/v1/ontologies/drafting/jobs/${jobId}`)
         if (job.status === 'done') {
           setResult(job.result ?? null)
+          setKept(new Set((job.result?.decisions.classes ?? []).map((c) => c.name)))
           setStep(3)
           return
         }
@@ -175,6 +184,46 @@ export default function DraftFromDbDialog() {
         setProgress({ batch: job.batch, batchCount: job.batchCount })
         await new Promise((r) => setTimeout(r, 300))
       }
+    } catch (e) {
+      setError(e instanceof ApiErr ? errText(e, t) : t('shell.loadFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const importDraft = async () => {
+    if (busy || !schema || !result) return
+    setBusy(true)
+    setError(null)
+    try {
+      const meta = await api.post<{ ontologyId: string; title: string; lintFindings: unknown[] }>(
+        '/api/v1/ontologies/drafting/import',
+        {
+          schema,
+          decisions: {
+            classes: result.decisions.classes.filter((c) => kept.has(c.name)),
+            objectProperties: result.decisions.objectProperties,
+            dataProperties: result.decisions.dataProperties,
+          },
+          rejectedClassNames: result.decisions.classes
+            .filter((c) => !kept.has(c.name))
+            .map((c) => c.name),
+          namespace,
+          filename: `${schema.databaseName}-draft.ttl`,
+        },
+      )
+      toast.success(t('draftDialog.importedToast', { name: meta.title }), {
+        description: t('draftDialog.importedSub', {
+          classes: kept.size,
+          objProps: result.decisions.objectProperties.length,
+          dataProps: result.decisions.dataProperties.length,
+          lint: meta.lintFindings.length,
+        }),
+      })
+      void queryClient.invalidateQueries({ queryKey: ['ontologies'] })
+      localStorage.setItem(LAST_OID_KEY, meta.ontologyId)
+      setDraftOpen(false)
+      navigate(`/browse/${meta.ontologyId}`)
     } catch (e) {
       setError(e instanceof ApiErr ? errText(e, t) : t('shell.loadFailed'))
     } finally {
@@ -411,9 +460,118 @@ export default function DraftFromDbDialog() {
         )}
 
         {step === 3 && result && (
-          // Step 3 预览 lands in the next task; the heading confirms the job
-          // finished and the wizard advanced.
-          <div className="font-mono text-ink-2 text-xs">{result.stats.classCount}</div>
+          <div className="flex flex-col gap-3">
+            <div className="text-ink-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <span>
+                <span className="text-ink font-mono font-bold">{result.stats.classCount}</span>{' '}
+                {t('draftDialog.classes')}
+              </span>
+              <span>
+                <span className="text-ink font-mono font-bold">{result.stats.objectPropertyCount}</span>{' '}
+                {t('draftDialog.objectProperties')}
+              </span>
+              <span>
+                <span className="text-ink font-mono font-bold">{result.stats.dataPropertyCount}</span>{' '}
+                {t('draftDialog.dataProperties')}
+              </span>
+              <span className="text-ink-3 font-mono">{result.stats.elapsedMs}ms</span>
+              <span className="text-ink-3 font-mono">
+                ↑{result.stats.inTokens} ↓{result.stats.outTokens}
+              </span>
+            </div>
+
+            <p className="text-ink-2 text-xs">{t('draftDialog.keepHint')}</p>
+
+            <div className="border-line max-h-60 overflow-auto rounded-ctl border">
+              {result.decisions.classes.map((c) => (
+                <label
+                  key={c.name}
+                  className="hover:bg-panel-2 flex cursor-pointer items-center gap-2 border-b border-dashed px-2 py-1.5 text-xs last:border-0"
+                >
+                  <input
+                    type="checkbox"
+                    checked={kept.has(c.name)}
+                    onChange={(e) =>
+                      setKept((prev) => {
+                        const next = new Set(prev)
+                        if (e.target.checked) next.add(c.name)
+                        else next.delete(c.name)
+                        return next
+                      })
+                    }
+                    className="accent-primary"
+                    aria-label={c.name}
+                  />
+                  <span className="text-ink font-mono font-medium">{c.name}</span>
+                  <span className="text-ink-2 flex-1 truncate">{c.label}</span>
+                  {c.parentName && (
+                    <span className="text-ink-3 font-mono">↦ {c.parentName}</span>
+                  )}
+                  <span className="text-ink-3 font-mono">{c.sourceTable}</span>
+                </label>
+              ))}
+              {result.decisions.objectProperties.map((p) => (
+                <div
+                  key={p.name}
+                  className="border-line flex items-center gap-2 border-b border-dashed px-2 py-1.5 text-xs"
+                >
+                  <span className="text-ink font-mono font-medium">{p.name}</span>
+                  <span className="text-ink-2 font-mono">
+                    {p.domain} → {p.range}
+                  </span>
+                  <span className="text-primary-soft border-primary-border text-primary rounded-ctl border px-1 py-px text-[10px]">
+                    {t('draftDialog.fkAutoTag')}
+                  </span>
+                </div>
+              ))}
+              {result.decisions.dataProperties.map((d) => (
+                <div key={`${d.domain}.${d.name}`} className="flex items-center gap-2 px-2 py-1.5 text-xs">
+                  <span className="text-ink font-mono font-medium">{d.name}</span>
+                  <span className="text-ink-2 font-mono">{d.datatype}</span>
+                  <span className="text-ink-3 flex-1 truncate font-mono">{d.sourceColumn}</span>
+                </div>
+              ))}
+            </div>
+
+            {result.lintFindings.some((r) => r.findings.length > 0) && (
+              <div className="border-line bg-panel-2 flex flex-col gap-1 rounded-ctl border px-2 py-1.5">
+                {result.lintFindings
+                  .filter((r) => r.findings.length > 0)
+                  .map((r) => {
+                    const sev = r.severity ?? 'info'
+                    return (
+                      <div key={r.ruleId} className="flex items-center gap-1.5 text-xs">
+                        <span
+                          className={cn(
+                            'rounded-full px-1.5 text-[10px] text-white',
+                            sev === 'error' ? 'bg-red-500' : sev === 'warning' ? 'bg-amber-500' : 'bg-ink-3',
+                          )}
+                        >
+                          {t(`lint.${sev}`)}
+                        </span>
+                        <span className="text-ink-2">{r.name ?? r.ruleId}</span>
+                        <span className="text-ink-3">({r.total})</span>
+                      </div>
+                    )
+                  })}
+              </div>
+            )}
+
+            <details className="border-line rounded-ctl border">
+              <summary className="text-ink-2 hover:text-ink cursor-pointer px-2 py-1 text-xs">
+                {t('draftDialog.ttlPreview')}
+              </summary>
+              <pre className="text-ink-2 max-h-40 overflow-auto px-2 pb-2 font-mono text-[11px] whitespace-pre-wrap">
+                {result.ttl}
+              </pre>
+            </details>
+
+            {error && (
+              <div role="alert" className="text-destructive text-xs">
+                {error}
+              </div>
+            )}
+          </div>
         )}
 
         <DialogFooter>
@@ -439,6 +597,22 @@ export default function DraftFromDbDialog() {
               {busy ? <Loader2Icon aria-hidden="true" className="animate-spin" /> : <SparklesIcon aria-hidden="true" />}
               {t('draftDialog.generate')}
             </Button>
+          )}
+          {step === 3 && (
+            <>
+              <Button variant="outline" onClick={() => setStep(2)} disabled={busy}>
+                <RefreshCwIcon aria-hidden="true" />
+                {t('draftDialog.regenerate')}
+              </Button>
+              <Button onClick={() => void importDraft()} disabled={busy || kept.size === 0}>
+                {busy ? (
+                  <Loader2Icon aria-hidden="true" className="animate-spin" />
+                ) : (
+                  <SparklesIcon aria-hidden="true" />
+                )}
+                {t('draftDialog.import')}
+              </Button>
+            </>
           )}
         </DialogFooter>
       </DialogContent>

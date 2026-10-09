@@ -268,6 +268,7 @@
     "aiNotConfigured": "AI 未配置——生成草稿需要先配置模型",
     "goSettings": "去配置",
     "sourceAgent": "来源 · agent",
+    "ttlPreview": "TTL 预览",
     "keepHint": "勾选保留项；未勾选的类将被移除（属性级联）"
   },
   "aiSettings": {
