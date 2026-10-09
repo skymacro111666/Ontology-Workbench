@@ -1,5 +1,5 @@
 import { Loader2Icon, RefreshCwIcon, SearchIcon, SparklesIcon } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -56,8 +56,15 @@ export default function DraftFromDbDialog() {
   const [labelLang, setLabelLang] = useState<'' | 'zh' | 'en'>('')
   const [progress, setProgress] = useState<{ batch: number; batchCount: number } | null>(null)
   const [result, setResult] = useState<DraftResult | null>(null)
-  // Step 3: checked class names — the kept set the import body carries.
+  // Step 3: checked items per group — the kept sets the import body carries.
   const [kept, setKept] = useState<Set<string>>(new Set())
+  const [keptObj, setKeptObj] = useState<Set<string>>(new Set())
+  const [keptData, setKeptData] = useState<Set<string>>(new Set())
+  const [genLang, setGenLang] = useState<'zh' | 'en'>('zh')
+  const [filename, setFilename] = useState('')
+  // Invalidate in-flight poll loops on any open toggle or new generate: a
+  // loop from a closed session must not land its result in a fresh one.
+  const pollGen = useRef(0)
 
   // Store-opened dialog (no DialogTrigger): Radix only delivers `false` via
   // onOpenChange, so reset on the closed→open transition in render time —
@@ -65,6 +72,7 @@ export default function DraftFromDbDialog() {
   const [prevOpen, setPrevOpen] = useState(open)
   if (open !== prevOpen) {
     setPrevOpen(open)
+    pollGen.current += 1
     if (open) {
       setStep(1)
       setPickedId('')
@@ -86,6 +94,10 @@ export default function DraftFromDbDialog() {
       setProgress(null)
       setResult(null)
       setKept(new Set())
+      setKeptObj(new Set())
+      setKeptData(new Set())
+      setGenLang('zh')
+      setFilename('')
     }
   }
 
@@ -141,6 +153,7 @@ export default function DraftFromDbDialog() {
       setSchema(data.schema)
       setSelected(new Set(data.schema.tables.map((t) => t.name)))
       setNamespace(`https://local/${data.schema.databaseName}#`)
+      setFilename(`${data.schema.databaseName}-draft.ttl`)
       setStep(2)
     } catch (e) {
       setError(e instanceof ApiErr ? errText(e, t) : t('shell.loadFailed'))
@@ -154,9 +167,13 @@ export default function DraftFromDbDialog() {
     setBusy(true)
     setError(null)
     setProgress(null)
+    // This attempt owns the poll loop: closing/reopening the dialog or
+    // starting another generate bumps the counter and orphans this loop.
+    const token = (pollGen.current += 1)
     try {
       const lang =
         labelLang || (i18n.resolvedLanguage?.startsWith('zh') ? 'zh' : 'en')
+      setGenLang(lang)
       const subset: SchemaModel = {
         databaseName: schema.databaseName,
         tables: schema.tables.filter((t) => selected.has(t.name)),
@@ -165,13 +182,22 @@ export default function DraftFromDbDialog() {
         '/api/v1/ontologies/drafting/generate',
         { schema: subset, namespace, labelLanguage: lang },
       )
-      // Poll until done/failed; the loop also aborts when the dialog closes.
+      // Poll until done/failed; a stale token (closed/reopened/superseded)
+      // aborts so an old result never lands in a fresh session.
       for (;;) {
-        if (!useUiStore.getState().draftOpen) return
+        if (pollGen.current !== token) return
         const job = await api.get<DraftJob>(`/api/v1/ontologies/drafting/jobs/${jobId}`)
         if (job.status === 'done') {
           setResult(job.result ?? null)
           setKept(new Set((job.result?.decisions.classes ?? []).map((c) => c.name)))
+          setKeptObj(
+            new Set((job.result?.decisions.objectProperties ?? []).map((p) => p.name)),
+          )
+          setKeptData(
+            new Set(
+              (job.result?.decisions.dataProperties ?? []).map((d) => `${d.domain}.${d.name}`),
+            ),
+          )
           setStep(3)
           return
         }
@@ -202,14 +228,17 @@ export default function DraftFromDbDialog() {
           schema,
           decisions: {
             classes: result.decisions.classes.filter((c) => kept.has(c.name)),
-            objectProperties: result.decisions.objectProperties,
-            dataProperties: result.decisions.dataProperties,
+            objectProperties: result.decisions.objectProperties.filter((p) => keptObj.has(p.name)),
+            dataProperties: result.decisions.dataProperties.filter((d) =>
+              keptData.has(`${d.domain}.${d.name}`),
+            ),
           },
           rejectedClassNames: result.decisions.classes
             .filter((c) => !kept.has(c.name))
             .map((c) => c.name),
           namespace,
-          filename: `${schema.databaseName}-draft.ttl`,
+          filename: filename.trim() || `${schema.databaseName}-draft.ttl`,
+          labelLanguage: genLang,
         },
       )
       toast.success(t('draftDialog.importedToast', { name: meta.title }), {
@@ -511,10 +540,24 @@ export default function DraftFromDbDialog() {
                 </label>
               ))}
               {result.decisions.objectProperties.map((p) => (
-                <div
+                <label
                   key={p.name}
-                  className="border-line flex items-center gap-2 border-b border-dashed px-2 py-1.5 text-xs"
+                  className="hover:bg-panel-2 flex cursor-pointer items-center gap-2 border-b border-dashed px-2 py-1.5 text-xs last:border-0"
                 >
+                  <input
+                    type="checkbox"
+                    checked={keptObj.has(p.name)}
+                    onChange={(e) =>
+                      setKeptObj((prev) => {
+                        const next = new Set(prev)
+                        if (e.target.checked) next.add(p.name)
+                        else next.delete(p.name)
+                        return next
+                      })
+                    }
+                    className="accent-primary"
+                    aria-label={p.name}
+                  />
                   <span className="text-ink font-mono font-medium">{p.name}</span>
                   <span className="text-ink-2 font-mono">
                     {p.domain} → {p.range}
@@ -522,15 +565,43 @@ export default function DraftFromDbDialog() {
                   <span className="text-primary-soft border-primary-border text-primary rounded-ctl border px-1 py-px text-[10px]">
                     {t('draftDialog.fkAutoTag')}
                   </span>
-                </div>
+                </label>
               ))}
               {result.decisions.dataProperties.map((d) => (
-                <div key={`${d.domain}.${d.name}`} className="flex items-center gap-2 px-2 py-1.5 text-xs">
+                <label
+                  key={`${d.domain}.${d.name}`}
+                  className="hover:bg-panel-2 flex cursor-pointer items-center gap-2 px-2 py-1.5 text-xs"
+                >
+                  <input
+                    type="checkbox"
+                    checked={keptData.has(`${d.domain}.${d.name}`)}
+                    onChange={(e) =>
+                      setKeptData((prev) => {
+                        const next = new Set(prev)
+                        const key = `${d.domain}.${d.name}`
+                        if (e.target.checked) next.add(key)
+                        else next.delete(key)
+                        return next
+                      })
+                    }
+                    className="accent-primary"
+                    aria-label={`${d.domain}.${d.name}`}
+                  />
                   <span className="text-ink font-mono font-medium">{d.name}</span>
                   <span className="text-ink-2 font-mono">{d.datatype}</span>
                   <span className="text-ink-3 flex-1 truncate font-mono">{d.sourceColumn}</span>
-                </div>
+                </label>
               ))}
+            </div>
+
+            <div className="grid grid-cols-[6rem_1fr] items-center gap-2">
+              <span className={labelCls}>{t('draftDialog.filename')}</span>
+              <Input
+                value={filename}
+                onChange={(e) => setFilename(e.target.value)}
+                aria-label={t('draftDialog.filename')}
+                className="text-ink text-xs"
+              />
             </div>
 
             {result.lintFindings.some((r) => r.findings.length > 0) && (

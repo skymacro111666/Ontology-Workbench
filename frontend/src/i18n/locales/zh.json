@@ -269,7 +269,8 @@
     "goSettings": "去配置",
     "sourceAgent": "来源 · agent",
     "ttlPreview": "TTL 预览",
-    "keepHint": "勾选保留项；未勾选的类将被移除（属性级联）"
+    "filename": "文件名",
+    "keepHint": "勾选保留项；未勾选的类或属性将被移除（移除类时其属性级联）"
   },
   "aiSettings": {
     "title": "AI 设置",

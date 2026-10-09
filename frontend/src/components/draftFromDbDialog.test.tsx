@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { MemoryRouter, useLocation } from 'react-router'
@@ -377,7 +377,88 @@ describe('DraftFromDbDialog — step 3 预览与导入', () => {
       rejectedClassNames: ['Customer'],
       namespace: 'https://local/shop#',
       filename: 'shop-draft.ttl',
+      labelLanguage: 'zh',
     })
+  })
+
+  it('drops unchecked object/data properties from the import body', async () => {
+    const { fetchMock, imports } = step3Router()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep3()
+
+    await userEvent.click(screen.getByLabelText('hasCustomer'))
+    await userEvent.click(screen.getByLabelText('Customer.name'))
+
+    await userEvent.click(screen.getByRole('button', { name: '导入' }))
+    await waitFor(() => expect(imports).toHaveLength(1))
+
+    expect(imports[0]).toMatchObject({
+      decisions: { objectProperties: [], dataProperties: [] },
+      rejectedClassNames: [],
+    })
+  })
+
+  it('imports under an edited filename (duplicate-409 recovery)', async () => {
+    const { fetchMock, imports } = step3Router()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep3()
+
+    const file = screen.getByLabelText('文件名') as HTMLInputElement
+    expect(file.value).toBe('shop-draft.ttl')
+    await userEvent.clear(file)
+    await userEvent.type(file, 'shop-draft-v2.ttl')
+
+    await userEvent.click(screen.getByRole('button', { name: '导入' }))
+    await waitFor(() => expect(imports).toHaveLength(1))
+    expect(imports[0]).toMatchObject({ filename: 'shop-draft-v2.ttl' })
+  })
+
+  it('abandons the poll loop when the dialog closes and reopens mid-generate', async () => {
+    let release = false
+    const jobPolls: string[] = []
+    const fetchMock = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/db-connections/engines')) return ok(ENGINES)
+      if (u.includes('/db-connections')) return ok([])
+      if (u.includes('/ai/status')) return ok({ configured: true, provider: 'openai', model: 'm', source: 'env' })
+      if (u.includes('/drafting/schema')) return ok({ schema: SCHEMA2, tableCount: 2 })
+      if (u.includes('/drafting/generate')) return ok({ jobId: 'job-9' })
+      if (u.includes('/drafting/jobs/')) {
+        jobPolls.push(u)
+        return ok(
+          release
+            ? { status: 'done', batch: 1, batchCount: 1, result: RESULT }
+            : { status: 'running', batch: 1, batchCount: 1 },
+        )
+      }
+      return ok(null)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderWizard()
+    await screen.findByLabelText('路径')
+    await userEvent.type(screen.getByLabelText('路径'), '/tmp/shop.db')
+    await userEvent.click(screen.getByRole('button', { name: '读取表结构' }))
+    await screen.findByText('customer')
+    await userEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+    await waitFor(() => expect(jobPolls.length).toBeGreaterThanOrEqual(1))
+
+    // close mid-poll, reopen a fresh session, then let the old job finish
+    // (separate acts: a batched false→true would skip the closed→open reset)
+    act(() => {
+      useUiStore.getState().setDraftOpen(false)
+    })
+    await new Promise((r) => setTimeout(r, 50))
+    act(() => {
+      useUiStore.getState().setDraftOpen(true)
+    })
+    release = true
+    // two poll cycles of silence: a live stale loop would fetch done and advance
+    await new Promise((r) => setTimeout(r, 700))
+
+    // the fresh session stays on step 1; the stale result never lands
+    expect(screen.getByText('连接', { selector: '[data-step-name]' })).toBeTruthy()
+    expect(screen.queryByText('hasCustomer')).toBeNull()
   })
 
   it('重新生成 returns to step 2 with the table selections kept', async () => {

@@ -269,7 +269,8 @@
     "goSettings": "Open settings",
     "sourceAgent": "Source · agent",
     "ttlPreview": "TTL preview",
-    "keepHint": "Keep the checked items; unchecked classes are dropped (properties cascade)"
+    "filename": "Filename",
+    "keepHint": "Keep the checked items; unchecked classes or properties are dropped (dropping a class cascades its properties)"
   },
   "aiSettings": {
     "title": "AI settings",
