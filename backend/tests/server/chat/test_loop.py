@@ -1,9 +1,11 @@
 """Agent loop: event order, tool feedback, round cap (FakeProvider)."""
 
 import asyncio
+import json
 
 from ontoworkbench.core.ai.fake import FakeProvider
 from ontoworkbench.core.ai.types import ModelRequest, ModelResponse, ToolCall
+from ontoworkbench.server.chat import loop as loop_module
 from ontoworkbench.server.chat.loop import run_chat
 
 
@@ -81,3 +83,25 @@ def test_rounds_cap_ends_with_text(small_ctx) -> None:
     assert not any(n == "error" for n in names)
     text = "".join(payload["text"] for n, payload in events if n == "delta")
     assert "轮" in text  # the cap note in the loop's own voice
+
+
+def test_tool_ok_means_execution_not_findings(small_ctx, monkeypatch) -> None:
+    """ok=False only for top-level error payloads.
+
+    A lint report whose counts mention "error" findings is still a successful
+    tool run.
+    """
+    lint_shaped = json.dumps(
+        {"counts": {"error": 0, "warning": 3, "info": 1}, "findings": []}, ensure_ascii=False
+    )
+    monkeypatch.setattr(loop_module, "execute_tool", lambda name, args, ctx: lint_shaped)
+    p = FakeProvider(
+        [
+            ModelResponse(text="", tool_calls=[ToolCall(name="run_lint", arguments={})]),
+            ModelResponse(text="lint 完成。"),
+        ]
+    )
+    events = _collect(p, small_ctx)
+    tool_end = next(payload for n, payload in events if n == "tool_end")
+    assert tool_end["name"] == "run_lint"
+    assert tool_end["ok"] is True

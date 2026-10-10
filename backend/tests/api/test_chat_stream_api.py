@@ -1,15 +1,17 @@
 """Chat SSE endpoint: lazy session, persistence, error path, history replay."""
 
+import asyncio
 import json
 import uuid
 
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from ontoworkbench.core.ai.fake import FakeProvider
-from ontoworkbench.core.ai.types import ModelRequest, ModelResponse, ToolCall
+from ontoworkbench.core.ai.types import ModelRequest, ModelResponse, TextDelta, ToolCall
 from ontoworkbench.core.errors import CoreError
 from ontoworkbench.server.routers.ai_settings import get_ai_provider
-from ontoworkbench.server.routers.chat import _history_from_rows
+from ontoworkbench.server.routers.chat import _history_from_rows, _stream_chat
 
 
 def _oid(client: TestClient) -> str:
@@ -157,6 +159,84 @@ def test_unconfigured_503_envelope(client: TestClient, monkeypatch) -> None:
     r = client.post(f"/api/v1/ontologies/{oid}/chat/messages", json={"content": "你好"})
     assert r.status_code == 503
     assert r.json()["code"] == "AI_NOT_CONFIGURED"
+
+
+def test_hard_cancel_persists_partial_turn(client: TestClient, monkeypatch) -> None:
+    """A hard cancel still lands the staged turn.
+
+    Client gone mid-answer (GeneratorExit at a yield): session, question,
+    partial text persist (plan Task 6), instead of rolling back.
+    """
+    import types
+
+    from ontoworkbench.core.parsing import parse_store
+    from ontoworkbench.db.models import Ontology, User
+    from ontoworkbench.db.session import sessionmaker_or_fail
+    from ontoworkbench.server.routers.chat import ChatIn
+
+    class DeltaThenHang(FakeProvider):
+        """Streams one delta, then hangs like a slow model."""
+
+        def __init__(self) -> None:
+            super().__init__([])
+            self.gate = asyncio.Event()
+
+        async def stream(self, req: ModelRequest):
+            yield TextDelta(text="部分回答:")
+            await self.gate.wait()
+            yield TextDelta(text="迟到的后半。")  # pragma: no cover - never reached
+
+    monkeypatch.setattr(Request, "is_disconnected", lambda self: _async_false(), raising=True)
+    provider = DeltaThenHang()
+    client.app.dependency_overrides[get_ai_provider] = lambda: provider
+    oid = _oid(client)
+
+    async def scenario() -> None:
+        with sessionmaker_or_fail()() as db:
+            user = db.query(User).filter_by(username="admin").one()
+            row = db.query(Ontology).filter_by(id=uuid.UUID(oid)).one()
+            store, prefixes = parse_store(b"", "turtle")
+            request = Request(
+                {"type": "http", "app": client.app, "headers": [], "method": "POST"},
+                receive=_hang_receive,
+            )
+            gen = _stream_chat(
+                request=request,
+                user=user,
+                db=db,
+                provider=provider,
+                cfg=types.SimpleNamespace(model="test-model"),
+                row=row,
+                ix=None,  # type: ignore[arg-type] — no tool round happens
+                store=store,
+                prefixes=prefixes,
+                body=ChatIn(content="中断测试"),
+                srow=None,
+            )
+            while True:
+                frame = await gen.__anext__()
+                if frame.startswith("event: delta"):
+                    break  # suspended mid-turn, like a client that walked away
+            await gen.aclose()
+
+    asyncio.run(scenario())
+
+    sessions = client.get(f"/api/v1/ontologies/{oid}/chat/sessions").json()["data"]
+    assert len(sessions) == 1
+    msgs = client.get(
+        f"/api/v1/ontologies/{oid}/chat/sessions/{sessions[0]['id']}/messages"
+    ).json()["data"]
+    assert [m["role"] for m in msgs] == ["user", "assistant"]
+    assert msgs[1]["content"] == "部分回答:"
+
+
+async def _async_false() -> bool:
+    return False
+
+
+async def _hang_receive() -> dict:
+    await asyncio.sleep(3600)  # pragma: no cover - no disconnect ever arrives
+    return {"type": "http.disconnect"}
 
 
 def test_history_from_rows_rebuilds_tool_turns() -> None:

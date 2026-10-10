@@ -18,6 +18,7 @@ SMALL_TTL = """
 ex:Customer a owl:Class ; rdfs:label "客户" .
 ex:Order a owl:Class .
 ex:hasCustomer a owl:ObjectProperty .
+ex:alice a owl:NamedIndividual, ex:Customer .
 """.encode()
 
 

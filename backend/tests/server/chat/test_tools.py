@@ -58,3 +58,25 @@ def test_unknown_tool_is_json_error(small_ctx) -> None:
     """Unknown names return a JSON error payload, never raise."""
     out = json.loads(execute_tool("nope", {}, small_ctx))
     assert "error" in out and "nope" in out["error"]
+
+
+def test_search_kind_maps_to_internal_vocab(small_ctx) -> None:
+    """The wire enum filters for real.
+
+    class→Class, individual→Instance, property covers the whole property
+    family.
+    """
+    classes = json.loads(execute_tool("search_entities", {"q": "e", "kind": "class"}, small_ctx))
+    assert classes["items"], "kind=class must match Class entities"
+    assert all(h["type"] == "Class" for h in classes["items"])
+
+    props = json.loads(
+        execute_tool("search_entities", {"q": "hasCustomer", "kind": "property"}, small_ctx)
+    )
+    assert [h["curie"] for h in props["items"]] == ["ex:hasCustomer"]
+    assert props["items"][0]["type"] == "ObjectProperty"
+
+    individuals = json.loads(
+        execute_tool("search_entities", {"q": "alice", "kind": "individual"}, small_ctx)
+    )
+    assert [h["type"] for h in individuals["items"]] == ["Instance"]

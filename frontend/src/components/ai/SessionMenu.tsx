@@ -127,6 +127,7 @@ export default function SessionMenu({
                   autoFocus
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
+                    if (e.nativeEvent.isComposing) return // IME confirm Enter
                     if (e.key === 'Enter') void commitRename()
                     else if (e.key === 'Escape') setRenaming(null)
                   }}

@@ -8,6 +8,7 @@ draining; provider/CoreError exceptions propagate to the endpoint.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 from collections.abc import AsyncIterator
@@ -24,6 +25,17 @@ def _summary(name: str, result: str) -> str:
     """One line describing a tool result (footer of the collapsed row)."""
     flat = " ".join(result.split())
     return f"{name}: {flat[:120]}"
+
+
+def _tool_ok(result: str) -> bool:
+    """A tool failed only on a top-level JSON error key.
+
+    A lint report whose counts mention "error" findings still ran fine.
+    """
+    try:
+        return "error" not in json.loads(result)
+    except json.JSONDecodeError:
+        return True
 
 
 async def run_chat(
@@ -82,7 +94,7 @@ async def run_chat(
             )
             result = await asyncio.to_thread(execute_tool, call.name, dict(call.arguments), ctx)
             clipped = clip_result(result)
-            ok = '"error"' not in clipped[:80]
+            ok = _tool_ok(result)
             if tool_sink is not None:
                 tool_sink.append({"name": call.name, "ok": ok, "result": clipped[:8192]})
             yield (

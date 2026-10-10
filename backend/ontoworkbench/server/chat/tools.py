@@ -29,6 +29,12 @@ from ontoworkbench.server.routers.query import _run_query
 
 SPARQL_ROW_CAP = 200
 
+# The internal entity vocabulary's property family — no single type string
+# covers all of them, so kind="property" filters the untyped search.
+_PROPERTY_TYPES = frozenset(
+    {"ObjectProperty", "DatatypeProperty", "AnnotationProperty", "Property"}
+)
+
 
 @dataclass
 class ChatToolContext:
@@ -134,8 +140,16 @@ def _dump(obj: Any) -> Any:
 
 def _search(args: dict, ctx: ChatToolContext) -> dict:
     limit = int(args.get("limit") or 20)
+    q = str(args.get("q", ""))
     kind = args.get("kind")
-    hits = ctx.ix.search(str(args.get("q", "")), limit=limit, type_=kind)
+    if kind == "property":
+        # Overfetch the untyped search, keep only property kinds, re-slice.
+        hits = [h for h in ctx.ix.search(q, limit=limit * 4) if h.type in _PROPERTY_TYPES][:limit]
+    else:
+        # Wire enum → internal vocabulary ('class'→Class, 'individual' joins
+        # the individuals pass as Instance); None = no filter.
+        type_ = {"class": "Class", "individual": "Instance"}.get(str(kind)) if kind else None
+        hits = ctx.ix.search(q, limit=limit, type_=type_)
     return {
         "items": [_dump(h) for h in hits],
         "limit": limit,

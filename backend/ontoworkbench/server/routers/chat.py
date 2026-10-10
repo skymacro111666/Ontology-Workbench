@@ -218,6 +218,23 @@ async def _stream_chat(
     tool_sink: list[dict] = []
     text_acc = ""
     title_base = body.content[:30]
+
+    def _persist_turn() -> None:
+        """Land the staged turn: tool rows, partial text, one commit.
+
+        Safe from teardown — DB writes only, never a yield (async generators
+        may not yield after GeneratorExit).
+        """
+        if srow is None:
+            return
+        for t in tool_sink:
+            mrepo.append(srow.id, "tool", json.dumps(t, ensure_ascii=False)[:8192])
+        if text_acc:
+            mrepo.append(srow.id, "assistant", text_acc)
+        srepo.touch(srow)
+        db.commit()
+
+    streamed_any = False
     try:
         if srow is None:
             srow = srepo.create(user.id, row.id, title_base)
@@ -236,22 +253,31 @@ async def _stream_chat(
                 payload = {**payload, "model": cfg.model}
             elif event == "delta":
                 text_acc += payload.get("text", "")
+                streamed_any = True
+            elif event in ("tool_start", "tool_end"):
+                streamed_any = True
             yield sse(event, payload)
             if await request.is_disconnected():
                 break
     except (CoreError, ApiError) as e:
         # SSE bodies cannot switch to JSON mid-stream: the error rides as an
-        # event; the uncommitted session/user rows roll away.
-        db.rollback()
+        # event. Before any streamed output the uncommitted rows roll away
+        # (a failed first send leaves no session); after partial output the
+        # partial turn lands first.
+        if streamed_any:
+            _persist_turn()
+        else:
+            db.rollback()
         yield sse("error", {"code": str(e.code), "message": e.message})
         return
+    except BaseException:
+        # Hard cancel — the client vanished while the generator sat at a
+        # yield (mid model-thinking). The staged turn still lands (plan Task
+        # 6's persist-on-teardown); re-raise so cancellation completes.
+        _persist_turn()
+        raise
 
-    for t in tool_sink:
-        mrepo.append(srow.id, "tool", json.dumps(t, ensure_ascii=False)[:8192])
-    if text_acc:
-        mrepo.append(srow.id, "assistant", text_acc)
-    srepo.touch(srow)
-    db.commit()
+    _persist_turn()
 
 
 @router.post("/{ontology_id}/chat/messages")

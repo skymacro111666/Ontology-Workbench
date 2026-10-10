@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -49,8 +49,9 @@ function renderDrawer() {
 async function openDrawer(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('fetch', fetchMock)
   useUiStore.getState().setAiChatOpen(true)
-  renderDrawer()
+  const view = renderDrawer()
   await screen.findByText('AI 助手')
+  return view
 }
 
 beforeEach(() => {
@@ -167,6 +168,83 @@ describe('AiChatDrawer', () => {
     const toolBtn = await screen.findByRole('button', { name: /get_ontology/ })
     await userEvent.click(toolBtn)
     expect(screen.getByText(/"classCount":2/)).toBeTruthy()
+  })
+
+  it('clears a dead session pointer when the next send 404s', async () => {
+    let posts = 0
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/ai/status')) return ok({ configured: true, provider: 'openai', model: 'm', source: 'env' })
+      if (u.includes('/chat/sessions')) return ok([])
+      if (init?.method === 'POST' && u.includes('/chat/messages')) {
+        posts += 1
+        return posts === 1
+          ? sseResponse(HAPPY)
+          : json({ code: 'NOT_FOUND', message: 'No such session', data: null, hint: null, request_id: 'r' })
+      }
+      return ok(null)
+    })
+    await openDrawer(fetchMock)
+    await userEvent.type(screen.getByPlaceholderText('问点什么,如:哪些类没有实例?'), '第一问{Enter}')
+    await screen.findByText('这个本体有两个核心类。')
+    expect(localStorage.getItem('ow.chat.session.oid-1')).toBe('sid-1')
+
+    await userEvent.type(screen.getByPlaceholderText('问点什么,如:哪些类没有实例?'), '第二问{Enter}')
+    expect(await screen.findByText(/No such session/)).toBeTruthy()
+    // the dead pointer is dropped — the next send lazy-creates instead of 404ing forever
+    expect(localStorage.getItem('ow.chat.session.oid-1')).toBeNull()
+  })
+
+  it('does not send on an IME composition Enter', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/ai/status')) return ok({ configured: true, provider: 'openai', model: 'm', source: 'env' })
+      if (u.includes('/chat/sessions')) return ok([])
+      if (init?.method === 'POST' && u.includes('/chat/messages')) return sseResponse(HAPPY)
+      return ok(null)
+    })
+    await openDrawer(fetchMock)
+    const ta = screen.getByPlaceholderText('问点什么,如:哪些类没有实例?')
+    const posts = () =>
+      fetchMock.mock.calls.filter(
+        ([u, i]) => String(u).includes('/chat/messages') && (i as RequestInit | undefined)?.method === 'POST',
+      )
+
+    await userEvent.type(ta, '哪些类没有实例')
+    fireEvent.keyDown(ta, { key: 'Enter', isComposing: true }) // IME confirm, not a send
+    await waitFor(() => expect(posts()).toHaveLength(0))
+
+    await userEvent.type(ta, '{Enter}') // the real one sends
+    expect(await screen.findByText('这个本体有两个核心类。')).toBeTruthy()
+    expect(posts()).toHaveLength(1)
+    expect((JSON.parse(String((posts()[0]![1] as RequestInit).body)) as { content: string }).content).toBe(
+      '哪些类没有实例',
+    )
+  })
+
+  it('renders fenced code blocks as <pre>', async () => {
+    const fenced = [
+      frame('session', { sessionId: 'sid-1', title: '查询' }),
+      frame('delta', {
+        text: '查询如下:\n```sparql\nSELECT ?s WHERE { ?s ?p ?o }\n```\n共 2 个类。',
+      }),
+      frame('done', { model: 'm', inTokens: 1, outTokens: 1, elapsedMs: 10 }),
+    ]
+    const fetchMock = vi.fn(async (url: string) => {
+      const u = String(url)
+      if (u.includes('/ai/status')) return ok({ configured: true, provider: 'openai', model: 'm', source: 'env' })
+      if (u.includes('/chat/sessions')) return ok([])
+      if (u.includes('/chat/messages')) return sseResponse(fenced)
+      return ok(null)
+    })
+    const { container } = (await openDrawer(fetchMock)) as { container: HTMLElement }
+
+    await userEvent.type(screen.getByPlaceholderText('问点什么,如:哪些类没有实例?'), '查询{Enter}')
+    await screen.findByText(/共 2 个类。/)
+    const pre = container.querySelector('pre')
+    expect(pre?.textContent).toContain('SELECT ?s WHERE { ?s ?p ?o }')
+    expect(pre?.textContent).not.toContain('```')
+    expect(pre?.textContent).not.toContain('sparql\n') // language tag stripped
   })
 })
 

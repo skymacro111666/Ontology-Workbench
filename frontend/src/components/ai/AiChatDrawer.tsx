@@ -1,4 +1,5 @@
 import { Loader2Icon, PlusIcon, SendIcon, SettingsIcon, SparklesIcon, SquareIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
@@ -174,7 +175,12 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
       )
     } catch (e) {
       if (e instanceof ApiErr && e.code === 'AI_NOT_CONFIGURED') setUnconfigured(true)
-      else if (!(e instanceof DOMException && e.name === 'AbortError')) {
+      else if (e instanceof ApiErr && e.code === 'NOT_FOUND') {
+        // Dead pointer — the session rolled back or vanished elsewhere.
+        // Drop it so the next send lazy-creates instead of 404ing forever.
+        setActive(null)
+        setMessages((prev) => patchLast(prev, (m) => ({ ...m, error: e.message })))
+      } else if (!(e instanceof DOMException && e.name === 'AbortError')) {
         setMessages((prev) => patchLast(prev, (m) => ({ ...m, error: e instanceof Error ? e.message : String(e) })))
       }
     } finally {
@@ -330,7 +336,7 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
             ) : (
               (m.content || m.error) && (
                 <div className="border-line bg-panel-2 text-ink max-w-[92%] self-start rounded-[10px] rounded-bl-sm border px-3 py-2 text-[12.5px]">
-                  {m.content}
+                  {renderBody(m.content)}
                   {m.error && <p className="text-destructive mt-1 text-[11.5px]">{m.error}</p>}
                 </div>
               )
@@ -377,6 +383,7 @@ AI_MODEL=deepseek-chat</pre>
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return // IME confirm Enter, not a send
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
                 void send()
@@ -424,6 +431,25 @@ function patchLast(prev: ChatMsg[], fn: (m: ChatMsg) => ChatMsg): ChatMsg[] {
   const next = [...prev]
   next[next.length - 1] = fn(next[next.length - 1])
   return next
+}
+
+/** v1 message body (spec §5): plain text segments + ``` fences as <pre>
+ *  blocks, with a leading single-word language tag stripped. */
+function renderBody(content: string): ReactNode[] {
+  return content.split('```').map((seg, i) =>
+    i % 2 === 1 ? (
+      <pre
+        key={i}
+        className="border-line bg-panel text-ink my-1 max-w-full overflow-x-auto rounded-ctl border px-2.5 py-2 font-mono text-[11px] whitespace-pre"
+      >
+        {seg.replace(/^[a-zA-Z0-9_-]*\n/, '')}
+      </pre>
+    ) : (
+      <span key={i} className="whitespace-pre-wrap">
+        {seg}
+      </span>
+    ),
+  )
 }
 
 /** History rows → ChatMsg[]: stored tool rows re-render collapsed with their
