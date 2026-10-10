@@ -42,7 +42,6 @@ interface ChatMsg {
 export default function AiChatDrawer({ oid }: { oid: string }) {
   const { t } = useTranslation()
   const open = useUiStore((s) => s.aiChatOpen)
-  const setAiChatOpen = useUiStore((s) => s.setAiChatOpen)
   const setAiSettingsOpen = useUiStore((s) => s.setAiSettingsOpen)
 
   const [messages, setMessages] = useState<ChatMsg[]>([])
@@ -236,14 +235,6 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
         >
           <SettingsIcon aria-hidden="true" className="size-3.5" />
         </button>
-        <button
-          type="button"
-          aria-label={t('common.close')}
-          onClick={() => setAiChatOpen(false)}
-          className="text-ink-3 hover:text-ink hover:bg-panel-2 rounded-ctl p-1"
-        >
-          <SquareIcon aria-hidden="true" className="size-3.5" />
-        </button>
       </div>
 
       {/* session segment (mockup 会话管理): active title + history menu +
@@ -417,9 +408,8 @@ AI_MODEL=deepseek-chat</pre>
             </button>
           )}
         </div>
-        <div className="text-ink-3 mt-1.5 flex items-center justify-between px-1 text-[10px]">
+        <div className="text-ink-3 mt-1.5 px-1 text-[10px]">
           <span>{t('chatPanel.enterHint')}</span>
-          <span>{t('chatPanel.llmNote')}</span>
         </div>
       </div>
     </div>

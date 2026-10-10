@@ -556,7 +556,6 @@
     "stop": "Stop",
     "toolCall": "Tool call",
     "truncated": "result clipped",
-    "llmNote": "Answers are LLM-generated — verify",
     "enterHint": "Enter to send · Shift+Enter for newline",
     "unconfiguredTitle": "AI not configured",
     "goSettings": "Open settings",

@@ -556,7 +556,6 @@
     "stop": "停止",
     "toolCall": "工具调用",
     "truncated": "结果已截断",
-    "llmNote": "回答由 LLM 生成,注意甄别",
     "enterHint": "Enter 发送 · Shift+Enter 换行",
     "unconfiguredTitle": "AI 未配置",
     "goSettings": "去配置",
