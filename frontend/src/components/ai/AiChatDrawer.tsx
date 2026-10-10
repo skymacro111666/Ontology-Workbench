@@ -1,8 +1,9 @@
 import { Loader2Icon, PlusIcon, SendIcon, SettingsIcon, SparklesIcon, SquareIcon } from 'lucide-react'
-import type { ReactNode } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
+import ReactMarkdown, { type Components } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { ApiErr, api, streamSSE } from '../../api/client'
 import type { AiStatus, ChatMessageRow, ChatSessionSummary } from '../../api/types'
 import { useUiStore } from '../../stores/uiStore'
@@ -336,7 +337,7 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
             ) : (
               (m.content || m.error) && (
                 <div className="border-line bg-panel-2 text-ink max-w-[92%] self-start rounded-[10px] rounded-bl-sm border px-3 py-2 text-[12.5px]">
-                  {renderBody(m.content)}
+                  <MarkdownBody content={m.content} />
                   {m.error && <p className="text-destructive mt-1 text-[11.5px]">{m.error}</p>}
                 </div>
               )
@@ -433,22 +434,53 @@ function patchLast(prev: ChatMsg[], fn: (m: ChatMsg) => ChatMsg): ChatMsg[] {
   return next
 }
 
-/** v1 message body (spec §5): plain text segments + ``` fences as <pre>
- *  blocks, with a leading single-word language tag stripped. */
-function renderBody(content: string): ReactNode[] {
-  return content.split('```').map((seg, i) =>
-    i % 2 === 1 ? (
-      <pre
-        key={i}
-        className="border-line bg-panel text-ink my-1 max-w-full overflow-x-auto rounded-ctl border px-2.5 py-2 font-mono text-[11px] whitespace-pre"
-      >
-        {seg.replace(/^[a-zA-Z0-9_-]*\n/, '')}
-      </pre>
-    ) : (
-      <span key={i} className="whitespace-pre-wrap">
-        {seg}
-      </span>
-    ),
+/** Assistant message body: GFM Markdown (headings, bold, lists, tables,
+ *  fenced code) mapped onto house tokens. react-markdown renders no raw
+ *  HTML by default, keeping LLM output outside the DOM injection surface;
+ *  links open in a new tab. Code styling lives on the `pre` override so
+ *  inline code shares one mono look without nested chrome. */
+const MD_COMPONENTS: Components = {
+  h1: ({ children }) => <h1 className="mb-1 mt-2 text-[14px] font-bold">{children}</h1>,
+  h2: ({ children }) => <h2 className="mb-1 mt-2 text-[13.5px] font-bold">{children}</h2>,
+  h3: ({ children }) => <h3 className="mb-1 mt-1.5 text-[13px] font-semibold">{children}</h3>,
+  h4: ({ children }) => <h4 className="mb-1 mt-1.5 text-[12.5px] font-semibold">{children}</h4>,
+  p: ({ children }) => <p className="my-1 leading-relaxed">{children}</p>,
+  ul: ({ children }) => <ul className="my-1 list-disc pl-4">{children}</ul>,
+  ol: ({ children }) => <ol className="my-1 list-decimal pl-4">{children}</ol>,
+  li: ({ children }) => <li className="my-0.5">{children}</li>,
+  a: ({ href, children }) => (
+    <a href={href} target="_blank" rel="noreferrer" className="text-primary underline">
+      {children}
+    </a>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote className="border-line text-ink-2 my-1 border-l-2 pl-2">{children}</blockquote>
+  ),
+  hr: () => <hr className="border-line my-2 border-t" />,
+  pre: ({ children }) => (
+    <pre className="border-line bg-panel text-ink my-1 max-w-full overflow-x-auto rounded-ctl border px-2.5 py-2 font-mono text-[11px] whitespace-pre">
+      {children}
+    </pre>
+  ),
+  code: ({ children }) => <code className="font-mono text-[11.5px]">{children}</code>,
+  table: ({ children }) => (
+    <div className="border-line my-1.5 overflow-x-auto rounded-ctl border">
+      <table className="w-full border-collapse text-[11.5px]">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => (
+    <th className="border-line bg-panel px-2 py-1 text-left font-semibold">{children}</th>
+  ),
+  td: ({ children }) => <td className="border-line px-2 py-1 align-top">{children}</td>,
+}
+
+function MarkdownBody({ content }: { content: string }) {
+  return (
+    <div className="markdown-body">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+        {content}
+      </ReactMarkdown>
+    </div>
   )
 }
 

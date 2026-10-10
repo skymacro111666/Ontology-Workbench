@@ -246,6 +246,34 @@ describe('AiChatDrawer', () => {
     expect(pre?.textContent).not.toContain('```')
     expect(pre?.textContent).not.toContain('sparql\n') // language tag stripped
   })
+
+  it('renders assistant GFM: headings, bold, tables — no literal markers', async () => {
+    const md = [
+      frame('session', { sessionId: 'sid-1', title: '查' }),
+      frame('delta', {
+        text: '## License 的子类\n\n**License** 共 4 个:\n\n| 子类 | 附带属性 |\n| --- | --- |\n| :AMFLicense | :amfLicense |\n| :SMFLicense | :smfLicense |\n',
+      }),
+      frame('done', { model: 'm', inTokens: 1, outTokens: 1, elapsedMs: 10 }),
+    ]
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/ai/status')) return ok({ configured: true, provider: 'openai', model: 'm', source: 'env' })
+      if (u.includes('/chat/sessions')) return ok([])
+      if (init?.method === 'POST' && u.includes('/chat/messages')) return sseResponse(md)
+      return ok(null)
+    })
+    const { container } = await openDrawer(fetchMock)
+
+    await userEvent.type(screen.getByPlaceholderText('问点什么,如:哪些类没有实例?'), '查{Enter}')
+    expect(await screen.findByText('License 的子类')).toBeTruthy() // <h2>, no ##
+    expect(screen.getByText('License', { selector: 'strong' })).toBeTruthy() // no literal **
+    expect(screen.getByText(':AMFLicense')).toBeTruthy() // table cell
+    const table = container.querySelector('table')
+    expect(table).toBeTruthy()
+    expect(container.textContent).not.toContain('##')
+    expect(container.textContent).not.toContain('**')
+    expect(container.textContent).not.toContain('| --- |')
+  })
 })
 
 describe('AiChatDrawer session menu', () => {
