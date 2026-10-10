@@ -56,6 +56,10 @@ export const useUiStore = create<{
   setLeftCollapsed: (collapsed: boolean) => void
   rightCollapsed: boolean
   setRightCollapsed: (collapsed: boolean) => void
+  /** Pre-drawer sidebar state while the AI drawer auto-collapses them;
+   *  a side the user re-toggles mid-chat goes null there (choice stands).
+   *  null overall = the drawer is not managing the sidebars. */
+  aiChatSavedCollapse: { left: boolean | null; right: boolean | null } | null
   sourceDirty: boolean
   setSourceDirty: (dirty: boolean) => void
   pendingView: BrowseView | null
@@ -71,35 +75,74 @@ export const useUiStore = create<{
    *  detail consumes it and clears the flag. */
   instanceAutoEdit: string | null
   setInstanceAutoEdit: (eid: string | null) => void
-}>((set) => ({
-  importOpen: false,
-  setImportOpen: (importOpen) => set({ importOpen }),
-  blankOpen: false,
-  setBlankOpen: (blankOpen) => set({ blankOpen }),
-  exportOpen: false,
-  setExportOpen: (exportOpen) => set({ exportOpen }),
-  draftOpen: false,
-  setDraftOpen: (draftOpen) => set({ draftOpen }),
-  aiSettingsOpen: false,
-  setAiSettingsOpen: (aiSettingsOpen) => set({ aiSettingsOpen }),
-  aiChatOpen: false,
-  setAiChatOpen: (aiChatOpen) => set({ aiChatOpen }),
-  browseView: 'graph',
-  setBrowseView: (browseView) => set({ browseView }),
-  leftCollapsed: false,
-  setLeftCollapsed: (leftCollapsed) => set({ leftCollapsed }),
-  rightCollapsed: false,
-  setRightCollapsed: (rightCollapsed) => set({ rightCollapsed }),
-  sourceDirty: false,
-  setSourceDirty: (sourceDirty) => set({ sourceDirty }),
-  pendingView: null,
-  setPendingView: (pendingView) => set({ pendingView }),
-  sourceSaveFn: null,
-  registerSourceSave: (sourceSaveFn) => set({ sourceSaveFn }),
-  entityDialog: null,
-  setEntityDialog: (entityDialog) => set({ entityDialog }),
-  instanceDialog: null,
-  setInstanceDialog: (instanceDialog) => set({ instanceDialog }),
-  instanceAutoEdit: null,
-  setInstanceAutoEdit: (instanceAutoEdit) => set({ instanceAutoEdit }),
-}))
+}>((set, get) => {
+  /** While the drawer is showing (graph mode) both sidebars collapse so the
+   *  canvas keeps its width (方案A); they restore when it stops showing,
+   *  except sides the user re-toggled in between — their choice stands. */
+  const syncAiCollapse = () => {
+    const s = get()
+    const showing = s.aiChatOpen && s.browseView === 'graph'
+    if (showing && s.aiChatSavedCollapse === null) {
+      set({
+        aiChatSavedCollapse: { left: s.leftCollapsed, right: s.rightCollapsed },
+        leftCollapsed: true,
+        rightCollapsed: true,
+      })
+    } else if (!showing && s.aiChatSavedCollapse !== null) {
+      const saved = s.aiChatSavedCollapse
+      set({
+        aiChatSavedCollapse: null,
+        leftCollapsed: saved.left ?? s.leftCollapsed,
+        rightCollapsed: saved.right ?? s.rightCollapsed,
+      })
+    }
+  }
+
+  return {
+    importOpen: false,
+    setImportOpen: (importOpen) => set({ importOpen }),
+    blankOpen: false,
+    setBlankOpen: (blankOpen) => set({ blankOpen }),
+    exportOpen: false,
+    setExportOpen: (exportOpen) => set({ exportOpen }),
+    draftOpen: false,
+    setDraftOpen: (draftOpen) => set({ draftOpen }),
+    aiSettingsOpen: false,
+    setAiSettingsOpen: (aiSettingsOpen) => set({ aiSettingsOpen }),
+    aiChatOpen: false,
+    setAiChatOpen: (aiChatOpen) => {
+      set({ aiChatOpen })
+      syncAiCollapse()
+    },
+    aiChatSavedCollapse: null,
+    browseView: 'graph',
+    setBrowseView: (browseView) => {
+      set({ browseView })
+      syncAiCollapse()
+    },
+    leftCollapsed: false,
+    setLeftCollapsed: (leftCollapsed) =>
+      set((s) => ({
+        leftCollapsed,
+        ...(s.aiChatSavedCollapse && { aiChatSavedCollapse: { ...s.aiChatSavedCollapse, left: null } }),
+      })),
+    rightCollapsed: false,
+    setRightCollapsed: (rightCollapsed) =>
+      set((s) => ({
+        rightCollapsed,
+        ...(s.aiChatSavedCollapse && { aiChatSavedCollapse: { ...s.aiChatSavedCollapse, right: null } }),
+      })),
+    sourceDirty: false,
+    setSourceDirty: (sourceDirty) => set({ sourceDirty }),
+    pendingView: null,
+    setPendingView: (pendingView) => set({ pendingView }),
+    sourceSaveFn: null,
+    registerSourceSave: (sourceSaveFn) => set({ sourceSaveFn }),
+    entityDialog: null,
+    setEntityDialog: (entityDialog) => set({ entityDialog }),
+    instanceDialog: null,
+    setInstanceDialog: (instanceDialog) => set({ instanceDialog }),
+    instanceAutoEdit: null,
+    setInstanceAutoEdit: (instanceAutoEdit) => set({ instanceAutoEdit }),
+  }
+})

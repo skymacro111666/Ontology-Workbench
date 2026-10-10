@@ -11,6 +11,8 @@ beforeEach(() => {
     entityDialog: null,
     leftCollapsed: false,
     rightCollapsed: false,
+    aiChatOpen: false,
+    aiChatSavedCollapse: null,
   })
 })
 
@@ -61,5 +63,37 @@ describe('uiStore sidebar collapse', () => {
     expect(useUiStore.getState().rightCollapsed).toBe(false)
     useUiStore.getState().setRightCollapsed(true)
     expect(useUiStore.getState().rightCollapsed).toBe(true)
+  })
+})
+
+describe('uiStore AI drawer auto-collapse', () => {
+  it('opening the drawer collapses both sidebars; closing restores them', () => {
+    useUiStore.getState().setRightCollapsed(true) // inspector was already rail
+    useUiStore.getState().setAiChatOpen(true)
+    expect(useUiStore.getState().leftCollapsed).toBe(true)
+    expect(useUiStore.getState().rightCollapsed).toBe(true)
+    useUiStore.getState().setAiChatOpen(false)
+    expect(useUiStore.getState().leftCollapsed).toBe(false) // restored open
+    expect(useUiStore.getState().rightCollapsed).toBe(true) // restored rail
+  })
+
+  it('a manual sidebar change mid-chat wins over restore for that side only', () => {
+    useUiStore.getState().setAiChatOpen(true)
+    useUiStore.getState().setLeftCollapsed(false) // user re-opens the tree while chatting
+    useUiStore.getState().setAiChatOpen(false)
+    expect(useUiStore.getState().leftCollapsed).toBe(false) // user's choice stands
+    expect(useUiStore.getState().rightCollapsed).toBe(false) // untouched side restores
+  })
+
+  it('a text-view toggle collapses nothing until graph mode shows the drawer', () => {
+    useUiStore.getState().setBrowseView('text')
+    useUiStore.getState().setAiChatOpen(true)
+    expect(useUiStore.getState().leftCollapsed).toBe(false) // drawer invisible: no takeover
+    useUiStore.getState().setBrowseView('graph')
+    expect(useUiStore.getState().leftCollapsed).toBe(true)
+    expect(useUiStore.getState().rightCollapsed).toBe(true)
+    useUiStore.getState().setBrowseView('query') // leaving graph releases the sidebars
+    expect(useUiStore.getState().leftCollapsed).toBe(false)
+    expect(useUiStore.getState().rightCollapsed).toBe(false)
   })
 })
