@@ -26,8 +26,8 @@ const labelCls = 'text-ink-2 text-xs font-medium'
 
 /** Draft-from-database wizard (spec §5): 连接 → 选表与选项 → 预览与导入.
  *  Step 1 reflects a database (saved connection or raw values); later steps
- *  build on the SchemaModel held in state. Save-connection fires only after
- *  a successful read — bad credentials are never persisted. */
+ *  build on the SchemaModel held in state. Saving/editing connections lives
+ *  in Settings (ConnectionsPanel) — the wizard only picks or fills in. */
 export default function DraftFromDbDialog() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
@@ -44,8 +44,6 @@ export default function DraftFromDbDialog() {
   const [database, setDatabase] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [saveConn, setSaveConn] = useState(false)
-  const [connName, setConnName] = useState('')
   const [schema, setSchema] = useState<SchemaModel | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -82,8 +80,6 @@ export default function DraftFromDbDialog() {
       setDatabase('')
       setUsername('')
       setPassword('')
-      setSaveConn(false)
-      setConnName('')
       setSchema(null)
       setBusy(false)
       setError(null)
@@ -136,20 +132,6 @@ export default function DraftFromDbDialog() {
         '/api/v1/ontologies/drafting/schema',
         body,
       )
-      // Save-this-connection lands only after a successful read: a profile
-      // with bad credentials would otherwise be persisted.
-      if (!picked && saveConn && connName.trim()) {
-        await api.post('/api/v1/db-connections', {
-          name: connName.trim(),
-          dbType: effectiveType,
-          host: isSqlite ? undefined : host,
-          port: isSqlite || !port ? undefined : Number(port),
-          database,
-          username: isSqlite ? undefined : username,
-          password: isSqlite ? undefined : password,
-        })
-        void queryClient.invalidateQueries({ queryKey: ['db-connections'] })
-      }
       setSchema(data.schema)
       setSelected(new Set(data.schema.tables.map((t) => t.name)))
       setNamespace(`https://local/${data.schema.databaseName}#`)
@@ -272,23 +254,39 @@ export default function DraftFromDbDialog() {
 
         {step === 1 && (
           <div className="flex flex-col gap-3">
-            {(connections.data ?? []).length > 0 && (
-              <div className="grid grid-cols-[7rem_1fr] items-center gap-2">
-                <span className={labelCls}>{t('draftDialog.savedConnections')}</span>
-                <select
-                  value={pickedId}
-                  onChange={(e) => setPickedId(e.target.value)}
-                  className={fieldCls}
-                  aria-label={t('draftDialog.savedConnections')}
-                >
-                  <option value="">{t('draftDialog.newConnection')}</option>
-                  {connections.data?.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      🔒 {c.name} · {c.dbType}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="grid grid-cols-[7rem_1fr] items-center gap-2">
+              <span className={labelCls}>{t('draftDialog.savedConnections')}</span>
+              <select
+                value={pickedId}
+                onChange={(e) => {
+                  // The manage entry is a navigation, not a selection: hand
+                  // the user to Settings and close this wizard session.
+                  if (e.target.value === '__manage__') {
+                    setDraftOpen(false)
+                    navigate('/settings')
+                    return
+                  }
+                  setPickedId(e.target.value)
+                }}
+                className={fieldCls}
+                aria-label={t('draftDialog.savedConnections')}
+              >
+                <option value="">{t('draftDialog.newConnection')}</option>
+                {connections.data?.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    🔒 {c.name} · {c.dbType}
+                  </option>
+                ))}
+                <option value="__manage__">⚙ {t('draftDialog.manageConnections')}</option>
+              </select>
+            </div>
+
+            {picked && (
+              <p className="text-ink-3 border-line bg-panel-2 rounded-ctl border px-2 py-1.5 font-mono text-xs">
+                {picked.dbType === 'sqlite'
+                  ? picked.database
+                  : `${picked.host ?? ''}${picked.port ? `:${picked.port}` : ''}/${picked.database}`}
+              </p>
             )}
 
             {!picked && (
@@ -297,7 +295,15 @@ export default function DraftFromDbDialog() {
                   <span className={labelCls}>{t('draftDialog.dbType')}</span>
                   <select
                     value={effectiveType}
-                    onChange={(e) => setDbType(e.target.value)}
+                    onChange={(e) => {
+                      setDbType(e.target.value)
+                      // Port follows the registry default on every switch —
+                      // override only when the deployment actually differs.
+                      const def = engines.data?.find(
+                        (en) => en.dbType === e.target.value,
+                      )?.defaultPort
+                      setPort(def ? String(def) : '')
+                    }}
                     className={fieldCls}
                     aria-label={t('draftDialog.dbType')}
                   >
@@ -355,24 +361,6 @@ export default function DraftFromDbDialog() {
                   </>
                 )}
 
-                <label className="text-ink-2 flex items-center gap-2 text-xs">
-                  <input
-                    type="checkbox"
-                    checked={saveConn}
-                    onChange={(e) => setSaveConn(e.target.checked)}
-                    className="accent-primary"
-                  />
-                  {t('draftDialog.saveConnection')}
-                  {saveConn && (
-                    <Input
-                      value={connName}
-                      onChange={(e) => setConnName(e.target.value)}
-                      aria-label={t('draftDialog.connectionName')}
-                      placeholder={t('draftDialog.connectionName')}
-                      className="ml-2 w-44 text-xs"
-                    />
-                  )}
-                </label>
               </>
             )}
 

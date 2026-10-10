@@ -21,9 +21,9 @@ const err = (code: string) =>
   )
 
 const ENGINES = [
-  { dbType: 'sqlite', label: 'SQLite', installed: true },
-  { dbType: 'postgres', label: 'PostgreSQL', installed: false },
-  { dbType: 'mysql', label: 'MySQL', installed: false },
+  { dbType: 'sqlite', label: 'SQLite', installed: true, defaultPort: null },
+  { dbType: 'postgres', label: 'PostgreSQL', installed: false, defaultPort: 5432 },
+  { dbType: 'mysql', label: 'MySQL', installed: false, defaultPort: 3306 },
 ]
 
 const SCHEMA = {
@@ -114,6 +114,83 @@ describe('DraftFromDbDialog — step 1 连接', () => {  it('renders the dialog 
     // still on step 1: the connection form is intact for a retry
     expect(screen.getByLabelText('路径')).toBeTruthy()
     expect(screen.getByRole('button', { name: '读取表结构' })).toBeTruthy()
+  })
+
+  it('lists 管理连接 even with none saved; picking it closes and jumps to Settings', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/db-connections/engines')) return ok(ENGINES)
+      return ok([])
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const Probe = () => {
+      const loc = useLocation()
+      return <span data-testid="loc">{loc.pathname}</span>
+    }
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <Probe />
+          <DraftFromDbDialog />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    // saving/management collapsed into Settings: no in-wizard save affordance
+    await screen.findByLabelText('数据库类型')
+    expect(screen.queryByText(/保存此连接/)).toBeNull()
+
+    // the dropdown renders despite the empty list and carries the manage entry
+    const select = await screen.findByLabelText('已保存连接')
+    await userEvent.selectOptions(select, '__manage__')
+    await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/settings'))
+    await waitFor(() => expect(useUiStore.getState().draftOpen).toBe(false))
+  })
+
+  it('shows the picked connection target summary', async () => {
+    const CONN = {
+      id: 'c1',
+      name: 'pg1',
+      dbType: 'postgres',
+      host: 'db.local',
+      port: 5432,
+      database: 'app',
+      username: 'u',
+      hasPassword: true,
+      createdAt: '2026-10-01T00:00:00Z',
+    }
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/db-connections/engines')) return ok(ENGINES)
+      if (String(url).includes('/db-connections')) return ok([CONN])
+      return ok(null)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
+
+    // wait for the saved row to land in the dropdown before selecting it
+    await screen.findByText(/pg1/)
+    await userEvent.selectOptions(screen.getByLabelText('已保存连接'), 'c1')
+    expect(await screen.findByText('db.local:5432/app')).toBeTruthy()
+  })
+
+  it('prefills the port from the registry when switching engines', async () => {
+    const engines = ENGINES.map((e) => ({ ...e, installed: true }))
+    const fetchMock = vi.fn(async (url: string) => {
+      if (String(url).includes('/db-connections/engines')) return ok(engines)
+      if (String(url).includes('/db-connections')) return ok([])
+      return ok(null)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderDialog()
+
+    // wait for the engines list before switching (options arrive async)
+    const type = await screen.findByLabelText('数据库类型')
+    await screen.findByText(/PostgreSQL/)
+    await userEvent.selectOptions(type, 'postgres')
+    expect((screen.getByLabelText('端口') as HTMLInputElement).value).toBe('5432')
+
+    await userEvent.selectOptions(type, 'sqlite')
+    expect(screen.queryByLabelText('端口')).toBeNull()
   })
 })
 
