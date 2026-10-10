@@ -53,6 +53,7 @@ class Dialect:
     extra_name: str | None  # None = driver ships with Python (sqlite3)
     driver_module: str  # import name checked for `installed`
     url: Callable[[ConnValues], str]
+    default_port: int | None = None  # form prefill; None = path-based (sqlite)
     connect_args: dict[str, object] = field(default_factory=dict)
     type_overrides: Mapping[str, str] = field(default_factory=dict)
 

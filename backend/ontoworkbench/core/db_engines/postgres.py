@@ -37,6 +37,7 @@ DIALECT = Dialect(
     extra_name="postgres",
     driver_module="psycopg",
     url=_url,
+    default_port=5432,
     connect_args={"connect_timeout": 5},
     type_overrides=TYPE_OVERRIDES,
 )

@@ -216,7 +216,12 @@ def list_engines(user: User = Depends(get_current_user)) -> dict:
     """Registry listing with installed flags for the wizard's dropdown."""
     return respond(
         [
-            {"dbType": d.db_type, "label": d.label, "installed": installed(d)}
+            {
+                "dbType": d.db_type,
+                "label": d.label,
+                "installed": installed(d),
+                "defaultPort": d.default_port,
+            }
             for d in ENGINES.values()
         ]
     )

@@ -36,6 +36,7 @@ DIALECT = Dialect(
     extra_name="mysql",
     driver_module="pymysql",
     url=_url,
+    default_port=3306,
     connect_args={"connect_timeout": 5},
     type_overrides=TYPE_OVERRIDES,
 )

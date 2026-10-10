@@ -75,6 +75,15 @@ def test_engines_lists_installed_flags(client: TestClient) -> None:
     assert by["postgres"]["installed"] is (importlib.util.find_spec("psycopg") is not None)
 
 
+def test_engines_carry_default_ports(client: TestClient) -> None:
+    """The registry's default port rides along for form prefill; sqlite has none."""
+    data = client.get("/api/v1/db-connections/engines").json()["data"]
+    by = {e["dbType"]: e for e in data}
+    assert by["postgres"]["defaultPort"] == 5432
+    assert by["mysql"]["defaultPort"] == 3306
+    assert by["sqlite"]["defaultPort"] is None
+
+
 def test_test_endpoint_bad_path_fails_cleanly(client: TestClient) -> None:
     """A connect test against a nonexistent sqlite dir fails on the OK envelope."""
     r = client.post(
