@@ -13,6 +13,7 @@ const Home = lazy(() => import('./pages/Home'))
 const Browse = lazy(() => import('./pages/Browse'))
 const Graph = lazy(() => import('./pages/Graph'))
 const Settings = lazy(() => import('./pages/Settings'))
+const DbConnections = lazy(() => import('./pages/DbConnections'))
 
 /** Route table; protected area sits behind ProtectedRoute inside the AppShell. */
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
               <Route path="/browse/:oid" element={<Browse />} />
               <Route path="/graph/:oid" element={<Graph />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/db-connections" element={<DbConnections />} />
             </Route>
           </Route>
         </Routes>

@@ -5,7 +5,6 @@ import { toast } from 'sonner'
 import { api } from '../api/client'
 import type { AgentTokenCreated, AgentTokenSummary } from '../api/types'
 import { errText } from '../i18n/errText'
-import ConnectionsPanel from '@/components/ConnectionsPanel'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -86,9 +85,9 @@ function FreshToken({ token, onDone }: { token: string; onDone: () => void }) {
   )
 }
 
-/** Settings (/settings): account-level configuration — agent-token
- *  management for MCP clients (list prefix-only, create with one-time
- *  plaintext, revoke = hard delete) and saved DB connections panel. */
+/** Settings (/settings): agent-token management for MCP clients — list
+ *  (prefix only), create (plaintext shown exactly once), revoke (hard
+ *  delete, effective on the client's next request). */
 export default function Settings() {
   const { t } = useTranslation()
   const qc = useQueryClient()
@@ -121,24 +120,18 @@ export default function Settings() {
   })
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-6">
-      <div>
-        <h1 className="text-lg font-semibold">{t('settings.pageTitle')}</h1>
-        <p className="text-ink-3 text-xs">{t('settings.pageSubtitle')}</p>
-      </div>
-
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-sm font-semibold">{t('settings.title')}</h2>
-            <p className="text-ink-3 text-xs">{t('settings.subtitle')}</p>
-          </div>
-          {!creating && (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              {t('settings.newToken')}
-            </Button>
-          )}
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-6 py-6">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold">{t('settings.title')}</h1>
+          <p className="text-ink-3 text-xs">{t('settings.subtitle')}</p>
         </div>
+        {!creating && (
+          <Button size="sm" onClick={() => setCreating(true)}>
+            {t('settings.newToken')}
+          </Button>
+        )}
+      </div>
 
       {fresh && <FreshToken token={fresh} onDone={() => setFresh(null)} />}
 
@@ -225,9 +218,6 @@ export default function Settings() {
           )}
         </TableBody>
       </Table>
-      </section>
-
-      <ConnectionsPanel />
     </div>
   )
 }

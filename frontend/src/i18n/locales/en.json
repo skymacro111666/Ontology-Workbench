@@ -76,6 +76,7 @@
     "newBlank": "New blank ontology…",
     "newFromDb": "Draft from database…",
     "aiSettings": "AI settings",
+    "dbSettings": "Database settings",
     "file": "File ▾",
     "export": "Export",
     "exportSite": "Export docs site",
@@ -545,9 +546,7 @@
     "createdWarning": "The plaintext is shown only this once — after closing it cannot be viewed again.",
     "copyOk": "Copied",
     "empty": "No tokens yet",
-    "labelPlaceholder": "e.g. claude",
-    "pageTitle": "Settings",
-    "pageSubtitle": "Account-level configuration: agent tokens and database connections."
+    "labelPlaceholder": "e.g. claude"
   },
   "chatPanel": {
     "title": "AI assistant",
@@ -610,6 +609,8 @@
     "savedToast": "Connection saved",
     "deletedToast": "Connection deleted",
     "duplicateName": "Name already exists",
-    "portInvalid": "Port must be a number between 1 and 65535"
+    "portInvalid": "Port must be a number between 1 and 65535",
+    "pageTitle": "Database settings",
+    "pageSubtitle": "Saved profiles for the draft-from-database wizard; passwords are stored encrypted and never served."
   }
 }

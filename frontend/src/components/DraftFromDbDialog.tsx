@@ -261,10 +261,11 @@ export default function DraftFromDbDialog() {
                 value={pickedId}
                 onChange={(e) => {
                   // The manage entry is a navigation, not a selection: hand
-                  // the user to Settings and close this wizard session.
+                  // the user to the database settings page and close this
+                  // wizard session.
                   if (e.target.value === '__manage__') {
                     setDraftOpen(false)
-                    navigate('/settings')
+                    navigate('/db-connections')
                     return
                   }
                   setPickedId(e.target.value)

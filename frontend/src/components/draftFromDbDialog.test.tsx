@@ -143,7 +143,7 @@ describe('DraftFromDbDialog — step 1 连接', () => {  it('renders the dialog 
     // the dropdown renders despite the empty list and carries the manage entry
     const select = await screen.findByLabelText('已保存连接')
     await userEvent.selectOptions(select, '__manage__')
-    await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/settings'))
+    await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/db-connections'))
     await waitFor(() => expect(useUiStore.getState().draftOpen).toBe(false))
   })
 

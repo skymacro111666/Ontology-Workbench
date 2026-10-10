@@ -24,16 +24,6 @@ const ROW = {
   lastUsedAt: null,
 }
 
-/* The connections panel rides on the same page; empty lists keep the token
-   assertions here free of foreign rows. */
-const DB_EMPTY = (url: string | URL): Response | null => {
-  const u = String(url)
-  if (u.includes('/db-connections/engines'))
-    return ENVELOPE([{ dbType: 'sqlite', label: 'SQLite', installed: true, defaultPort: null }])
-  if (u.includes('/db-connections')) return ENVELOPE([])
-  return null
-}
-
 function renderPage(fetchMock: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('fetch', fetchMock)
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -54,11 +44,7 @@ afterEach(() => {
 
 describe('Settings / agent tokens', () => {
   it('lists tokens with the display prefix only', async () => {
-    const fetchMock = vi.fn(async (url: string | URL) => {
-      const db = DB_EMPTY(url)
-      if (db) return db
-      return ENVELOPE([ROW])
-    })
+    const fetchMock = vi.fn(async () => ENVELOPE([ROW]))
     renderPage(fetchMock)
     expect(await screen.findByText('claude')).toBeTruthy()
     // The prefix renders with the truncation ellipsis the UI appends.
@@ -68,24 +54,8 @@ describe('Settings / agent tokens', () => {
     expect(JSON.stringify(fetchMock.mock.calls)).not.toContain('token_hash')
   })
 
-  it('carries the connections section beside tokens under a generic page title', async () => {
-    const fetchMock = vi.fn(async (url: string | URL) => {
-      const db = DB_EMPTY(url)
-      if (db) return db
-      return ENVELOPE([ROW])
-    })
-    renderPage(fetchMock)
-    // page-level heading + both section headings render
-    expect(screen.getByRole('heading', { level: 1, name: '设置' })).toBeTruthy()
-    expect(screen.getByRole('heading', { name: 'Agent 令牌' })).toBeTruthy()
-    expect(await screen.findByRole('heading', { name: '数据库连接' })).toBeTruthy()
-    expect(await screen.findByText('还没有已存连接')).toBeTruthy()
-  })
-
   it('create flow shows the plaintext exactly once with a warning', async () => {
-    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      const db = DB_EMPTY(url)
-      if (db) return db
+    const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
       if (init?.method === 'POST') return ENVELOPE({ label: 'ci', token: 'owag_secret' })
       return ENVELOPE([])
     })
@@ -106,9 +76,7 @@ describe('Settings / agent tokens', () => {
   })
 
   it('revoke asks for confirmation, then DELETEs and refreshes the list', async () => {
-    const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
-      const db = DB_EMPTY(url)
-      if (db) return db
+    const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
       if (init?.method === 'DELETE') return ENVELOPE(null)
       return ENVELOPE([ROW])
     })
@@ -134,11 +102,7 @@ describe('Settings / agent tokens', () => {
 
   it('declining the confirmation sends no DELETE', async () => {
     const fetchMock = vi.fn<(url: string | URL, init?: RequestInit) => Promise<Response>>(
-      async (url: string | URL) => {
-        const db = DB_EMPTY(url)
-        if (db) return db
-        return ENVELOPE([ROW])
-      },
+      async () => ENVELOPE([ROW]),
     )
     renderPage(fetchMock)
     vi.spyOn(window, 'confirm').mockReturnValue(false)

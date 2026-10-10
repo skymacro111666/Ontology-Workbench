@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, it, vi } from 'vitest'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import AppShell from './AppShell'
 import { AuthProvider, LAST_OID_KEY, TOKEN_KEY } from '../auth/AuthContext'
 import { api } from '../api/client'
@@ -101,6 +101,38 @@ it('account menu carries the agent-token settings entry', async () => {
   // Clicking runs the navigate handler and closes the menu.
   await userEvent.click(item)
   expect(screen.queryByText('退出登录')).toBeNull()
+})
+
+it('account menu carries 数据库设置 directly below AI 设置, navigating to /db-connections', async () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  const Probe = () => {
+    const loc = useLocation()
+    return <span data-testid="loc">{loc.pathname}</span>
+  }
+  render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/']}>
+          <AuthProvider>
+            <Probe />
+            <Routes>
+              <Route element={<AppShell />}>
+                <Route path="/" element={<div>home</div>} />
+              </Route>
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+  await userEvent.click(screen.getByRole('button', { name: /菜单/ }))
+  const db = await screen.findByText('数据库设置')
+  // Position contract: the entry sits directly below AI 设置.
+  const ai = screen.getByText('AI 设置')
+  expect(db.compareDocumentPosition(ai) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+
+  await userEvent.click(db)
+  await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/db-connections'))
 })
 
 it('renders the router Outlet when no children are given (production branch)', () => {

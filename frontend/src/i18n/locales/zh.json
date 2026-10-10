@@ -76,6 +76,7 @@
     "newBlank": "新建空白本体…",
     "newFromDb": "从数据库起草本体…",
     "aiSettings": "AI 设置",
+    "dbSettings": "数据库设置",
     "file": "文件 ▾",
     "export": "导出",
     "exportSite": "导出文档站",
@@ -545,9 +546,7 @@
     "createdWarning": "明文仅此一次展示，关闭后无法再查看。",
     "copyOk": "已复制",
     "empty": "还没有令牌",
-    "labelPlaceholder": "例如 claude",
-    "pageTitle": "设置",
-    "pageSubtitle": "账户级配置:Agent 令牌与数据库连接。"
+    "labelPlaceholder": "例如 claude"
   },
   "chatPanel": {
     "title": "AI 助手",
@@ -610,6 +609,8 @@
     "savedToast": "连接已保存",
     "deletedToast": "连接已删除",
     "duplicateName": "名称已存在",
-    "portInvalid": "端口必须是 1-65535 的数字"
+    "portInvalid": "端口必须是 1-65535 的数字",
+    "pageTitle": "数据库设置",
+    "pageSubtitle": "管理供「从数据库起草」向导选用的已存连接；密码加密存储，永不下发。"
   }
 }

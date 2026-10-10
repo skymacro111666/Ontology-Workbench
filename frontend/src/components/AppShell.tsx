@@ -308,6 +308,10 @@ export default function AppShell({ children }: { children?: ReactNode }) {
                 <BotIcon />
                 {t('shell.aiSettings')}
               </DropdownMenuItem>
+              <DropdownMenuItem className="text-xs" onSelect={() => navigate('/db-connections')}>
+                <DatabaseIcon />
+                {t('shell.dbSettings')}
+              </DropdownMenuItem>
               <DropdownMenuItem className="text-xs" onSelect={() => setPwdOpen(true)}>
                 <KeyRoundIcon />
                 {t('shell.changePwd')}
