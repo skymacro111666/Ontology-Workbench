@@ -37,6 +37,12 @@ describe('DbConnections page', () => {
       </QueryClientProvider>,
     )
     expect(screen.getByRole('heading', { level: 1, name: '数据库设置' })).toBeTruthy()
+    // the panel's own section heading/subtitle are dropped on the page —
+    // the page-level heading stands alone (page subtitle starts with 管理)
+    expect(screen.queryByText('数据库连接')).toBeNull()
+    expect(
+      screen.queryByText('供「从数据库起草」向导选用的已存连接；密码加密存储，永不下发。'),
+    ).toBeNull()
     expect(await screen.findByText('还没有已存连接')).toBeTruthy()
   })
 })

@@ -222,11 +222,9 @@ export default function ConnectionsPanel() {
 
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-sm font-semibold">{t('conn.title')}</h2>
-          <p className="text-ink-3 text-xs">{t('conn.subtitle')}</p>
-        </div>
+      {/* No section heading here — the page (数据库设置) owns the only
+          heading; this row just carries the create action, right-aligned. */}
+      <div className="flex items-center justify-end gap-4">
         <Button size="sm" onClick={openCreate}>
           {t('conn.new')}
         </Button>

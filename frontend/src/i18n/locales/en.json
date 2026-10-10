@@ -582,7 +582,6 @@
     "deleteConfirm": "Delete"
   },
   "conn": {
-    "title": "Database connections",
     "subtitle": "Saved profiles for the draft-from-database wizard; passwords are stored encrypted and never served.",
     "new": "New connection",
     "name": "Name",
