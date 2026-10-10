@@ -231,6 +231,7 @@
     "stepPreview": "Review & import",
     "savedConnections": "Saved connections",
     "newConnection": "+ New connection",
+    "manageConnections": "Manage connections…",
     "connectionName": "Connection name",
     "dbType": "Database type",
     "host": "Host",
@@ -546,7 +547,9 @@
     "createdWarning": "The plaintext is shown only this once — after closing it cannot be viewed again.",
     "copyOk": "Copied",
     "empty": "No tokens yet",
-    "labelPlaceholder": "e.g. claude"
+    "labelPlaceholder": "e.g. claude",
+    "pageTitle": "Settings",
+    "pageSubtitle": "Account-level configuration: agent tokens and database connections."
   },
   "chatPanel": {
     "title": "AI assistant",
@@ -580,5 +583,33 @@
     "deleteTitle": "Delete session",
     "deleteBody": "Delete “{{title}}” and all its messages? This cannot be undone.",
     "deleteConfirm": "Delete"
+  },
+  "conn": {
+    "title": "Database connections",
+    "subtitle": "Saved profiles for the draft-from-database wizard; passwords are stored encrypted and never served.",
+    "new": "New connection",
+    "name": "Name",
+    "dbType": "Database type",
+    "host": "Host",
+    "port": "Port",
+    "database": "Database",
+    "username": "Username",
+    "password": "Password",
+    "path": "Path",
+    "target": "Target",
+    "createdAt": "Created",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteConfirmTitle": "Delete this connection?",
+    "deleteConfirmDesc": "The draft wizard will no longer list it. This cannot be undone.",
+    "test": "Test",
+    "testConn": "Test connection",
+    "testing": "Testing…",
+    "testOk": "Connection OK",
+    "passwordKeepHint": "Leave blank to keep the stored password",
+    "noPassword": "No password",
+    "empty": "No saved connections yet",
+    "savedToast": "Connection saved",
+    "deletedToast": "Connection deleted"
   }
 }

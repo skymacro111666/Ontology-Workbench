@@ -231,6 +231,7 @@
     "stepPreview": "预览与导入",
     "savedConnections": "已保存连接",
     "newConnection": "+ 新建连接",
+    "manageConnections": "管理连接…",
     "connectionName": "连接名称",
     "dbType": "数据库类型",
     "host": "主机",
@@ -546,7 +547,9 @@
     "createdWarning": "明文仅此一次展示，关闭后无法再查看。",
     "copyOk": "已复制",
     "empty": "还没有令牌",
-    "labelPlaceholder": "例如 claude"
+    "labelPlaceholder": "例如 claude",
+    "pageTitle": "设置",
+    "pageSubtitle": "账户级配置:Agent 令牌与数据库连接。"
   },
   "chatPanel": {
     "title": "AI 助手",
@@ -580,5 +583,33 @@
     "deleteTitle": "删除会话",
     "deleteBody": "会话「{{title}}」及其全部消息将被删除,无法恢复。",
     "deleteConfirm": "确认删除"
+  },
+  "conn": {
+    "title": "数据库连接",
+    "subtitle": "供「从数据库起草」向导选用的已存连接；密码加密存储，永不下发。",
+    "new": "新建连接",
+    "name": "名称",
+    "dbType": "数据库类型",
+    "host": "主机",
+    "port": "端口",
+    "database": "库名",
+    "username": "用户名",
+    "password": "密码",
+    "path": "路径",
+    "target": "连接目标",
+    "createdAt": "创建时间",
+    "edit": "编辑",
+    "delete": "删除",
+    "deleteConfirmTitle": "删除这条连接？",
+    "deleteConfirmDesc": "删除后「从数据库起草」向导将不再列出它，且不可恢复。",
+    "test": "测试",
+    "testConn": "测试连接",
+    "testing": "测试中…",
+    "testOk": "连接成功",
+    "passwordKeepHint": "留空保持不变",
+    "noPassword": "无密码",
+    "empty": "还没有已存连接",
+    "savedToast": "连接已保存",
+    "deletedToast": "连接已删除"
   }
 }

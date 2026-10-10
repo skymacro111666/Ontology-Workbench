@@ -370,6 +370,7 @@ export interface DbEngine {
   dbType: string
   label: string
   installed: boolean
+  defaultPort: number | null
 }
 
 /** One reflected column. */
