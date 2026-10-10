@@ -214,14 +214,17 @@ describe('ConnectionsPanel — 编辑与删除', () => {
     expect(posts).toHaveLength(0)
   })
 
-  it('tests a saved row by connectionId and reports failures inline', async () => {
+  it('tests a saved row by connectionId and reports the outcome on the button row', async () => {
     const fetchMock = routerMock({ testOk: false, testMsg: 'connection refused' })
     renderPanel(fetchMock)
     await userEvent.click((await screen.findAllByRole('button', { name: '测试' }))[0])
 
     await waitFor(() => expect(bodies(fetchMock, '/db-connections/test')).toHaveLength(1))
     expect(bodies(fetchMock, '/db-connections/test')[0]).toEqual({ connectionId: 'c1' })
-    expect(await screen.findByText(/connection refused/)).toBeTruthy()
+    // The outcome lands on the action row (after 删除), never on a line below
+    const outcome = await screen.findByText(/connection refused/)
+    const del = screen.getAllByRole('button', { name: '删除' })[0]
+    expect(outcome.parentElement).toBe(del.parentElement)
   })
 
   it('delete asks for confirmation, then DELETEs and refreshes', async () => {

@@ -36,14 +36,18 @@ export function targetOf(c: DbConnectionSummary): string {
   return `${host}${port}/${c.database}`
 }
 
-/** Inline connect-test outcome line, shared by list rows and the form. */
+/** Inline connect-test outcome, shared by list rows and the form. Sits on
+ *  the action row (after 删除); long failures truncate with the full text
+ *  on hover. */
 function TestOutcome({ state }: { state?: TestState | null }) {
   const { t } = useTranslation()
   if (!state || state.status !== 'done') return null
+  if (state.ok)
+    return <span className="text-xs text-emerald-600">{t('conn.testOk')}</span>
   return (
-    <div className={state.ok ? 'text-xs text-emerald-600' : 'text-destructive text-xs'}>
-      {state.ok ? t('conn.testOk') : state.message}
-    </div>
+    <span className="text-destructive max-w-52 truncate text-xs" title={state.message}>
+      {state.message}
+    </span>
   )
 }
 
@@ -283,8 +287,8 @@ export default function ConnectionsPanel() {
                   >
                     {t('conn.delete')}
                   </Button>
+                  <TestOutcome state={rowTests[c.id]} />
                 </div>
-                <TestOutcome state={rowTests[c.id]} />
               </TableCell>
             </TableRow>
           ))}
