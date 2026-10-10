@@ -399,7 +399,8 @@
     "legend": "Legend",
     "deprecatedSidebar": "{{count}} deprecated nodes sit in the class tree’s 已废弃 group",
     "saveFailed": "Autosave failed — recent edits may not be on disk; keep editing or retry the save",
-    "deprecatedBucket": "Deprecated", "prefixBucket": "Prefix group",
+    "deprecatedBucket": "Deprecated",
+    "prefixBucket": "Prefix group",
     "viewProgressive": "Progressive"
   },
   "pwd": {
@@ -457,8 +458,7 @@
     "LLM_OUTPUT_INVALID": "Invalid model output — retry or switch models",
     "DB_DRIVER_MISSING": "Database driver not installed",
     "DB_CONNECT_FAILED": "Database connection failed"
-  }
-,
+  },
   "query": {
     "samples": "Sample queries",
     "sampleAll": "Classes with rdfs:label",
@@ -547,5 +547,23 @@
     "copyOk": "Copied",
     "empty": "No tokens yet",
     "labelPlaceholder": "e.g. claude"
+  },
+  "chatPanel": {
+    "title": "AI assistant",
+    "readOnly": "read-only",
+    "placeholder": "Ask something, e.g. which classes have no instances?",
+    "send": "Send",
+    "stop": "Stop",
+    "toolCall": "Tool call",
+    "truncated": "result clipped",
+    "llmNote": "Answers are LLM-generated — verify",
+    "enterHint": "Enter to send · Shift+Enter for newline",
+    "unconfiguredTitle": "AI not configured",
+    "goSettings": "Open settings",
+    "emptyHint": "Ask anything to start — the read-only assistant can search entities, walk the tree and run checks",
+    "usage": "{{model}} · in {{in}} / out {{out}} · {{sec}}s",
+    "modelFallback": "no model",
+    "expandTool": "Expand tool result",
+    "errorTitle": "Something went wrong"
   }
 }

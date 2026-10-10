@@ -46,3 +46,9 @@ if (!Range.prototype.getClientRects) {
     return new DOMRect(0, 0, 0, 0)
   }
 }
+
+// jsdom lacks Element.scrollTo (no layout engine); the AI chat drawer pins
+// its message stream to the bottom as deltas arrive.
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = (): void => {}
+}

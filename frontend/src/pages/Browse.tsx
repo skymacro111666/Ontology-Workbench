@@ -16,6 +16,7 @@ const SourceView = lazy(() => import('../components/SourceView'))
 const QueryConsole = lazy(() => import('../components/QueryConsole'))
 const ValidationConsole = lazy(() => import('../components/ValidationConsole'))
 const RegistryConsole = lazy(() => import('../components/RegistryConsole'))
+const AiChatDrawer = lazy(() => import('../components/ai/AiChatDrawer'))
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
@@ -36,30 +37,28 @@ const PROFILE_TINT: Record<string, string> = {
 }
 
 /** Sidebar column templates per collapse state — literal class strings so
- *  Tailwind emits them; a collapsed sidebar shrinks to a 24px rail. */
+ *  Tailwind emits them; a collapsed sidebar shrinks to a 24px rail. The
+ *  *Ai variants add the 372px assistant drawer column (graph mode only). */
 const GRAPH_COLS = {
   both: 'grid-cols-[264px_1fr_312px]',
   left: 'grid-cols-[24px_1fr_312px]',
   right: 'grid-cols-[264px_1fr_24px]',
   none: 'grid-cols-[24px_1fr_24px]',
+  bothAi: 'grid-cols-[264px_1fr_312px_372px]',
+  leftAi: 'grid-cols-[24px_1fr_312px_372px]',
+  rightAi: 'grid-cols-[264px_1fr_24px_372px]',
+  noneAi: 'grid-cols-[24px_1fr_24px_372px]',
 } as const
 const TEXT_COLS = {
   both: 'grid-cols-[264px_1fr]',
   left: 'grid-cols-[24px_1fr]',
 } as const
 
-const colsFor = (view: BrowseView, lc: boolean, rc: boolean): string =>
-  view === 'graph'
-    ? lc && rc
-      ? GRAPH_COLS.none
-      : lc
-        ? GRAPH_COLS.left
-        : rc
-          ? GRAPH_COLS.right
-          : GRAPH_COLS.both
-    : lc
-      ? TEXT_COLS.left
-      : TEXT_COLS.both
+const colsFor = (view: BrowseView, lc: boolean, rc: boolean, ai: boolean): string => {
+  if (view !== 'graph') return lc ? TEXT_COLS.left : TEXT_COLS.both
+  const key = (lc && rc ? 'none' : lc ? 'left' : rc ? 'right' : 'both') + (ai ? 'Ai' : '')
+  return GRAPH_COLS[key as keyof typeof GRAPH_COLS]
+}
 
 /** Chevron chrome shared by the rail and collapse buttons (matches the
  *  canvas control cluster). */
@@ -99,6 +98,7 @@ export default function Browse() {
   const rightCollapsed = useUiStore((s) => s.rightCollapsed)
   const setLeftCollapsed = useUiStore((s) => s.setLeftCollapsed)
   const setRightCollapsed = useUiStore((s) => s.setRightCollapsed)
+  const aiChatOpen = useUiStore((s) => s.aiChatOpen)
   // Deep links (?eid=… or the redirected /graph focus param) preselect.
   useEffect(() => {
     const target = focusParam ?? eidParam
@@ -155,7 +155,7 @@ export default function Browse() {
     <div
       className={cn(
         'grid h-full min-h-0 grid-rows-[1fr_30px] transition-[grid-template-columns] duration-200',
-        colsFor(browseView, leftCollapsed, rightCollapsed),
+        colsFor(browseView, leftCollapsed, rightCollapsed, aiChatOpen),
       )}
     >
       {/* Zone 1: class tree. Collapses to a left rail; the panel stays
@@ -217,6 +217,16 @@ export default function Browse() {
           <div className={cn('h-full p-2', rightCollapsed && 'hidden')}>
             <InspectorPanel oid={oid} eid={selectedEid} />
           </div>
+        </aside>
+      )}
+      {/* Zone 3.5: read-only AI assistant drawer (graph mode only, spec-2 §5).
+       *  Rendered only while open so the grid column count always matches
+       *  colsFor; text views keep their two-column layout unchanged. */}
+      {browseView === 'graph' && aiChatOpen && (
+        <aside className="min-h-0 overflow-hidden">
+          <Suspense fallback={<div className="text-ink-3 py-16 text-center text-sm">{t('common.loading')}</div>}>
+            <AiChatDrawer oid={oid} />
+          </Suspense>
         </aside>
       )}
       {/* Zone 4: status bar (mockup: breathing gaps, no dot separators) */}

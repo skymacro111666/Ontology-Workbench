@@ -12,6 +12,7 @@ import {
   SearchCodeIcon,
   Share2Icon,
   ShieldCheckIcon,
+  SparklesIcon,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
@@ -78,6 +79,8 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const setExportOpen = useUiStore((s) => s.setExportOpen)
   const setDraftOpen = useUiStore((s) => s.setDraftOpen)
   const setAiSettingsOpen = useUiStore((s) => s.setAiSettingsOpen)
+  const aiChatOpen = useUiStore((s) => s.aiChatOpen)
+  const setAiChatOpen = useUiStore((s) => s.setAiChatOpen)
   const browseView = useUiStore((s) => s.browseView)
   const setBrowseView = useUiStore((s) => s.setBrowseView)
   const pendingView = useUiStore((s) => s.pendingView)
@@ -265,6 +268,18 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               </ToggleGroupItem>
             </ToggleGroup>
           )}
+
+          {/* Read-only AI assistant drawer toggle (the drawer renders on
+              Browse pages; elsewhere the flag persists for the next visit). */}
+          <Button
+            variant="outline"
+            size="sm"
+            aria-pressed={aiChatOpen}
+            onClick={() => setAiChatOpen(!aiChatOpen)}
+          >
+            <SparklesIcon aria-hidden="true" />
+            {t('chatPanel.title')}
+          </Button>
 
           <button
             type="button"

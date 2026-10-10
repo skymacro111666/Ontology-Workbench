@@ -399,7 +399,8 @@
     "legend": "图例",
     "deprecatedSidebar": "{{count}} 个已废弃节点在左侧类树的「已废弃」分组",
     "saveFailed": "自动保存失败,最近的编辑可能尚未写入文件;继续编辑或重试保存",
-    "deprecatedBucket": "已废弃", "prefixBucket": "前缀分组",
+    "deprecatedBucket": "已废弃",
+    "prefixBucket": "前缀分组",
     "viewProgressive": "渐进"
   },
   "pwd": {
@@ -457,8 +458,7 @@
     "LLM_OUTPUT_INVALID": "模型输出无效，请重试或换模型",
     "DB_DRIVER_MISSING": "数据库驱动未安装",
     "DB_CONNECT_FAILED": "数据库连接失败"
-  }
-,
+  },
   "query": {
     "samples": "示例查询",
     "sampleAll": "类清单 + rdfs:label",
@@ -547,5 +547,23 @@
     "copyOk": "已复制",
     "empty": "还没有令牌",
     "labelPlaceholder": "例如 claude"
+  },
+  "chatPanel": {
+    "title": "AI 助手",
+    "readOnly": "只读",
+    "placeholder": "问点什么,如:哪些类没有实例?",
+    "send": "发送",
+    "stop": "停止",
+    "toolCall": "工具调用",
+    "truncated": "结果已截断",
+    "llmNote": "回答由 LLM 生成,注意甄别",
+    "enterHint": "Enter 发送 · Shift+Enter 换行",
+    "unconfiguredTitle": "AI 未配置",
+    "goSettings": "去配置",
+    "emptyHint": "问点什么开始对话——只读助手可以搜实体、查结构、跑检查",
+    "usage": "{{model}} · in {{in}} / out {{out}} · {{sec}}s",
+    "modelFallback": "未命名模型",
+    "expandTool": "展开工具结果",
+    "errorTitle": "出错了"
   }
 }

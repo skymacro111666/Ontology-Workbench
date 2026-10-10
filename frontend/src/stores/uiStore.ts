@@ -47,6 +47,8 @@ export const useUiStore = create<{
   setDraftOpen: (open: boolean) => void
   aiSettingsOpen: boolean
   setAiSettingsOpen: (open: boolean) => void
+  aiChatOpen: boolean
+  setAiChatOpen: (open: boolean) => void
   browseView: BrowseView
   setBrowseView: (view: BrowseView) => void
   /** Sidebar collapse (rail mode): collapsed panels stay mounted, hidden. */
@@ -80,6 +82,8 @@ export const useUiStore = create<{
   setDraftOpen: (draftOpen) => set({ draftOpen }),
   aiSettingsOpen: false,
   setAiSettingsOpen: (aiSettingsOpen) => set({ aiSettingsOpen }),
+  aiChatOpen: false,
+  setAiChatOpen: (aiChatOpen) => set({ aiChatOpen }),
   browseView: 'graph',
   setBrowseView: (browseView) => set({ browseView }),
   leftCollapsed: false,

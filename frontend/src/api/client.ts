@@ -159,6 +159,52 @@ async function downloadBinary(
   return { name, truncated }
 }
 
+/** POST + parse an SSE stream (the chat transport; envelope errors before
+ *  stream start still throw ApiErr via the normal JSON path). */
+export async function streamSSE(
+  url: string,
+  body: unknown,
+  onEvent: (event: string, data: Record<string, unknown>) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const token = localStorage.getItem(TOKEN_KEY)
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    signal,
+    body: JSON.stringify(body),
+  })
+  const ct = res.headers.get('content-type') ?? ''
+  if (!ct.includes('text/event-stream')) {
+    const env = (await res.json()) as Envelope<unknown>
+    unwrap(env) // throws ApiErr for non-OK envelopes
+    return
+  }
+  const reader = res.body!.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    let sep: number
+    while ((sep = buf.indexOf('\n\n')) !== -1) {
+      const frameText = buf.slice(0, sep)
+      buf = buf.slice(sep + 2)
+      let event = 'message'
+      let data = ''
+      for (const line of frameText.split('\n')) {
+        if (line.startsWith('event: ')) event = line.slice(7).trim()
+        else if (line.startsWith('data: ')) data += line.slice(6)
+      }
+      if (data) onEvent(event, JSON.parse(data))
+    }
+  }
+}
+
 export const api = {
   get: <T>(url: string) => request<T>(url),
   post: <T>(url: string, body?: unknown) =>
@@ -174,6 +220,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
   del: <T>(url: string) => request<T>(url, { method: 'DELETE' }),
+  streamSSE,
   upload: <T>(file: File, onProgress?: (loaded: number, total: number) => void) =>
     uploadXHR<T>('/api/v1/ontologies', file, onProgress),
   download: downloadFile,
