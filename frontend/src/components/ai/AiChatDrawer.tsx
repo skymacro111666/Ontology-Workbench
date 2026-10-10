@@ -1,10 +1,11 @@
-import { Loader2Icon, SendIcon, SettingsIcon, SparklesIcon, SquareIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { Loader2Icon, PlusIcon, SendIcon, SettingsIcon, SparklesIcon, SquareIcon } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { ApiErr, api, streamSSE } from '../../api/client'
 import type { AiStatus } from '../../api/types'
 import { useUiStore } from '../../stores/uiStore'
+import SessionMenu, { timeAgoLabel, type SessionItem } from './SessionMenu'
 import { cn } from '@/lib/utils'
 
 /** One collapsible tool row (mockup .tool): live rows carry the args JSON,
@@ -47,8 +48,38 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
   const [streaming, setStreaming] = useState(false)
   const [unconfigured, setUnconfigured] = useState(false)
   const [sid, setSid] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<SessionItem[]>([])
   const abortRef = useRef<AbortController | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
+
+  // The active session persists per ontology: the pointer feeds send
+  // (sessionId) and survives drawer close/reopen.
+  const pointerKey = `ow.chat.session.${oid}`
+  const setActive = useCallback(
+    (id: string | null) => {
+      setSid(id)
+      if (id) localStorage.setItem(pointerKey, id)
+      else localStorage.removeItem(pointerKey)
+    },
+    [pointerKey],
+  )
+  const reloadSessions = useCallback(async () => {
+    try {
+      setSessions(await api.get<SessionItem[]>(`/api/v1/ontologies/${oid}/chat/sessions`))
+    } catch {
+      /* the menu simply keeps its previous rows */
+    }
+  }, [oid])
+  const loadSession = useCallback(
+    async (id: string) => {
+      const rows = await api.get<{ id: number; role: string; content: string; createdAt: string }[]>(
+        `/api/v1/ontologies/${oid}/chat/sessions/${id}/messages`,
+      )
+      setActive(id)
+      setMessages(fromHistory(rows))
+    },
+    [oid, setActive],
+  )
 
   const status = useQuery({
     queryKey: ['ai-status'],
@@ -56,24 +87,19 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
     enabled: open,
   })
 
-  // Open (re)load: the newest session's history, if any (Task 9 adds the
-  // localStorage pointer and the switch UI).
+  // Open (re)load: the pointed session if it still exists, else the newest,
+  // else empty (spec §5 — pointer wins over recency).
   useEffect(() => {
     if (!oid) return
     let alive = true
     ;(async () => {
       try {
-        const sessions = await api.get<
-          { id: string; title: string | null; updatedAt: string; messageCount: number }[]
-        >(`/api/v1/ontologies/${oid}/chat/sessions`)
-        if (!alive || sessions.length === 0) return
-        const latest = sessions[0]
-        const rows = await api.get<
-          { id: number; role: string; content: string; createdAt: string }[]
-        >(`/api/v1/ontologies/${oid}/chat/sessions/${latest.id}/messages`)
+        const list = await api.get<SessionItem[]>(`/api/v1/ontologies/${oid}/chat/sessions`)
         if (!alive) return
-        setSid(latest.id)
-        setMessages(fromHistory(rows))
+        setSessions(list)
+        const pointer = localStorage.getItem(pointerKey)
+        const target = list.find((s) => s.id === pointer) ?? list[0]
+        if (target) await loadSession(target.id)
       } catch {
         /* leave the drawer empty — sending will surface errors inline */
       }
@@ -81,7 +107,7 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
     return () => {
       alive = false
     }
-  }, [oid, open])
+  }, [oid, open, pointerKey, loadSession])
 
   // Keep the stream pinned to the bottom as deltas arrive.
   useEffect(() => {
@@ -103,7 +129,8 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
         { sessionId: sid ?? undefined, content },
         (event, data) => {
           if (event === 'session') {
-            setSid(String(data.sessionId))
+            setActive(String(data.sessionId))
+            void reloadSessions()
           } else if (event === 'delta') {
             setMessages((prev) => patchLast(prev, (m) => ({ ...m, content: m.content + String(data.text) })))
           } else if (event === 'tool_start') {
@@ -158,6 +185,27 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
 
   if (!open) return null
 
+  const activeSession = sessions.find((s) => s.id === sid) ?? null
+
+  // Session menu wiring — data ops live here, SessionMenu is presentational.
+  const handleSwitch = (s: SessionItem) => void loadSession(s.id)
+  const handleNew = () => {
+    setMessages([])
+    setActive(null)
+  }
+  const handleRename = async (s: SessionItem, title: string) => {
+    await api.put(`/api/v1/ontologies/${oid}/chat/sessions/${s.id}`, { title })
+    await reloadSessions()
+  }
+  const handleDelete = async (s: SessionItem) => {
+    await api.del(`/api/v1/ontologies/${oid}/chat/sessions/${s.id}`)
+    if (sid === s.id) {
+      setMessages([])
+      setActive(null)
+    }
+    await reloadSessions()
+  }
+
   const model = status.data?.model || t('chatPanel.modelFallback')
   return (
     <div className="border-line bg-panel flex h-full min-h-0 flex-col border-l">
@@ -188,6 +236,41 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
           className="text-ink-3 hover:text-ink hover:bg-panel-2 rounded-ctl p-1"
         >
           <SquareIcon aria-hidden="true" className="size-3.5" />
+        </button>
+      </div>
+
+      {/* session segment (mockup 会话管理): active title + history menu +
+       *  new-chat — the row lands on the first message of a fresh session. */}
+      <div className="border-line flex items-center gap-2 border-b px-3 py-1.5">
+        <span className="min-w-0 flex-1">
+          <b className="text-ink block truncate text-[12px] font-semibold">
+            {activeSession?.title ?? t('chatPanel.newChat')}
+          </b>
+          {activeSession && (
+            <small className="text-ink-3 block truncate text-[10px]">
+              {t('chatPanel.headerMeta', {
+                n: activeSession.messageCount,
+                time: timeAgoLabel(t, activeSession.updatedAt),
+              })}
+            </small>
+          )}
+        </span>
+        <SessionMenu
+          sessions={sessions}
+          activeId={sid}
+          onSwitch={handleSwitch}
+          onNew={handleNew}
+          onRename={handleRename}
+          onDelete={handleDelete}
+        />
+        <button
+          type="button"
+          aria-label={t('chatPanel.newChat')}
+          title={t('chatPanel.newChat')}
+          onClick={handleNew}
+          className="border-line text-ink-2 hover:bg-panel-2 hover:text-ink inline-flex items-center rounded-ctl border bg-transparent p-1"
+        >
+          <PlusIcon aria-hidden="true" className="size-3.5" />
         </button>
       </div>
 

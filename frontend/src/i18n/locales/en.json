@@ -564,6 +564,22 @@
     "usage": "{{model}} · in {{in}} / out {{out}} · {{sec}}s",
     "modelFallback": "no model",
     "expandTool": "Expand tool result",
-    "errorTitle": "Something went wrong"
+    "errorTitle": "Something went wrong",
+    "sessions": "Sessions",
+    "sessionsAria": "Session list",
+    "newChat": "New chat",
+    "untitled": "Untitled session",
+    "noSessions": "No sessions yet",
+    "justNow": "just now",
+    "minAgo": "{{n}} min ago",
+    "hourAgo": "{{n}} h ago",
+    "dayAgo": "{{n}} d ago",
+    "headerMeta": "{{n}} messages · {{time}}",
+    "rowMeta": "{{time}} · {{n}} msgs",
+    "rename": "Rename",
+    "renameOk": "Confirm",
+    "deleteTitle": "Delete session",
+    "deleteBody": "Delete “{{title}}” and all its messages? This cannot be undone.",
+    "deleteConfirm": "Delete"
   }
 }

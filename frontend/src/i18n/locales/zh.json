@@ -564,6 +564,22 @@
     "usage": "{{model}} · in {{in}} / out {{out}} · {{sec}}s",
     "modelFallback": "未命名模型",
     "expandTool": "展开工具结果",
-    "errorTitle": "出错了"
+    "errorTitle": "出错了",
+    "sessions": "会话",
+    "sessionsAria": "会话列表",
+    "newChat": "新对话",
+    "untitled": "未命名会话",
+    "noSessions": "暂无会话",
+    "justNow": "刚刚",
+    "minAgo": "{{n}} 分钟前",
+    "hourAgo": "{{n}} 小时前",
+    "dayAgo": "{{n}} 天前",
+    "headerMeta": "{{n}} 条消息 · {{time}}",
+    "rowMeta": "{{time}} · {{n}} 条",
+    "rename": "重命名",
+    "renameOk": "确认",
+    "deleteTitle": "删除会话",
+    "deleteBody": "会话「{{title}}」及其全部消息将被删除,无法恢复。",
+    "deleteConfirm": "确认删除"
   }
 }

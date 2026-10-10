@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -149,7 +149,7 @@ describe('AiChatDrawer', () => {
             id: 2,
             role: 'tool',
             content: JSON.stringify({ name: 'get_ontology', ok: true, result: '{"classCount":2}' }),
-            createdAt: '2026-10-09T01:00:01Z',
+            createdAt: '2026-10-09T01:00:02Z',
           },
           { id: 3, role: 'assistant', content: '旧回答。', createdAt: '2026-10-09T01:00:02Z' },
         ])
@@ -167,5 +167,155 @@ describe('AiChatDrawer', () => {
     const toolBtn = await screen.findByRole('button', { name: /get_ontology/ })
     await userEvent.click(toolBtn)
     expect(screen.getByText(/"classCount":2/)).toBeTruthy()
+  })
+})
+
+describe('AiChatDrawer session menu', () => {
+  const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString()
+  const SESSIONS = [
+    { id: 'sid-a', title: '介绍一下这个本体', updatedAt: ago(2), messageCount: 3 },
+    { id: 'sid-b', title: 'Publication 和 Course 的关系', updatedAt: ago(26 * 60), messageCount: 7 },
+  ]
+  const ROWS_A = [
+    { id: 1, role: 'user', content: '问题A', createdAt: ago(2) },
+    { id: 2, role: 'assistant', content: '回答A。', createdAt: ago(2) },
+  ]
+  const ROWS_B = [
+    { id: 3, role: 'user', content: '问题B', createdAt: ago(26 * 60) },
+    { id: 4, role: 'assistant', content: '回答B。', createdAt: ago(26 * 60) },
+  ]
+
+  /** Sessions-capable stub: list + per-session messages + SSE on POST. */
+  function stub(overrides?: {
+    sessions?: typeof SESSIONS | null
+    onMessages?: (sid: string) => typeof ROWS_A | typeof ROWS_B
+  }) {
+    return vi.fn(async (url: string, init?: RequestInit) => {
+      const u = String(url)
+      if (u.includes('/ai/status')) return ok({ configured: true, provider: 'openai', model: 'm', source: 'env' })
+      if (init?.method === 'POST' && u.includes('/chat/messages')) return sseResponse(HAPPY)
+      const m = u.match(/\/chat\/sessions\/([^/]+)\/messages$/)
+      if (m) return ok((overrides?.onMessages?.(m[1]) ?? (m[1] === 'sid-b' ? ROWS_B : ROWS_A)) as unknown)
+      if (u.includes('/chat/sessions')) return ok(overrides?.sessions === null ? [] : (overrides?.sessions ?? SESSIONS))
+      return ok(null)
+    })
+  }
+  const openMenu = async () => {
+    await userEvent.click(screen.getByRole('button', { name: '会话列表' }))
+    await screen.findByText('会话')
+  }
+
+  it('shows the active session in the header segment', async () => {
+    await openDrawer(stub())
+    expect(await screen.findByText('问题A')).toBeTruthy()
+    // header segment: active title + message count + relative time
+    expect(screen.getByText('介绍一下这个本体')).toBeTruthy()
+    expect(screen.getByText(/3 条消息/)).toBeTruthy()
+    expect(screen.getByText(/2 分钟前/)).toBeTruthy()
+  })
+
+  it('lists sessions with relative times in the history menu', async () => {
+    await openDrawer(stub())
+    expect(await screen.findByText('问题A')).toBeTruthy()
+    await openMenu()
+    expect(screen.getByText('Publication 和 Course 的关系')).toBeTruthy()
+    expect(screen.getByText(/2 分钟前 · 3 条/)).toBeTruthy()
+    expect(screen.getByText(/1 天前 · 7 条/)).toBeTruthy()
+  })
+
+  it('switches sessions from the menu row', async () => {
+    const fetchMock = stub()
+    await openDrawer(fetchMock)
+    expect(await screen.findByText('问题A')).toBeTruthy()
+    await openMenu()
+    await userEvent.click(screen.getByText('Publication 和 Course 的关系'))
+    expect(await screen.findByText('问题B')).toBeTruthy()
+    expect(screen.getByText('回答B。')).toBeTruthy()
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).includes('/chat/sessions/sid-b/messages'))).toBe(true)
+    // pointer follows the switch
+    expect(localStorage.getItem('ow.chat.session.oid-1')).toBe('sid-b')
+  })
+
+  it('opens the pointed session, not the newest', async () => {
+    localStorage.setItem('ow.chat.session.oid-1', 'sid-b')
+    await openDrawer(stub())
+    expect(await screen.findByText('回答B。')).toBeTruthy()
+    expect(screen.queryByText('回答A。')).toBeNull()
+  })
+
+  it('新对话 empties the view and the next send omits sessionId', async () => {
+    const fetchMock = stub()
+    await openDrawer(fetchMock)
+    expect(await screen.findByText('问题A')).toBeTruthy()
+    expect(localStorage.getItem('ow.chat.session.oid-1')).toBe('sid-a')
+    await openMenu()
+    await userEvent.click(screen.getByRole('button', { name: '新对话' }))
+    expect(await screen.findByText('问点什么开始对话——只读助手可以搜实体、查结构、跑检查')).toBeTruthy()
+    expect(localStorage.getItem('ow.chat.session.oid-1')).toBeNull()
+
+    await userEvent.type(screen.getByPlaceholderText('问点什么,如:哪些类没有实例?'), '新问题{Enter}')
+    await screen.findByText('这个本体有两个核心类。')
+    const sent = fetchMock.mock.calls.find(
+      (c) => String(c[0]).includes('/chat/messages') && (c[1] as RequestInit | undefined)?.method === 'POST',
+    )
+    expect(JSON.parse(String((sent?.[1] as RequestInit).body))).not.toHaveProperty('sessionId')
+  })
+
+  it('stores the session pointer when the stream opens a session', async () => {
+    const fetchMock = stub({ sessions: [] })
+    await openDrawer(fetchMock)
+    await userEvent.type(screen.getByPlaceholderText('问点什么,如:哪些类没有实例?'), '介绍一下{Enter}')
+    await screen.findByText('这个本体有两个核心类。')
+    expect(localStorage.getItem('ow.chat.session.oid-1')).toBe('sid-1')
+  })
+
+  it('renames via inline input (PUT {title}) and refreshes the list', async () => {
+    const fetchMock = stub()
+    await openDrawer(fetchMock)
+    expect(await screen.findByText('问题A')).toBeTruthy()
+    await openMenu()
+    const rows = screen.getAllByText('介绍一下这个本体') // header + menu row
+    expect(rows.length).toBe(2)
+    await userEvent.click(screen.getAllByRole('button', { name: '重命名' })[0]!) // first row (sid-a)
+    const input = screen.getByDisplayValue('介绍一下这个本体')
+    await userEvent.clear(input)
+    await userEvent.type(input, '新标题')
+    await userEvent.click(screen.getByRole('button', { name: '确认' }))
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u, i]) => String(u).includes('/chat/sessions/sid-a') && i?.method === 'PUT')).toBe(true),
+    )
+    const put = fetchMock.mock.calls.find(([u, i]) => String(u).includes('/chat/sessions/sid-a') && i?.method === 'PUT')!
+    expect(JSON.parse(String(put[1]!.body))).toEqual({ title: '新标题' })
+  })
+
+  it('deletes a session after AlertDialog confirm and refreshes the list', async () => {
+    const fetchMock = stub()
+    await openDrawer(fetchMock)
+    expect(await screen.findByText('问题A')).toBeTruthy()
+    await openMenu()
+    await userEvent.click(screen.getAllByRole('button', { name: '删除' })[1]!) // second row
+    expect(await screen.findByText('删除会话')).toBeTruthy()
+    await userEvent.click(screen.getByRole('button', { name: '确认删除' }))
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u, i]) => String(u).includes('/chat/sessions/sid-b') && i?.method === 'DELETE')).toBe(true),
+    )
+    // list re-fetched after the delete
+    const listCalls = fetchMock.mock.calls.filter(([u, i]) => String(u).endsWith('/chat/sessions') && !i?.method)
+    expect(listCalls.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('deleting the active session empties the drawer and clears the pointer', async () => {
+    const fetchMock = stub()
+    await openDrawer(fetchMock)
+    expect(await screen.findByText('问题A')).toBeTruthy()
+    expect(localStorage.getItem('ow.chat.session.oid-1')).toBe('sid-a')
+    await openMenu()
+    await userEvent.click(screen.getAllByRole('button', { name: '删除' })[0]!) // active row
+    await userEvent.click(await screen.findByRole('button', { name: '确认删除' }))
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([u, i]) => String(u).includes('/chat/sessions/sid-a') && i?.method === 'DELETE')).toBe(true),
+    )
+    expect(await screen.findByText('问点什么开始对话——只读助手可以搜实体、查结构、跑检查')).toBeTruthy()
+    expect(localStorage.getItem('ow.chat.session.oid-1')).toBeNull()
   })
 })
