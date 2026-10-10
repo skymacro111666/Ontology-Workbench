@@ -331,7 +331,7 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
               </div>
             ))}
             {m.role === 'user' ? (
-              <div className="bg-primary text-primary-fg max-w-[92%] self-end rounded-[10px] rounded-br-sm px-3 py-2 text-[12.5px]">
+              <div className="bg-primary text-primary-foreground max-w-[92%] self-end rounded-[10px] rounded-br-sm px-3 py-2 text-[12.5px]">
                 {m.content}
               </div>
             ) : (
@@ -410,7 +410,7 @@ AI_MODEL=deepseek-chat</pre>
               onClick={() => void send()}
               aria-label={t('chatPanel.send')}
               disabled={!input.trim()}
-              className="bg-primary text-primary-fg disabled:opacity-40 shrink-0 rounded-ctl px-2.5 py-1.5"
+              className="bg-primary text-primary-foreground disabled:opacity-40 shrink-0 rounded-ctl px-2.5 py-1.5"
               title={t('chatPanel.send')}
             >
               <SendIcon aria-hidden="true" className="size-3.5" />
