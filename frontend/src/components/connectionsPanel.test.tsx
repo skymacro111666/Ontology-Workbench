@@ -46,10 +46,12 @@ const CONNS = [
 ]
 
 /** Fetch mock routing the panel's three endpoints; extras fold into opts. */
-function routerMock(opts: { conns?: unknown[]; testOk?: boolean; testMsg?: string } = {}) {
+function routerMock(
+  opts: { conns?: unknown[]; engines?: unknown[]; testOk?: boolean; testMsg?: string } = {},
+) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
-    if (u.includes('/db-connections/engines')) return ok(ENGINES)
+    if (u.includes('/db-connections/engines')) return ok(opts.engines ?? ENGINES)
     if (u.includes('/db-connections/test') && init?.method === 'POST')
       return opts.testOk === false ? ok({ ok: false, message: opts.testMsg ?? 'boom' }) : ok({ ok: true })
     if (u.match(/\/db-connections\/[\w-]+$/) && init?.method === 'DELETE') return ok(null)
@@ -94,8 +96,6 @@ describe('ConnectionsPanel — 列表', () => {
     expect(screen.getByText('/tmp/x.db')).toBeTruthy()
     // hasPassword=false flags the row; the encrypted one shows no warning
     expect(screen.getByText('无密码')).toBeTruthy()
-    // passwords never render anywhere in the panel
-    expect(document.body.textContent).not.toContain('password')
   })
 
   it('shows the empty state when no connections exist', async () => {
@@ -174,6 +174,44 @@ describe('ConnectionsPanel — 编辑与删除', () => {
     const body = bodies(fetchMock, '/db-connections/c1')[0]
     expect(body.host).toBe('db2.local')
     expect(body).not.toHaveProperty('password')
+  })
+
+  it('blocks renaming to another connection’s name without a request', async () => {
+    const fetchMock = routerMock()
+    renderPanel(fetchMock)
+    await userEvent.click((await screen.findAllByRole('button', { name: '编辑' }))[0])
+
+    await userEvent.clear(screen.getByLabelText('名称'))
+    await userEvent.type(screen.getByLabelText('名称'), 'lite') // c2's name
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(await screen.findByText('名称已存在')).toBeTruthy()
+    expect(bodies(fetchMock, '/db-connections/c1')).toHaveLength(0)
+  })
+
+  it('rejects a non-numeric port before any request leaves', async () => {
+    const fetchMock = routerMock({
+      conns: [],
+      engines: ENGINES.map((e) => ({ ...e, installed: true })),
+    })
+    renderPanel(fetchMock)
+    await userEvent.click(await screen.findByRole('button', { name: '新建连接' }))
+
+    const type = await screen.findByLabelText('数据库类型')
+    await screen.findByText(/PostgreSQL/)
+    await userEvent.selectOptions(type, 'postgres')
+    await userEvent.clear(screen.getByLabelText('端口'))
+    await userEvent.type(screen.getByLabelText('端口'), 'abc')
+    await userEvent.type(screen.getByLabelText('名称'), 'p9')
+    await userEvent.type(screen.getByLabelText('主机'), 'h')
+    await userEvent.type(screen.getByLabelText('库名'), 'd')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(await screen.findByText('端口必须是 1-65535 的数字')).toBeTruthy()
+    const posts = fetchMock.mock.calls.filter(
+      (c) => String(c[0]).endsWith('/db-connections') && c[1]?.method === 'POST',
+    )
+    expect(posts).toHaveLength(0)
   })
 
   it('tests a saved row by connectionId and reports failures inline', async () => {

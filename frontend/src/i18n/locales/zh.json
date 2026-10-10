@@ -232,7 +232,6 @@
     "savedConnections": "已保存连接",
     "newConnection": "+ 新建连接",
     "manageConnections": "管理连接…",
-    "connectionName": "连接名称",
     "dbType": "数据库类型",
     "host": "主机",
     "port": "端口",
@@ -240,7 +239,6 @@
     "username": "用户名",
     "password": "密码",
     "path": "路径",
-    "saveConnection": "保存此连接",
     "readSchema": "读取表结构",
     "reading": "正在读取表结构…",
     "searchTables": "搜索表名 / 注释…",
@@ -610,6 +608,8 @@
     "noPassword": "无密码",
     "empty": "还没有已存连接",
     "savedToast": "连接已保存",
-    "deletedToast": "连接已删除"
+    "deletedToast": "连接已删除",
+    "duplicateName": "名称已存在",
+    "portInvalid": "端口必须是 1-65535 的数字"
   }
 }

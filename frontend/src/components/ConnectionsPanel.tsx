@@ -27,8 +27,9 @@ import {
 
 const fieldCls = 'text-sm'
 
-/** host:port/database for network engines; the bare path for sqlite. */
-function targetOf(c: DbConnectionSummary): string {
+/** host:port/database for network engines; the bare path for sqlite.
+ *  Shared with the draft wizard's picked-connection summary line. */
+export function targetOf(c: DbConnectionSummary): string {
   if (c.dbType === 'sqlite') return c.database
   const host = c.host ?? ''
   const port = c.port ? `:${c.port}` : ''
@@ -131,6 +132,25 @@ export default function ConnectionsPanel() {
   const switchType = (dbType: string) => {
     const port = engines.data?.find((e) => e.dbType === dbType)?.defaultPort
     setForm((f) => ({ ...f, dbType, port: port ? String(port) : '' }))
+  }
+
+  /** Client-side gates before the request: a bad port or a duplicate name
+   *  (the backend 422s both on create) fails inline in the dialog. */
+  const submit = () => {
+    if (!isSqlite && form.port) {
+      const n = Number(form.port)
+      if (!/^\d+$/.test(form.port) || n < 1 || n > 65535) {
+        setFormErr(t('conn.portInvalid'))
+        return
+      }
+    }
+    const name = form.name.trim()
+    if (connections.data?.some((c) => c.name === name && c.id !== editing?.id)) {
+      setFormErr(t('conn.duplicateName'))
+      return
+    }
+    setFormErr(null)
+    save.mutate()
   }
 
   const save = useMutation({
@@ -319,7 +339,11 @@ export default function ConnectionsPanel() {
               </div>
             </div>
 
-            {isSqlite ? (
+            {/* Engines still loading: effectiveType is '' → the network form
+                would flash before flipping to the sqlite path field. */}
+            {engines.isLoading ? (
+              <p className="text-ink-3 text-xs">{t('common.loading')}</p>
+            ) : isSqlite ? (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="conn-path">{t('conn.path')}</Label>
                 <Input
@@ -407,7 +431,7 @@ export default function ConnectionsPanel() {
               {t('common.cancel')}
             </Button>
             <Button
-              onClick={() => save.mutate()}
+              onClick={submit}
               disabled={save.isPending || !form.name.trim() || !form.database}
             >
               {t('common.save')}

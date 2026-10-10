@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
 import { errText } from '../i18n/errText'
 import { LAST_OID_KEY } from '../auth/AuthContext'
+import { targetOf } from './ConnectionsPanel'
 import type { AiStatus, DbConnectionSummary, DbEngine, DraftJob, DraftResult, SchemaModel } from '../api/types'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -283,9 +284,7 @@ export default function DraftFromDbDialog() {
 
             {picked && (
               <p className="text-ink-3 border-line bg-panel-2 rounded-ctl border px-2 py-1.5 font-mono text-xs">
-                {picked.dbType === 'sqlite'
-                  ? picked.database
-                  : `${picked.host ?? ''}${picked.port ? `:${picked.port}` : ''}/${picked.database}`}
+                {targetOf(picked)}
               </p>
             )}
 
@@ -321,7 +320,11 @@ export default function DraftFromDbDialog() {
                   </select>
                 </div>
 
-                {isSqlite ? (
+                {/* Engines still loading: effectiveType is '' → the network
+                    form would flash before flipping to the sqlite path. */}
+                {engines.isLoading ? (
+                  <p className="text-ink-3 text-xs">{t('common.loading')}</p>
+                ) : isSqlite ? (
                   <div className="grid grid-cols-[7rem_1fr] items-center gap-2">
                     <span className={labelCls}>{t('draftDialog.path')}</span>
                     <Input

@@ -232,7 +232,6 @@
     "savedConnections": "Saved connections",
     "newConnection": "+ New connection",
     "manageConnections": "Manage connections…",
-    "connectionName": "Connection name",
     "dbType": "Database type",
     "host": "Host",
     "port": "Port",
@@ -240,7 +239,6 @@
     "username": "Username",
     "password": "Password",
     "path": "Path",
-    "saveConnection": "Save this connection",
     "readSchema": "Read schema",
     "reading": "Reading schema…",
     "searchTables": "Search tables / comments…",
@@ -610,6 +608,8 @@
     "noPassword": "No password",
     "empty": "No saved connections yet",
     "savedToast": "Connection saved",
-    "deletedToast": "Connection deleted"
+    "deletedToast": "Connection deleted",
+    "duplicateName": "Name already exists",
+    "portInvalid": "Port must be a number between 1 and 65535"
   }
 }
