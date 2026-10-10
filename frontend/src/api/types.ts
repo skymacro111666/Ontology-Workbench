@@ -335,6 +335,23 @@ export interface AiStatus {
   source: 'env' | 'db'
 }
 
+/** GET /chat/sessions row: one chat session, newest activity first. */
+export interface ChatSessionSummary {
+  id: string
+  title: string | null
+  updatedAt: string
+  messageCount: number
+}
+
+/** GET /chat/sessions/{sid}/messages row: user/assistant text or a tool
+ *  record (role 'tool', content is the JSON {"name","ok","result"}). */
+export interface ChatMessageRow {
+  id: number
+  role: string
+  content: string
+  createdAt: string
+}
+
 /** Saved DB connection profile (GET /db-connections); no password material. */
 export interface DbConnectionSummary {
   id: string

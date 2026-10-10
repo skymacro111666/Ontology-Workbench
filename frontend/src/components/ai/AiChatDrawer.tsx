@@ -3,9 +3,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { ApiErr, api, streamSSE } from '../../api/client'
-import type { AiStatus } from '../../api/types'
+import type { AiStatus, ChatMessageRow, ChatSessionSummary } from '../../api/types'
 import { useUiStore } from '../../stores/uiStore'
-import SessionMenu, { timeAgoLabel, type SessionItem } from './SessionMenu'
+import SessionMenu, { timeAgoLabel } from './SessionMenu'
 import { cn } from '@/lib/utils'
 
 /** One collapsible tool row (mockup .tool): live rows carry the args JSON,
@@ -48,7 +48,7 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
   const [streaming, setStreaming] = useState(false)
   const [unconfigured, setUnconfigured] = useState(false)
   const [sid, setSid] = useState<string | null>(null)
-  const [sessions, setSessions] = useState<SessionItem[]>([])
+  const [sessions, setSessions] = useState<ChatSessionSummary[]>([])
   const abortRef = useRef<AbortController | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
 
@@ -65,14 +65,14 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
   )
   const reloadSessions = useCallback(async () => {
     try {
-      setSessions(await api.get<SessionItem[]>(`/api/v1/ontologies/${oid}/chat/sessions`))
+      setSessions(await api.get<ChatSessionSummary[]>(`/api/v1/ontologies/${oid}/chat/sessions`))
     } catch {
       /* the menu simply keeps its previous rows */
     }
   }, [oid])
   const loadSession = useCallback(
     async (id: string) => {
-      const rows = await api.get<{ id: number; role: string; content: string; createdAt: string }[]>(
+      const rows = await api.get<ChatMessageRow[]>(
         `/api/v1/ontologies/${oid}/chat/sessions/${id}/messages`,
       )
       setActive(id)
@@ -94,7 +94,7 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
     let alive = true
     ;(async () => {
       try {
-        const list = await api.get<SessionItem[]>(`/api/v1/ontologies/${oid}/chat/sessions`)
+        const list = await api.get<ChatSessionSummary[]>(`/api/v1/ontologies/${oid}/chat/sessions`)
         if (!alive) return
         setSessions(list)
         const pointer = localStorage.getItem(pointerKey)
@@ -188,16 +188,16 @@ export default function AiChatDrawer({ oid }: { oid: string }) {
   const activeSession = sessions.find((s) => s.id === sid) ?? null
 
   // Session menu wiring — data ops live here, SessionMenu is presentational.
-  const handleSwitch = (s: SessionItem) => void loadSession(s.id)
+  const handleSwitch = (s: ChatSessionSummary) => void loadSession(s.id)
   const handleNew = () => {
     setMessages([])
     setActive(null)
   }
-  const handleRename = async (s: SessionItem, title: string) => {
+  const handleRename = async (s: ChatSessionSummary, title: string) => {
     await api.put(`/api/v1/ontologies/${oid}/chat/sessions/${s.id}`, { title })
     await reloadSessions()
   }
-  const handleDelete = async (s: SessionItem) => {
+  const handleDelete = async (s: ChatSessionSummary) => {
     await api.del(`/api/v1/ontologies/${oid}/chat/sessions/${s.id}`)
     if (sid === s.id) {
       setMessages([])
@@ -428,7 +428,7 @@ function patchLast(prev: ChatMsg[], fn: (m: ChatMsg) => ChatMsg): ChatMsg[] {
 
 /** History rows → ChatMsg[]: stored tool rows re-render collapsed with their
  *  persisted result JSON; they attach to the assistant turn that follows. */
-function fromHistory(rows: { id: number; role: string; content: string; createdAt: string }[]): ChatMsg[] {
+function fromHistory(rows: ChatMessageRow[]): ChatMsg[] {
   const out: ChatMsg[] = []
   let pending: ToolRow[] = []
   for (const r of rows) {

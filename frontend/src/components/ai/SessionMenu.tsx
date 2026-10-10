@@ -18,14 +18,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-
-/** One row of GET /chat/sessions (Task 2 shapes). */
-export interface SessionItem {
-  id: string
-  title: string | null
-  updatedAt: string
-  messageCount: number
-}
+import type { ChatSessionSummary } from '../../api/types'
 
 type T = (key: string, opts?: Record<string, unknown>) => string
 
@@ -50,21 +43,21 @@ export default function SessionMenu({
   onRename,
   onDelete,
 }: {
-  sessions: SessionItem[]
+  sessions: ChatSessionSummary[]
   activeId: string | null
-  onSwitch: (s: SessionItem) => void
+  onSwitch: (s: ChatSessionSummary) => void
   onNew: () => void
-  onRename: (s: SessionItem, title: string) => Promise<void>
-  onDelete: (s: SessionItem) => Promise<void>
+  onRename: (s: ChatSessionSummary, title: string) => Promise<void>
+  onDelete: (s: ChatSessionSummary) => Promise<void>
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const [renaming, setRenaming] = useState<SessionItem | null>(null)
+  const [renaming, setRenaming] = useState<ChatSessionSummary | null>(null)
   const [draft, setDraft] = useState('')
-  const [confirming, setConfirming] = useState<SessionItem | null>(null)
+  const [confirming, setConfirming] = useState<ChatSessionSummary | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const startRename = (s: SessionItem) => {
+  const startRename = (s: ChatSessionSummary) => {
     setRenaming(s)
     setDraft(s.title ?? '')
   }
