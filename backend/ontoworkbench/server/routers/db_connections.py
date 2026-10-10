@@ -156,7 +156,9 @@ def create_connection(
         port=body.port,
         database_name=body.database,
         username=body.username,
-        password_cipher=encrypt_str(_fernet(request), body.password or ""),
+        # Empty cipher (not an encrypted "") keeps hasPassword honest —
+        # decrypt sites treat falsy as "no password".
+        password_cipher=encrypt_str(_fernet(request), body.password) if body.password else "",
     )
     session.commit()
     _audit.info(
@@ -178,6 +180,11 @@ def update_connection(
     row = repo.get_owned(user.id, connection_id)
     if row is None:
         raise ApiError(ErrorCode.NOT_FOUND, "No such connection")
+    if body.name is not None and body.name != row.name:
+        # The (user_id, name) unique constraint would otherwise surface as
+        # a 500 IntegrityError; answer 422 before touching the row.
+        if any(r.name == body.name for r in repo.list_by_user(user.id)):
+            raise ApiError(ErrorCode.VALIDATION_ERROR, "connection name already exists")
     fields: dict = {}
     if body.name is not None:
         fields["name"] = body.name

@@ -56,6 +56,35 @@ def test_put_omitted_password_keeps_cipher(client: TestClient) -> None:
         assert row.host == "h2" and row.password_cipher != "plain-pw"
 
 
+def test_create_without_password_stores_empty_cipher(client: TestClient) -> None:
+    """A passwordless profile stores an empty cipher so hasPassword is false.
+
+    Encrypting "" would make the flag lie for sqlite/trust-auth profiles.
+    """
+    body = dict(CONN_BODY, name="nopw", password=None)
+    created = client.post("/api/v1/db-connections", json=body).json()["data"]
+    assert created["hasPassword"] is False
+    with sessionmaker_or_fail()() as s:
+        row = s.scalars(select(DbConnection).where(DbConnection.name == "nopw")).one()
+        assert row.password_cipher == ""
+
+
+def test_put_rename_to_existing_name_422(client: TestClient) -> None:
+    """Renaming to another profile's name is rejected; own name passes."""
+    client.post("/api/v1/db-connections", json=CONN_BODY)
+    other = client.post("/api/v1/db-connections", json=dict(CONN_BODY, name="second")).json()[
+        "data"
+    ]
+    assert (
+        client.put(f"/api/v1/db-connections/{other['id']}", json={"name": "pg1"}).status_code == 422
+    )
+    # keeping one's own name is not a duplicate
+    assert (
+        client.put(f"/api/v1/db-connections/{other['id']}", json={"name": "second"}).status_code
+        == 200
+    )
+
+
 def test_delete_owned(client: TestClient) -> None:
     """Delete removes the row; a second delete 404s."""
     cid = client.post("/api/v1/db-connections", json=CONN_BODY).json()["data"]["id"]
