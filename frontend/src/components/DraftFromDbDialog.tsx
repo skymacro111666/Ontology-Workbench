@@ -194,7 +194,7 @@ export default function DraftFromDbDialog() {
           return
         }
         setProgress({ batch: job.batch, batchCount: job.batchCount })
-        await new Promise((r) => setTimeout(r, 300))
+        await new Promise((r) => setTimeout(r, 2000))
       }
     } catch (e) {
       setError(e instanceof ApiErr ? errText(e, t) : t('shell.loadFailed'))
