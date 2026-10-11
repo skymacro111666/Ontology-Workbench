@@ -460,7 +460,7 @@ export interface DraftResult {
 
 /** Polled generate job (GET /drafting/jobs/{id}). */
 export interface DraftJob {
-  status: 'running' | 'done' | 'failed'
+  status: 'running' | 'done' | 'failed' | 'cancelled'
   batch: number
   batchCount: number
   result?: DraftResult

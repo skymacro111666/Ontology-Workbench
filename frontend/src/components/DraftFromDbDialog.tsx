@@ -55,6 +55,11 @@ export default function DraftFromDbDialog() {
   const [labelLang, setLabelLang] = useState<'' | 'zh' | 'en'>('')
   const [progress, setProgress] = useState<{ batch: number; batchCount: number } | null>(null)
   const [result, setResult] = useState<DraftResult | null>(null)
+  // Generate-job tracking: activeJob names the running job (drives the 放弃
+  // button); cancelling marks the abandon POST as armed until the poll loop
+  // sees status=cancelled (the in-flight batch still finishes server-side).
+  const [activeJob, setActiveJob] = useState<string | null>(null)
+  const [cancelling, setCancelling] = useState(false)
   // Step 3: checked items per group — the kept sets the import body carries.
   const [kept, setKept] = useState<Set<string>>(new Set())
   const [keptObj, setKeptObj] = useState<Set<string>>(new Set())
@@ -72,6 +77,11 @@ export default function DraftFromDbDialog() {
   if (open !== prevOpen) {
     setPrevOpen(open)
     pollGen.current += 1
+    if (!open && activeJob) {
+      // Nobody will collect this result: flag the job so the server stops
+      // burning LLM batches after the in-flight one lands. Best-effort.
+      void api.post(`/api/v1/ontologies/drafting/jobs/${activeJob}/cancel`).catch(() => {})
+    }
     if (open) {
       setStep(1)
       setPickedId('')
@@ -90,6 +100,8 @@ export default function DraftFromDbDialog() {
       setLabelLang('')
       setProgress(null)
       setResult(null)
+      setActiveJob(null)
+      setCancelling(false)
       setKept(new Set())
       setKeptObj(new Set())
       setKeptData(new Set())
@@ -156,6 +168,7 @@ export default function DraftFromDbDialog() {
     // This attempt owns the poll loop: closing/reopening the dialog or
     // starting another generate bumps the counter and orphans this loop.
     const token = (pollGen.current += 1)
+    let myJob: string | null = null
     try {
       const lang =
         labelLang || (i18n.resolvedLanguage?.startsWith('zh') ? 'zh' : 'en')
@@ -168,8 +181,10 @@ export default function DraftFromDbDialog() {
         '/api/v1/ontologies/drafting/generate',
         { schema: subset, namespace, labelLanguage: lang },
       )
-      // Poll until done/failed; a stale token (closed/reopened/superseded)
-      // aborts so an old result never lands in a fresh session.
+      myJob = jobId
+      setActiveJob(jobId)
+      // Poll until done/failed/cancelled; a stale token (closed/reopened/
+      // superseded) aborts so an old result never lands in a fresh session.
       for (;;) {
         if (pollGen.current !== token) return
         const job = await api.get<DraftJob>(`/api/v1/ontologies/drafting/jobs/${jobId}`)
@@ -193,6 +208,13 @@ export default function DraftFromDbDialog() {
           )
           return
         }
+        if (job.status === 'cancelled') {
+          // The abandon took effect: drop back to the editable step quietly —
+          // cancelling is intent, not an error.
+          setProgress(null)
+          toast.info(t('draftDialog.cancelledToast'))
+          return
+        }
         setProgress({ batch: job.batch, batchCount: job.batchCount })
         await new Promise((r) => setTimeout(r, 2000))
       }
@@ -200,6 +222,21 @@ export default function DraftFromDbDialog() {
       setError(e instanceof ApiErr ? errText(e, t) : t('shell.loadFailed'))
     } finally {
       setBusy(false)
+      setCancelling(false)
+      // Same-id guard: a superseding run may already own a new job id.
+      setActiveJob((cur) => (cur === myJob ? null : cur))
+    }
+  }
+
+  const abandon = async () => {
+    if (!activeJob || cancelling) return
+    setCancelling(true)
+    try {
+      // Advisory flag: the in-flight batch still finishes; later batches are
+      // skipped and the poll loop settles on status=cancelled.
+      await api.post(`/api/v1/ontologies/drafting/jobs/${activeJob}/cancel`)
+    } catch {
+      setCancelling(false) // best-effort: let the user retry the abandon
     }
   }
 
@@ -646,9 +683,22 @@ export default function DraftFromDbDialog() {
               {t('draftDialog.selectedCount', { n: selected.size, max: 500 })}
             </span>
           )}
-          <Button variant="outline" onClick={() => setDraftOpen(false)} disabled={busy}>
-            {t('common.cancel')}
-          </Button>
+          {/* While a generate job runs, 取消 turns into 放弃: it flags the
+              batch loop server-side instead of just closing the dialog. */}
+          {(() => {
+            const generating = busy && activeJob !== null
+            return (
+              <Button
+                variant="outline"
+                onClick={() => (generating ? void abandon() : setDraftOpen(false))}
+                disabled={busy && (!generating || cancelling)}
+              >
+                {generating
+                  ? (cancelling ? t('draftDialog.abandoning') : t('draftDialog.abandon'))
+                  : t('common.cancel')}
+              </Button>
+            )
+          })()}
           {step === 1 && (
             <Button onClick={() => void readSchema()} disabled={busy || (!picked && !database)}>
               {busy ? <Loader2Icon aria-hidden="true" className="animate-spin" /> : <RefreshCwIcon aria-hidden="true" />}

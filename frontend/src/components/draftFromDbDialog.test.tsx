@@ -2,6 +2,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { MemoryRouter, useLocation } from 'react-router'
+import { toast } from 'sonner'
 import { api } from '../api/client'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import DraftFromDbDialog from './DraftFromDbDialog'
@@ -254,6 +255,35 @@ async function atStep2() {
   await screen.findByText('customer')
 }
 
+/** Step-2 router with a cancellable job: the job stays running until the
+ *  cancel POST lands, then reports status=cancelled on the next poll. */
+function cancelRouter() {
+  const cancels: string[] = []
+  let cancelAsked = false
+  const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    const u = String(url)
+    if (u.includes('/db-connections/engines')) return ok(ENGINES)
+    if (u.includes('/db-connections')) return ok([])
+    if (u.includes('/ai/status')) return ok({ configured: true, provider: 'openai', model: 'm', source: 'env' })
+    if (u.includes('/drafting/schema')) return ok({ schema: SCHEMA2, tableCount: 2 })
+    if (u.includes('/drafting/generate')) return ok({ jobId: 'job-x' })
+    if (u.includes('/cancel') && init?.method === 'POST') {
+      cancels.push(u)
+      cancelAsked = true
+      return ok({ jobId: 'job-x', status: 'cancelled' })
+    }
+    if (u.includes('/drafting/jobs/')) {
+      return ok(
+        cancelAsked
+          ? { status: 'cancelled', batch: 1, batchCount: 2 }
+          : { status: 'running', batch: 1, batchCount: 2 },
+      )
+    }
+    return ok(null)
+  })
+  return { fetchMock, cancels }
+}
+
 describe('DraftFromDbDialog — step 2 选表与生成', () => {
   it('renders the table list with comments, counts, search and 已选 counter', async () => {
     const { fetchMock } = step2Router()
@@ -326,6 +356,54 @@ describe('DraftFromDbDialog — step 2 选表与生成', () => {
       namespace: 'https://local/shop#',
       labelLanguage: 'zh',
     })
+  })
+
+  it('放弃 during generate cancels the job and settles back to an idle step 2', async () => {
+    const toastInfo = vi.spyOn(toast, 'info')
+    const { fetchMock, cancels } = cancelRouter()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep2()
+
+    await userEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+    expect(await screen.findByText('正在生成草稿… 第 1/2 批')).toBeTruthy()
+
+    // mid-generate the footer button becomes 放弃 and stays clickable
+    const abandon = (await screen.findByRole('button', {
+      name: '放弃',
+    })) as HTMLButtonElement
+    expect(abandon.disabled).toBe(false)
+    await userEvent.click(abandon)
+    expect(await screen.findByText('正在放弃…')).toBeTruthy()
+
+    // the cancel endpoint got the job id; the poll loop settles on cancelled
+    await waitFor(() => expect(cancels).toEqual(['/api/v1/ontologies/drafting/jobs/job-x/cancel']))
+    await waitFor(
+      () =>
+        expect((screen.getByRole('button', { name: '生成草稿' }) as HTMLButtonElement).disabled).toBe(
+          false,
+        ),
+      { timeout: 4000 },
+    )
+
+    // back to an idle step 2: batch line gone, step header intact, toast confirms
+    expect(screen.queryByText(/正在生成草稿/)).toBeNull()
+    expect(screen.getByText('选表与选项', { selector: '[data-step-name]' })).toBeTruthy()
+    expect(toastInfo).toHaveBeenCalledWith('已放弃本次生成')
+  })
+
+  it('closing the dialog mid-generate fires a best-effort cancel for the running job', async () => {
+    const { fetchMock, cancels } = cancelRouter()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep2()
+
+    await userEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+    await screen.findByText('正在生成草稿… 第 1/2 批')
+    act(() => {
+      useUiStore.getState().setDraftOpen(false)
+    })
+
+    // the wizard never collects the result, so the job must not keep burning
+    await waitFor(() => expect(cancels).toEqual(['/api/v1/ontologies/drafting/jobs/job-x/cancel']))
   })
 })
 
