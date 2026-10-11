@@ -21,6 +21,16 @@ CASES = [
     ("(1049, \"Unknown database 'app'\")", "DB_NOT_FOUND"),
     # sqlite: unopenable path (missing dir, no permission)
     ("unable to open database file", "PATH_NOT_FOUND"),
+    # clickhouse: DB::Exception codes surface verbatim through the HTTP driver
+    ("Code: 210. DB::NetException: Connection refused (localhost:8123)", "REFUSED"),
+    ("Code: 32. DB::Exception: Timeout: Connection timed out", "TIMEOUT"),
+    ("Code: 516. DB::Exception: u: Authentication failed: password is incorrect", "AUTH_FAILED"),
+    ("Code: 81. DB::Exception: Database db1 does not exist", "DB_NOT_FOUND"),
+    # duckdb: unopenable path (missing dir)
+    (
+        'IO Error: Cannot open file "/nonexistent-dir/x.duckdb": No such file or directory',
+        "PATH_NOT_FOUND",
+    ),
     # anything the patterns don't know
     ("something exploded in a novel way", "UNKNOWN"),
 ]

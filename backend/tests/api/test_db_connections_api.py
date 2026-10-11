@@ -94,11 +94,25 @@ def test_delete_owned(client: TestClient) -> None:
 
 
 def test_engines_lists_installed_flags(client: TestClient) -> None:
-    """All three engines list; core-dep drivers all report installed."""
+    """All five engines list; core-dep drivers all report installed."""
     data = client.get("/api/v1/db-connections/engines").json()["data"]
     by = {e["dbType"]: e for e in data}
-    assert set(by) == {"postgres", "mysql", "sqlite"}
+    assert set(by) == {"postgres", "mysql", "sqlite", "duckdb", "clickhouse"}
     assert all(e["installed"] is True for e in by.values())
+
+
+def test_engines_flag_path_based(client: TestClient) -> None:
+    """PathBased steers the frontend form between path and host/port fields.
+
+    sqlite/duckdb show a path field; network engines show host/port.
+    """
+    data = client.get("/api/v1/db-connections/engines").json()["data"]
+    by = {e["dbType"]: e for e in data}
+    assert by["sqlite"]["pathBased"] is True
+    assert by["duckdb"]["pathBased"] is True
+    assert by["postgres"]["pathBased"] is False
+    assert by["mysql"]["pathBased"] is False
+    assert by["clickhouse"]["pathBased"] is False
 
 
 def test_engines_carry_default_ports(client: TestClient) -> None:
@@ -134,3 +148,26 @@ def test_test_endpoint_ok_reports_elapsed(client: TestClient, tmp_path) -> None:
     data = r.json()["data"]
     assert data["ok"] is True
     assert isinstance(data["elapsedMs"], int) and data["elapsedMs"] >= 0
+
+
+def test_test_endpoint_duckdb_ok(client: TestClient, tmp_path) -> None:
+    """DuckDB is file-based like sqlite: a tmp path connects and reports time."""
+    r = client.post(
+        "/api/v1/db-connections/test",
+        json={"dbType": "duckdb", "database": str(tmp_path / "lake.duckdb")},
+    )
+    data = r.json()["data"]
+    assert data["ok"] is True
+    assert isinstance(data["elapsedMs"], int) and data["elapsedMs"] >= 0
+
+
+def test_test_endpoint_duckdb_bad_dir_buckets_path(client: TestClient) -> None:
+    """A DuckDB file under a missing directory buckets as PATH_NOT_FOUND."""
+    r = client.post(
+        "/api/v1/db-connections/test",
+        json={"dbType": "duckdb", "database": "/nonexistent-dir/lake.duckdb"},
+    )
+    data = r.json()["data"]
+    assert data["ok"] is False
+    assert data["reason"] == "PATH_NOT_FOUND"
+    assert data["message"].startswith("IO Error: Cannot open file")

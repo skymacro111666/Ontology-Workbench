@@ -11,6 +11,8 @@ from __future__ import annotations
 import importlib.util
 
 from ontoworkbench.core.db_engines.base import COMMON_TYPE_MAP, Dialect, map_type
+from ontoworkbench.core.db_engines.clickhouse import DIALECT as _CLICKHOUSE
+from ontoworkbench.core.db_engines.duckdb import DIALECT as _DUCKDB
 from ontoworkbench.core.db_engines.mysql import DIALECT as _MYSQL
 from ontoworkbench.core.db_engines.postgres import DIALECT as _POSTGRES
 from ontoworkbench.core.db_engines.sqlite import DIALECT as _SQLITE
@@ -20,6 +22,8 @@ ENGINES: dict[str, Dialect] = {
     _POSTGRES.db_type: _POSTGRES,
     _MYSQL.db_type: _MYSQL,
     _SQLITE.db_type: _SQLITE,
+    _DUCKDB.db_type: _DUCKDB,
+    _CLICKHOUSE.db_type: _CLICKHOUSE,
 }
 
 
@@ -45,7 +49,12 @@ def classify_connect_error(exc: Exception) -> str:
         return "AUTH_FAILED"
     if "unknown database" in msg or ("database" in msg and "does not exist" in msg):
         return "DB_NOT_FOUND"
-    if "unable to open database file" in msg:
+    # path-based engines (sqlite, duckdb): unopenable file under a missing dir
+    if (
+        "unable to open database file" in msg
+        or "no such file or directory" in msg
+        or "cannot open file" in msg
+    ):
         return "PATH_NOT_FOUND"
     return "UNKNOWN"
 

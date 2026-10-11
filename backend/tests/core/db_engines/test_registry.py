@@ -15,12 +15,14 @@ def _values() -> ConnValues:
     return ConnValues(host="db.internal", port=5432, database="app", username="u", password="p")
 
 
-def test_registry_covers_three_engines() -> None:
-    """postgres/mysql/sqlite register with labels and driver modules."""
-    assert set(ENGINES) == {"postgres", "mysql", "sqlite"}
+def test_registry_covers_five_engines() -> None:
+    """postgres/mysql/sqlite/duckdb/clickhouse register with labels."""
+    assert set(ENGINES) == {"postgres", "mysql", "sqlite", "duckdb", "clickhouse"}
     assert ENGINES["postgres"].label == "PostgreSQL"
     assert ENGINES["mysql"].label == "MySQL"
     assert ENGINES["sqlite"].label == "SQLite"
+    assert ENGINES["duckdb"].label == "DuckDB"
+    assert ENGINES["clickhouse"].label == "ClickHouse"
 
 
 def test_url_builders() -> None:
@@ -34,6 +36,11 @@ def test_url_builders() -> None:
         host=None, port=None, database="/data/shop.db", username=None, password=None
     )
     assert ENGINES["sqlite"].url(sqlite) == "sqlite:////data/shop.db"
+    # duckdb mirrors sqlite: path-based, database carries the file path
+    assert ENGINES["duckdb"].url(sqlite) == "duckdb:////data/shop.db"
+    # clickhouse: official HTTP driver; port defaults to 8123 like mysql's 3306
+    assert ENGINES["clickhouse"].url(v) == "clickhousedb+connect://u:p@db.internal:5432/app"
+    assert ENGINES["clickhouse"].url(no_port) == "clickhousedb+connect://u@h:8123/app"
 
 
 def test_installed_flags() -> None:
@@ -41,6 +48,29 @@ def test_installed_flags() -> None:
     assert installed(ENGINES["sqlite"]) is True
     assert installed(ENGINES["postgres"]) is True
     assert installed(ENGINES["mysql"]) is True
+    assert installed(ENGINES["duckdb"]) is True
+    assert installed(ENGINES["clickhouse"]) is True
+
+
+def test_map_type_strips_type_wrappers() -> None:
+    """ClickHouse wrapper shells map their inner type.
+
+    Nullable(Int64) → integer, not the xsd:string fallback a bare NULLABLE
+    lookup gives.
+    """
+    d = ENGINES["clickhouse"]
+    assert map_type("Nullable(Int64)", d) == "xsd:integer"
+    assert map_type("LowCardinality(String)", d) == "xsd:string"
+    assert map_type("Array(Nullable(String))", d) == "xsd:string"
+    assert map_type("DateTime64(3, 'Asia/Shanghai')", d) == "xsd:dateTime"
+
+
+def test_map_type_duckdb_overrides() -> None:
+    """DuckDB-specific types land on sane XSD targets."""
+    d = ENGINES["duckdb"]
+    assert map_type("HUGEINT", d) == "xsd:integer"
+    assert map_type("UUID", d) == "xsd:string"
+    assert map_type("TIMESTAMP WITH TIME ZONE", d) == "xsd:dateTime"
 
 
 def test_map_type_strips_lengths_and_falls_back() -> None:
@@ -82,4 +112,5 @@ def test_drivers_are_core_dependencies() -> None:
 
     pyproject = (Path(__file__).parents[3] / "pyproject.toml").read_text(encoding="utf-8")
     deps = pyproject.split("[project.optional-dependencies]")[0]
-    assert "psycopg" in deps and "pymysql" in deps
+    for driver in ("psycopg", "pymysql", "duckdb", "clickhouse-connect"):
+        assert driver in deps

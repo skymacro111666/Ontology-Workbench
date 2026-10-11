@@ -72,7 +72,7 @@ def test_reflect_dumps_camel_case(shop_db: str) -> None:
 
 
 def test_driver_missing_hint() -> None:
-    """The postgres dialect without its extra raises DB_DRIVER_MISSING with the extra name."""
+    """The postgres dialect without its driver raises DB_DRIVER_MISSING naming the module."""
     if importlib.util.find_spec("psycopg"):
         pytest.skip("psycopg installed on this box; CI exercises the branch")
     with pytest.raises(CoreError) as ei:
@@ -81,7 +81,44 @@ def test_driver_missing_hint() -> None:
             ENGINES["postgres"],
         )
     assert ei.value.code == "DB_DRIVER_MISSING"
-    assert "postgres" in (ei.value.hint or "")
+    assert "psycopg" in (ei.value.hint or "")
+
+
+@pytest.fixture()
+def shop_duckdb(tmp_path: Path) -> str:
+    """A real DuckDB database with two FK-linked tables."""
+    import duckdb
+
+    db = tmp_path / "shop.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute("CREATE TABLE customer (id INTEGER PRIMARY KEY, name VARCHAR(80) NOT NULL)")
+    con.execute(
+        "CREATE TABLE orders ("
+        "id INTEGER PRIMARY KEY, "
+        "customer_id INTEGER NOT NULL REFERENCES customer(id), "
+        "status VARCHAR(20))"
+    )
+    con.close()
+    return str(db)
+
+
+def test_reflect_duckdb_roundtrip(shop_duckdb: str) -> None:
+    """DuckDB reflection returns the sqlite shape, FKs included.
+
+    The FK-affinity batching pipeline works unchanged for file-based OLAP.
+    """
+    schema = reflect_schema(_values(shop_duckdb), ENGINES["duckdb"])
+    by = {t.name: t for t in schema.tables}
+    assert set(by) == {"customer", "orders"}
+    fk = by["orders"].foreign_keys[0]
+    assert (fk.column, fk.ref_table, fk.ref_column) == ("customer_id", "customer", "id")
+    cols = {c.name: c for c in by["orders"].columns}
+    assert cols["customer_id"].nullable is False
+    assert cols["status"].nullable is True
+    # duckdb-engine does not reflect primary keys (pinned; if a driver
+    # upgrade starts reporting them, flip this and drop the note in
+    # core/db_engines/duckdb.py)
+    assert cols["id"].primary_key is False
 
 
 def test_connect_failed(shop_db: str) -> None:

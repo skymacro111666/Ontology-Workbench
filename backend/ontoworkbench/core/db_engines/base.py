@@ -51,21 +51,32 @@ class Dialect:
     label: str
     driver_module: str  # import name checked for `installed`
     url: Callable[[ConnValues], str]
-    default_port: int | None = None  # form prefill; None = path-based (sqlite)
+    default_port: int | None = None  # form prefill; None = path-based (sqlite, duckdb)
     connect_args: dict[str, object] = field(default_factory=dict)
     type_overrides: Mapping[str, str] = field(default_factory=dict)
+
+
+# Wrapper shells that only modify nullability or dictionary encoding — the
+# inner type is what maps (ClickHouse Nullable(Int64) → INT64 → integer).
+_WRAPPER_TYPES = frozenset({"NULLABLE", "LOWCARDINALITY"})
 
 
 def map_type(db_type_str: str, dialect: Dialect) -> str:
     """Normalize a DB type string to an XSD datatype.
 
-    Length/precision decorations are stripped (VARCHAR(32) → VARCHAR), the
+    Length/precision decorations are stripped (VARCHAR(32) → VARCHAR),
+    wrapper shells unwrap recursively (Nullable(Int64) → INT64), the
     dialect's overrides win over the common table, and anything unknown maps
     to xsd:string for the LLM correction pass to fix.
     """
     base = db_type_str.strip().upper()
     if "(" in base:
-        base = base.split("(", 1)[0].strip()
+        head, inner = base.split("(", 1)
+        head = head.strip()
+        inner = inner.rstrip(")").strip()
+        if head in _WRAPPER_TYPES and inner:
+            return map_type(inner, dialect)
+        base = head
     if base in dialect.type_overrides:
         return dialect.type_overrides[base]
     return COMMON_TYPE_MAP.get(base, "xsd:string")
