@@ -35,6 +35,16 @@ class AiConfig:
         )
 
 
+def http_timeout_s() -> float:
+    """HTTP timeout for provider clients, in seconds (AI_HTTP_TIMEOUT_S).
+
+    Thinking models legitimately generate for minutes on large drafting
+    batches; the old fixed 120s died three attempts in a row (10-11 GLM-5.3
+    incident: 3 × 120s + backoff = the observed 362s failure).
+    """
+    return float(os.getenv("AI_HTTP_TIMEOUT_S", "900"))
+
+
 class ModelProvider(ABC):
     """Protocol-neutral LLM interface; adapters own all SDK differences."""
 

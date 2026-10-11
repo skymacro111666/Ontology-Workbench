@@ -11,7 +11,7 @@ import httpx2
 import structlog
 from anthropic import APIError, APITimeoutError, AsyncAnthropic
 
-from ontoworkbench.core.ai.base import AiConfig, ModelProvider
+from ontoworkbench.core.ai.base import AiConfig, ModelProvider, http_timeout_s
 from ontoworkbench.core.ai.types import (
     Done,
     ModelRequest,
@@ -22,8 +22,6 @@ from ontoworkbench.core.ai.types import (
     UsageEvent,
 )
 from ontoworkbench.core.errors import CoreError
-
-_TIMEOUT_S = 120.0
 
 
 def _map_error(e: Exception) -> CoreError:
@@ -49,7 +47,7 @@ class AnthropicProvider(ModelProvider):
 
     def __init__(self, cfg: AiConfig, http_client: httpx2.AsyncClient | None = None) -> None:
         """Build the async client; http_client exists for MockTransport tests."""
-        kwargs: dict[str, Any] = {"api_key": cfg.api_key or "none", "timeout": _TIMEOUT_S}
+        kwargs: dict[str, Any] = {"api_key": cfg.api_key or "none", "timeout": http_timeout_s()}
         if cfg.base_url:
             kwargs["base_url"] = cfg.base_url
         if http_client is not None:

@@ -101,7 +101,16 @@ def setup_logging(log_dir: Path, level: str = "INFO") -> None:
     # its lifecycle lines ("StreamableHTTP session manager started") must
     # wear the same JSON envelope as every other line (one-format rule).
     envelope = JsonEnvelopeFilter(
-        {"alembic": "db.migrate", "uvicorn": "server.uvicorn", "mcp": "mcp.sdk"}
+        {
+            "alembic": "db.migrate",
+            "uvicorn": "server.uvicorn",
+            "mcp": "mcp.sdk",
+            # LLM SDKs log their internal retries ("Retrying request to
+            # /v1/messages in 0.97 seconds") via stdlib — wrap them or they
+            # print as bare text mid-log (10-11 incident report).
+            "anthropic": "sdk.anthropic",
+            "openai": "sdk.openai",
+        }
     )
     for h in (stream, rotating):
         h.setFormatter(logging.Formatter("%(message)s"))

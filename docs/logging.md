@@ -79,9 +79,9 @@
 
 后台起草线程的成功/失败收尾(2026-10-11 截断事故曾因失败只落 job 状态、日志零痕迹而无法排障):`job_id`,failed 另有 `code`/`message`/`hint`(CoreError)或 `code=INTERNAL_ERROR`+`error`(异常类名)。
 
-### 第三方包装(`db.migrate`/`server.uvicorn`)
+### 第三方包装(`db.migrate`/`server.uvicorn`/`mcp.sdk`/`sdk.anthropic`/`sdk.openai`)
 
-alembic/uvicorn 的纯文本行包装为 `message` + 公共字段。
+alembic/uvicorn/MCP 与 LLM SDK(重试通知,如 `Retrying request to /v1/messages in 0.97 seconds`)的纯文本行包装为 `message` + 公共字段。
 
 ## 脱敏原则
 

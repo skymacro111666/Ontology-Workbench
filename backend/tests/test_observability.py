@@ -127,3 +127,39 @@ def test_mcp_sdk_lines_share_the_json_envelope(tmp_path, capsys) -> None:
             if handler not in before:
                 root.removeHandler(handler)
                 handler.close()
+
+
+def test_llm_sdk_lines_share_the_json_envelope(tmp_path, capsys) -> None:
+    """anthropic/openai SDK stdlib lines (retry notices) render as JSON.
+
+    The GLM-5.3 timeout incident (10-11): the SDK's "Retrying request to
+    /v1/messages in 0.97 seconds" printed as bare text mid-log, breaking
+    the one-format rule. Verified through the real setup_logging so the
+    production map is what's tested.
+    """
+    import logging as stdlib_logging
+
+    from ontoworkbench.observability.logging import setup_logging
+
+    before = list(stdlib_logging.getLogger().handlers)
+    try:
+        setup_logging(tmp_path)
+        stdlib_logging.getLogger("anthropic._base_client").info(
+            "Retrying request to /v1/messages in 0.970560 seconds"
+        )
+        stdlib_logging.getLogger("openai._base_client").info(
+            "Retrying request to /v1/chat/completions in 1.0 seconds"
+        )
+        for handler in stdlib_logging.getLogger().handlers:
+            handler.flush()
+        lines = [ln for ln in capsys.readouterr().out.strip().splitlines() if ln]
+        events = [json.loads(ln)["event"] for ln in lines]
+        assert events == ["sdk.anthropic", "sdk.openai"]
+        assert "Retrying request" in json.loads(lines[0])["message"]
+        assert json.loads(lines[0])["service"] == "ontology-workbench"
+    finally:
+        root = stdlib_logging.getLogger()
+        for handler in list(root.handlers):
+            if handler not in before:
+                root.removeHandler(handler)
+                handler.close()

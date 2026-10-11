@@ -4,6 +4,7 @@ import asyncio
 import json
 
 import httpx2
+import pytest
 from httpx2 import MockTransport, Response
 
 from ontoworkbench.core.ai.anthropic_provider import AnthropicProvider
@@ -185,3 +186,20 @@ def test_stream_accumulates_input_json_deltas() -> None:
 
 async def _collect(p: AnthropicProvider, req: ModelRequest) -> list:
     return [e async for e in p.stream(req)]
+
+
+def test_http_timeout_env_tunable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AI_HTTP_TIMEOUT_S feeds the SDK client timeout (default 900).
+
+    Thinking models legitimately generate for minutes on large drafting
+    batches; the old fixed 120s died three attempts in a row (10-11).
+    """
+    import anthropic
+
+    monkeypatch.delenv("AI_HTTP_TIMEOUT_S", raising=False)
+    p = _provider(lambda r: Response(200, json={"content": [], "usage": {}}))
+    assert isinstance(p._client, anthropic.AsyncAnthropic)
+    assert p._client.timeout == 900.0
+    monkeypatch.setenv("AI_HTTP_TIMEOUT_S", "12.5")
+    p2 = _provider(lambda r: Response(200, json={"content": [], "usage": {}}))
+    assert p2._client.timeout == 12.5

@@ -4,6 +4,7 @@ import asyncio
 import json
 
 import httpx
+import pytest
 from httpx import MockTransport, Response
 
 from ontoworkbench.core.ai.base import AiConfig
@@ -179,3 +180,16 @@ def test_tool_result_messages_map_with_ids() -> None:
 
 async def _collect(p: OpenAIProvider, req: ModelRequest) -> list:
     return [e async for e in p.stream(req)]
+
+
+def test_http_timeout_env_tunable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AI_HTTP_TIMEOUT_S feeds the SDK client timeout (default 900)."""
+    import openai
+
+    monkeypatch.delenv("AI_HTTP_TIMEOUT_S", raising=False)
+    p = _provider(lambda r: Response(200, json={"choices": [], "usage": {}}))
+    assert isinstance(p._client, openai.AsyncOpenAI)
+    assert p._client.timeout == 900.0
+    monkeypatch.setenv("AI_HTTP_TIMEOUT_S", "12.5")
+    p2 = _provider(lambda r: Response(200, json={"choices": [], "usage": {}}))
+    assert p2._client.timeout == 12.5
