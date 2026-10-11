@@ -68,7 +68,14 @@ async def generate_draft(
         decisions.append(
             await complete_json(
                 provider,
-                ModelRequest(messages=[{"role": "user", "content": prompt}]),
+                ModelRequest(
+                    messages=[{"role": "user", "content": prompt}],
+                    # Thinking models burn budget on reasoning before the JSON
+                    # (GLM-5.3 needed >4096 just to think on a 20-table batch),
+                    # so the output default is generous; env-tunable like the
+                    # other drafting knobs.
+                    max_tokens=_env_int("AI_DRAFT_MAX_TOKENS", 96384),
+                ),
                 DecisionSet,
                 usage_sink=usage,
             )

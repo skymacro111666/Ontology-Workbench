@@ -71,6 +71,14 @@
 
 失败请求的结构化错误:`code`/`message`/`hint`/`method`/`path`/`request_id`/`user_id`,5xx 附堆栈。
 
+### `llm.request` / `llm.response` / `llm.error`(模型调用全程)
+
+`provider`(`anthropic`/`openai`)、`model`。request 另有 `messages`(条数)、`chars`(载荷粗算字符数)、`max_tokens`、`tools`(个数)、流式带 `stream=true`;response 另有 `in_tokens`/`out_tokens`/`text_len`/`tool_calls`/`duration_ms`,非流式带 `stop_reason`(`max_tokens`/`length` 即截断,配合 `LLM_OUTPUT_TRUNCATED` 排障);error(level=error)另有 `error`(异常类名)、`message`(截 300)。**只记尺寸与 token,永不记录消息内容与密钥。**
+
+### `drafting.job_failed`(level=error)/ `drafting.job_done`
+
+后台起草线程的成功/失败收尾(2026-10-11 截断事故曾因失败只落 job 状态、日志零痕迹而无法排障):`job_id`,failed 另有 `code`/`message`/`hint`(CoreError)或 `code=INTERNAL_ERROR`+`error`(异常类名)。
+
 ### 第三方包装(`db.migrate`/`server.uvicorn`)
 
 alembic/uvicorn 的纯文本行包装为 `message` + 公共字段。

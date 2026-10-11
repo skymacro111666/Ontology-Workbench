@@ -49,6 +49,9 @@ class ModelResponse:
     tool_calls: list[ToolCall] = field(default_factory=list)
     in_tokens: int = 0
     out_tokens: int = 0
+    # Provider-native stop reason ("end_turn"/"stop", "max_tokens"/"length", …):
+    # lets callers fail fast on truncation instead of parsing empty text.
+    stop_reason: str | None = None
 
 
 @dataclass(slots=True)

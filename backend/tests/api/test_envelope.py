@@ -99,6 +99,7 @@ def test_ai_and_db_error_codes_have_http_mapping() -> None:
         ("AI_REQUEST_FAILED", 502),
         ("AI_TIMEOUT", 504),
         ("LLM_OUTPUT_INVALID", 502),
+        ("LLM_OUTPUT_TRUNCATED", 502),
         ("DB_DRIVER_MISSING", 400),
         ("DB_CONNECT_FAILED", 502),
     ]:

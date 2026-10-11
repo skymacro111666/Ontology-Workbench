@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from ontoworkbench.core.ai.fake import FakeProvider
-from ontoworkbench.core.ai.types import ModelResponse
+from ontoworkbench.core.ai.types import ModelRequest, ModelResponse
 from ontoworkbench.core.drafting.models import (
     ColumnSpec,
     ForeignKeySpec,
@@ -153,3 +153,34 @@ def test_knob_env_batch_size(monkeypatch: pytest.MonkeyPatch) -> None:
         generate_draft(p, _schema(2), namespace="https://local/shop#", label_language="zh")
     )
     assert result.stats["batchCount"] == 2
+
+
+class _Recording(FakeProvider):
+    """Records the max_tokens each request carried."""
+
+    def __init__(self, responses: list[ModelResponse]) -> None:
+        super().__init__(responses)
+        self.max_tokens: list[int] = []
+
+    async def complete(self, req: ModelRequest) -> ModelResponse:
+        self.max_tokens.append(req.max_tokens)
+        return await super().complete(req)
+
+
+def test_max_tokens_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The output budget defaults to 96384 — enough for thinking models.
+
+    GLM-5.3 burned through 4096 inside reasoning alone on a 20-table batch.
+    """
+    monkeypatch.delenv("AI_DRAFT_MAX_TOKENS", raising=False)
+    p = _Recording([ModelResponse(text=DECISIONS_BOTH, in_tokens=1, out_tokens=1)])
+    asyncio.run(generate_draft(p, _schema(2), namespace="https://local/shop#", label_language="zh"))
+    assert p.max_tokens == [96384]
+
+
+def test_max_tokens_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """AI_DRAFT_MAX_TOKENS overrides the default."""
+    monkeypatch.setenv("AI_DRAFT_MAX_TOKENS", "555")
+    p = _Recording([ModelResponse(text=DECISIONS_BOTH, in_tokens=1, out_tokens=1)])
+    asyncio.run(generate_draft(p, _schema(2), namespace="https://local/shop#", label_language="zh"))
+    assert p.max_tokens == [555]

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx2
+import structlog
 from anthropic import APIError, APITimeoutError, AsyncAnthropic
 
 from ontoworkbench.core.ai.base import AiConfig, ModelProvider
@@ -31,6 +33,15 @@ def _map_error(e: Exception) -> CoreError:
     if isinstance(e, APIError):
         return CoreError("AI_REQUEST_FAILED", f"provider request failed: {e}", hint=str(e)[:500])
     raise e
+
+
+# Every call/response leaves a log trail: sizes and tokens only, never content.
+_log = structlog.get_logger("ow.llm")
+
+
+def _req_chars(req: ModelRequest) -> int:
+    """Rough request payload size for the log line."""
+    return sum(len(str(m.get("content", ""))) for m in req.messages) + len(req.system or "")
 
 
 class AnthropicProvider(ModelProvider):
@@ -118,9 +129,27 @@ class AnthropicProvider(ModelProvider):
         tools = self._tools(req)
         if tools:
             kwargs["tools"] = tools
+        started = time.perf_counter()
+        _log.info(
+            "llm.request",
+            provider="anthropic",
+            model=self._model,
+            messages=len(req.messages),
+            chars=_req_chars(req),
+            max_tokens=req.max_tokens,
+            tools=len(req.tools),
+        )
         try:
             resp = await self._client.messages.create(**kwargs)
         except (APIError, APITimeoutError) as e:
+            _log.error(
+                "llm.error",
+                provider="anthropic",
+                model=self._model,
+                error=type(e).__name__,
+                message=str(e)[:300],
+                duration_ms=round((time.perf_counter() - started) * 1000),
+            )
             raise _map_error(e) from e
         text_parts: list[str] = []
         calls: list[ToolCall] = []
@@ -129,11 +158,25 @@ class AnthropicProvider(ModelProvider):
                 text_parts.append(block.text)
             elif block.type == "tool_use":
                 calls.append(ToolCall(name=block.name, arguments=dict(block.input or {})))
+        in_tok = resp.usage.input_tokens if resp.usage else 0
+        out_tok = resp.usage.output_tokens if resp.usage else 0
+        _log.info(
+            "llm.response",
+            provider="anthropic",
+            model=self._model,
+            in_tokens=in_tok,
+            out_tokens=out_tok,
+            text_len=len("".join(text_parts)),
+            tool_calls=len(calls),
+            stop_reason=resp.stop_reason,
+            duration_ms=round((time.perf_counter() - started) * 1000),
+        )
         return ModelResponse(
             text="".join(text_parts),
             tool_calls=calls,
-            in_tokens=resp.usage.input_tokens if resp.usage else 0,
-            out_tokens=resp.usage.output_tokens if resp.usage else 0,
+            in_tokens=in_tok,
+            out_tokens=out_tok,
+            stop_reason=resp.stop_reason,
         )
 
     async def stream(self, req: ModelRequest) -> AsyncIterator[StreamEvent]:
@@ -148,15 +191,36 @@ class AnthropicProvider(ModelProvider):
         tools = self._tools(req)
         if tools:
             kwargs["tools"] = tools
+        started = time.perf_counter()
+        _log.info(
+            "llm.request",
+            provider="anthropic",
+            model=self._model,
+            messages=len(req.messages),
+            chars=_req_chars(req),
+            max_tokens=req.max_tokens,
+            tools=len(req.tools),
+            stream=True,
+        )
         try:
             event_iter = await self._client.messages.create(stream=True, **kwargs)
         except (APIError, APITimeoutError) as e:
+            _log.error(
+                "llm.error",
+                provider="anthropic",
+                model=self._model,
+                error=type(e).__name__,
+                message=str(e)[:300],
+                duration_ms=round((time.perf_counter() - started) * 1000),
+            )
             raise _map_error(e) from e
         # Per-block accumulation: index → the open block; tool blocks collect
         # partial_json fragments until content_block_stop closes them.
         open_block: dict | None = None
         json_buf = ""
         usage: tuple[int, int] | None = None
+        text_chars = 0
+        tool_calls = 0
         async for ev in event_iter:
             etype = ev.type
             if etype == "content_block_start":
@@ -166,11 +230,13 @@ class AnthropicProvider(ModelProvider):
             elif etype == "content_block_delta":
                 delta = ev.delta
                 if delta.type == "text_delta":
+                    text_chars += len(delta.text)
                     yield TextDelta(delta.text)
                 elif delta.type == "input_json_delta":
                     json_buf += delta.partial_json
             elif etype == "content_block_stop":
                 if open_block and open_block.get("type") == "tool_use":
+                    tool_calls += 1
                     try:
                         args = json.loads(json_buf) if json_buf.strip() else {}
                     except ValueError:
@@ -185,6 +251,17 @@ class AnthropicProvider(ModelProvider):
                 msg = getattr(ev, "message", None)
                 if msg is not None and getattr(msg, "usage", None):
                     usage = (msg.usage.input_tokens or 0, msg.usage.output_tokens or 0) or usage
+        _log.info(
+            "llm.response",
+            provider="anthropic",
+            model=self._model,
+            in_tokens=usage[0] if usage else 0,
+            out_tokens=usage[1] if usage else 0,
+            text_len=text_chars,
+            tool_calls=tool_calls,
+            duration_ms=round((time.perf_counter() - started) * 1000),
+            stream=True,
+        )
         if usage:
             yield UsageEvent(*usage)
         yield Done()

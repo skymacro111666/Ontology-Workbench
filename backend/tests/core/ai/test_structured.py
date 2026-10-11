@@ -62,3 +62,38 @@ def test_usage_sink_collects_raw_responses() -> None:
     )
     asyncio.run(complete_json(p, REQ, Decisions, usage_sink=sink))
     assert [r.in_tokens for r in sink] == [2, 4]
+
+
+class _Counting(FakeProvider):
+    """Counts complete() calls to prove fail-fast (no retry)."""
+
+    def __init__(self, responses: list[ModelResponse]) -> None:
+        super().__init__(responses)
+        self.calls = 0
+
+    async def complete(self, req: ModelRequest) -> ModelResponse:
+        self.calls += 1
+        return await super().complete(req)
+
+
+def test_truncated_output_fails_fast_without_retry() -> None:
+    """A stop_reason at the token cap raises LLM_OUTPUT_TRUNCATED immediately.
+
+    Retrying under the same cap re-burns the same budget (GLM-5.3 spent all
+    4096 on thinking and emitted zero text) — fail fast with the actionable
+    error instead.
+    """
+    p = _Counting([ModelResponse(text="", stop_reason="max_tokens")])
+    with pytest.raises(CoreError) as ei:
+        asyncio.run(complete_json(p, REQ, Decisions))
+    assert ei.value.code == "LLM_OUTPUT_TRUNCATED"
+    assert p.calls == 1
+
+
+def test_truncated_openai_finish_reason_also_fails_fast() -> None:
+    """The OpenAI dialect's finish_reason="length" is the same condition."""
+    p = _Counting([ModelResponse(text='{"classes": ["par', stop_reason="length")])
+    with pytest.raises(CoreError) as ei:
+        asyncio.run(complete_json(p, REQ, Decisions))
+    assert ei.value.code == "LLM_OUTPUT_TRUNCATED"
+    assert p.calls == 1

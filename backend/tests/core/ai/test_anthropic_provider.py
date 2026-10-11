@@ -58,7 +58,31 @@ def test_complete_maps_tools_and_parses_tool_use() -> None:
     ]
     assert resp.text == "hi"
     assert resp.tool_calls == [ToolCall(name="search", arguments={"q": "go"})]
-    assert resp.in_tokens == 11 and resp.out_tokens == 3
+
+
+def test_complete_surfaces_stop_reason_and_logs_roundtrip() -> None:
+    """stop_reason rides along, and every call logs a diagnosis trail.
+
+    llm.request + llm.response carry tokens/stop_reason for truncation detection.
+    """
+    from structlog.testing import capture_logs
+
+    reply = {
+        "content": [{"type": "thinking", "thinking": "long reasoning"}],
+        "stop_reason": "max_tokens",
+        "usage": {"input_tokens": 8722, "output_tokens": 4096},
+    }
+    p = _provider(lambda request: Response(200, json=reply))
+    with capture_logs() as logs:
+        resp = asyncio.run(p.complete(ModelRequest(messages=[{"role": "user", "content": "q"}])))
+    assert resp.stop_reason == "max_tokens"
+    assert resp.text == ""  # thinking blocks contribute no text
+    events = {(e["event"], e.get("log_level")) for e in logs}
+    assert ("llm.request", "info") in events
+    assert ("llm.response", "info") in events
+    resp_log = next(e for e in logs if e["event"] == "llm.response")
+    assert resp_log["in_tokens"] == 8722 and resp_log["out_tokens"] == 4096
+    assert resp_log["stop_reason"] == "max_tokens" and resp_log["model"] == "test-model"
 
 
 def test_tool_result_messages_map_to_tool_result_blocks() -> None:

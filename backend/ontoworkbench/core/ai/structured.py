@@ -52,6 +52,19 @@ async def complete_json(
         )
         if usage_sink is not None:
             usage_sink.append(resp)
+        # A stop at the token cap means the budget died mid-generation (often
+        # inside a thinking model's reasoning phase, leaving zero text) —
+        # retrying under the same cap re-burns the same budget, so fail fast
+        # with the actionable error instead.
+        if resp.stop_reason in ("max_tokens", "length"):
+            raise CoreError(
+                "LLM_OUTPUT_TRUNCATED",
+                "model output hit the max_tokens cap before usable text",
+                hint=(
+                    "raise the output budget (AI_DRAFT_MAX_TOKENS for drafting) "
+                    "or reduce the number of tables per run"
+                ),
+            )
         try:
             return schema.model_validate(parse_json_block(resp.text))
         except (ValueError, ValidationError) as e:

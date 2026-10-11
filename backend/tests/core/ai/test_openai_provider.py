@@ -20,6 +20,28 @@ def _provider(handler) -> OpenAIProvider:
     return OpenAIProvider(CFG, http_client=httpx.AsyncClient(transport=MockTransport(handler)))
 
 
+def test_complete_surfaces_finish_reason_and_logs_roundtrip() -> None:
+    """finish_reason rides along, and every call logs a diagnosis trail.
+
+    llm.request + llm.response carry tokens for truncation detection.
+    """
+    from structlog.testing import capture_logs
+
+    reply = {
+        "choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 11, "completion_tokens": 3},
+    }
+    p = _provider(lambda request: Response(200, json=reply))
+    with capture_logs() as logs:
+        resp = asyncio.run(p.complete(ModelRequest(messages=[{"role": "user", "content": "q"}])))
+    assert resp.stop_reason == "stop"
+    events = {(e["event"], e.get("log_level")) for e in logs}
+    assert ("llm.request", "info") in events
+    assert ("llm.response", "info") in events
+    resp_log = next(e for e in logs if e["event"] == "llm.response")
+    assert resp_log["in_tokens"] == 11 and resp_log["out_tokens"] == 3
+
+
 def test_complete_maps_tools_and_parses_tool_calls() -> None:
     """Request carries system/tools/model; response maps text, tool_calls, usage."""
     captured: dict = {}
