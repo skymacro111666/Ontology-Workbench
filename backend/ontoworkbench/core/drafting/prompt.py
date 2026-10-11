@@ -21,6 +21,12 @@ Design rules:
   to the referenced table's class.
 - Table/column comments become rdfs:label / rdfs:comment material; labels use
   the requested label language.
+- Labels must be unique per language across the whole draft — the lint
+  duplicate-label rule flags any (lang, value) shared by two entities.
+  An FK property labels its relation, not the bare target name
+  (所属订单, not 订单); when several FKs target the same class, or the
+  same column name recurs across tables, qualify the label with the
+  owning side (订单项所属订单) so no two labels collide.
 - Columns ending in _type or _status look like enumerations: do NOT mint
   extra classes; mention the suspected enumeration in the class comment.
 - The W3C RDB Direct Mapping is your semantic anchor for names and structure.

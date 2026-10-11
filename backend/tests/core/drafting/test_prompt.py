@@ -80,6 +80,24 @@ def test_prompt_contains_schema_rules_and_template() -> None:
         assert needle in p, needle
 
 
+def test_prompt_requires_unique_labels() -> None:
+    """Label-uniqueness + relational FK naming ride the guidance.
+
+    2026-10-11: the text2sql draft shipped 8 duplicate-label findings —
+    FKs labeled with the bare target name (品牌 ×2) and sibling FKs to one
+    target sharing 所属X labels (所属订单 ×5). This rule heads that off at
+    the source.
+    """
+    p = build_prompt(SCHEMA, ["customer", "orders"], "https://local/shop#", "zh")
+    for needle in [
+        "unique per language",
+        "duplicate-label",
+        "所属订单",
+        "订单项所属订单",
+    ]:
+        assert needle in p, needle
+
+
 def test_prompt_json_block_is_parseable() -> None:
     """The embedded schema JSON is extractable and complete."""
     import json
