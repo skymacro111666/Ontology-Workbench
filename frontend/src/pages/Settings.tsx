@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate } from 'react-router'
+import { ArrowLeftIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api/client'
 import type { AgentTokenCreated, AgentTokenSummary } from '../api/types'
@@ -90,6 +92,7 @@ function FreshToken({ token, onDone }: { token: string; onDone: () => void }) {
  *  delete, effective on the client's next request). */
 export default function Settings() {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const qc = useQueryClient()
   const [creating, setCreating] = useState(false)
   const [label, setLabel] = useState('')
@@ -121,17 +124,26 @@ export default function Settings() {
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-6 py-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold">{t('settings.title')}</h1>
           <p className="text-ink-3 text-xs">{t('settings.subtitle')}</p>
         </div>
-        {!creating && (
+        {/* Title-row right end, above the 新建令牌 row — mirrors the
+            database settings page (the standalone pages need a way back). */}
+        <Button variant="ghost" size="sm" className="mt-0.5" onClick={() => navigate(-1)}>
+          <ArrowLeftIcon aria-hidden />
+          {t('common.back')}
+        </Button>
+      </div>
+
+      {!creating && (
+        <div className="flex justify-end">
           <Button size="sm" onClick={() => setCreating(true)}>
             {t('settings.newToken')}
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {fresh && <FreshToken token={fresh} onDone={() => setFresh(null)} />}
 

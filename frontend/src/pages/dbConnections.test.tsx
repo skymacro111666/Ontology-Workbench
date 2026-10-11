@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import DbConnections from './DbConnections'
 
 /* The standalone database-connections page (user menu → 数据库设置): a page
@@ -44,5 +45,26 @@ describe('DbConnections page', () => {
       screen.queryByText('供「从数据库起草」向导选用的已存连接；密码加密存储，永不下发。'),
     ).toBeNull()
     expect(await screen.findByText('还没有已存连接')).toBeTruthy()
+  })
+
+  it('carries a back button on the title row that navigates back in history', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ok([])),
+    )
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/settings', '/db-connections']} initialIndex={1}>
+          <Routes>
+            <Route path="/settings" element={<span>settings-page</span>} />
+            <Route path="/db-connections" element={<DbConnections />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    const back = await screen.findByRole('button', { name: '返回' })
+    await userEvent.click(back)
+    expect(await screen.findByText('settings-page')).toBeTruthy()
   })
 })

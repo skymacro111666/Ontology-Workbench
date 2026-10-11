@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import Settings from './Settings'
 
 /* The agent-token settings page (MCP v1, D12): the listing carries only
@@ -52,6 +52,27 @@ describe('Settings / agent tokens', () => {
     expect(screen.getByText('从未')).toBeTruthy()
     // No request ever mentions the hash column.
     expect(JSON.stringify(fetchMock.mock.calls)).not.toContain('token_hash')
+  })
+
+  it('carries a back button on the title row that navigates back in history', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ENVELOPE([])),
+    )
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/', '/settings']} initialIndex={1}>
+          <Routes>
+            <Route path="/" element={<span>home-page</span>} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    const back = await screen.findByRole('button', { name: '返回' })
+    await userEvent.click(back)
+    expect(await screen.findByText('home-page')).toBeTruthy()
   })
 
   it('create flow shows the plaintext exactly once with a warning', async () => {
