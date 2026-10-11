@@ -26,10 +26,11 @@ import {
 
 const fieldCls = 'text-sm'
 
-/** host:port/database for network engines; the bare path for sqlite.
- *  Shared with the draft wizard's picked-connection summary line. */
+/** host:port/database for network engines; the bare path for path-based
+ *  engines (sqlite, duckdb — they carry no host/port). Shared with the
+ *  draft wizard's picked-connection summary line. */
 export function targetOf(c: DbConnectionSummary): string {
-  if (c.dbType === 'sqlite') return c.database
+  if (!c.host && !c.port) return c.database
   const host = c.host ?? ''
   const port = c.port ? `:${c.port}` : ''
   return `${host}${port}/${c.database}`
@@ -163,7 +164,10 @@ export default function ConnectionsPanel() {
 
   const installed = (engines.data ?? []).filter((e) => e.installed)
   const effectiveType = form.dbType || installed[0]?.dbType || ''
-  const isSqlite = effectiveType === 'sqlite'
+  // Path-based engines (sqlite, duckdb) come from the registry — the form
+  // never hardcodes engine names.
+  const isPathBased =
+    engines.data?.find((e) => e.dbType === effectiveType)?.pathBased ?? false
 
   const openCreate = () => {
     setEditing(null)
@@ -200,7 +204,7 @@ export default function ConnectionsPanel() {
   /** Client-side gates before the request: a bad port or a duplicate name
    *  (the backend 422s both on create) fails inline in the dialog. */
   const submit = () => {
-    if (!isSqlite && form.port) {
+    if (!isPathBased && form.port) {
       const n = Number(form.port)
       if (!/^\d+$/.test(form.port) || n < 1 || n > 65535) {
         setFormErr(t('conn.portInvalid'))
@@ -225,7 +229,7 @@ export default function ConnectionsPanel() {
           name: form.name.trim(),
           database: form.database,
         }
-        if (!isSqlite) {
+        if (!isPathBased) {
           body.host = form.host
           body.port = form.port ? Number(form.port) : null
           body.username = form.username
@@ -236,7 +240,7 @@ export default function ConnectionsPanel() {
       return api.post('/api/v1/db-connections', {
         name: form.name.trim(),
         dbType: effectiveType,
-        ...(isSqlite
+        ...(isPathBased
           ? { database: form.database }
           : {
               host: form.host,
@@ -445,7 +449,7 @@ export default function ConnectionsPanel() {
                 would flash before flipping to the sqlite path field. */}
             {engines.isLoading ? (
               <p className="text-ink-3 text-xs">{t('common.loading')}</p>
-            ) : isSqlite ? (
+            ) : isPathBased ? (
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="conn-path">{t('conn.path')}</Label>
                 <Input
@@ -512,7 +516,7 @@ export default function ConnectionsPanel() {
                   void runTest(
                     {
                       dbType: effectiveType,
-                      ...(isSqlite
+                      ...(isPathBased
                         ? { database: form.database }
                         : {
                             host: form.host,

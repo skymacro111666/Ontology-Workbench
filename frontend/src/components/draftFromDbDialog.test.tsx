@@ -21,9 +21,9 @@ const err = (code: string) =>
   )
 
 const ENGINES = [
-  { dbType: 'sqlite', label: 'SQLite', installed: true, defaultPort: null },
-  { dbType: 'postgres', label: 'PostgreSQL', installed: false, defaultPort: 5432 },
-  { dbType: 'mysql', label: 'MySQL', installed: false, defaultPort: 3306 },
+  { dbType: 'sqlite', label: 'SQLite', installed: true, defaultPort: null, pathBased: true },
+  { dbType: 'postgres', label: 'PostgreSQL', installed: false, defaultPort: 5432, pathBased: false },
+  { dbType: 'mysql', label: 'MySQL', installed: false, defaultPort: 3306, pathBased: false },
 ]
 
 const SCHEMA = {

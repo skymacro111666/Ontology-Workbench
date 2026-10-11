@@ -371,6 +371,7 @@ export interface DbEngine {
   label: string
   installed: boolean
   defaultPort: number | null
+  pathBased: boolean
 }
 
 /** One reflected column. */

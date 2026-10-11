@@ -15,9 +15,10 @@ const ok = (data: unknown) =>
   })
 
 const ENGINES = [
-  { dbType: 'sqlite', label: 'SQLite', installed: true, defaultPort: null },
-  { dbType: 'postgres', label: 'PostgreSQL', installed: true, defaultPort: 5432 },
-  { dbType: 'mysql', label: 'MySQL', installed: false, defaultPort: 3306 },
+  { dbType: 'sqlite', label: 'SQLite', installed: true, defaultPort: null, pathBased: true },
+  { dbType: 'postgres', label: 'PostgreSQL', installed: true, defaultPort: 5432, pathBased: false },
+  { dbType: 'mysql', label: 'MySQL', installed: false, defaultPort: 3306, pathBased: false },
+  { dbType: 'duckdb', label: 'DuckDB', installed: true, defaultPort: null, pathBased: true },
 ]
 
 const CONNS = [
@@ -111,6 +112,22 @@ describe('ConnectionsPanel — 列表', () => {
     renderPanel(routerMock({ conns: [] }))
     expect(await screen.findByText('还没有已存连接')).toBeTruthy()
   })
+
+  it('shows the bare file path as the target for path-based engines (duckdb)', async () => {
+    const lake = {
+      id: 'c3',
+      name: 'lake',
+      dbType: 'duckdb',
+      host: null,
+      port: null,
+      database: '/data/lake.duckdb',
+      username: null,
+      hasPassword: false,
+      createdAt: '2026-10-03T00:00:00Z',
+    }
+    renderPanel(routerMock({ conns: [...CONNS, lake] }))
+    expect(await screen.findByText('/data/lake.duckdb')).toBeTruthy()
+  })
 })
 
 describe('ConnectionsPanel — 新建', () => {
@@ -129,6 +146,27 @@ describe('ConnectionsPanel — 新建', () => {
       name: 'shop',
       dbType: 'sqlite',
       database: '/data/shop.db',
+    })
+  })
+
+  it('creates a duckdb profile with path-only fields', async () => {
+    const fetchMock = routerMock({ conns: [] })
+    renderPanel(fetchMock)
+    await userEvent.click(await screen.findByRole('button', { name: '新建连接' }))
+
+    const type = await screen.findByLabelText('数据库类型')
+    await userEvent.selectOptions(type, 'duckdb')
+    // path-based engine: the path field replaces host/port
+    expect(screen.queryByLabelText('主机')).toBeNull()
+    await userEvent.type(screen.getByLabelText('名称'), 'lake')
+    await userEvent.type(screen.getByLabelText('路径'), '/data/lake.duckdb')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(bodies(fetchMock, '/db-connections')).toHaveLength(1))
+    expect(bodies(fetchMock, '/db-connections')[0]).toEqual({
+      name: 'lake',
+      dbType: 'duckdb',
+      database: '/data/lake.duckdb',
     })
   })
 

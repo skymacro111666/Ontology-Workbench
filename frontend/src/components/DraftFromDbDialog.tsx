@@ -116,7 +116,10 @@ export default function DraftFromDbDialog() {
 
   const installed = (engines.data ?? []).filter((e) => e.installed)
   const effectiveType = dbType || installed[0]?.dbType || ''
-  const isSqlite = effectiveType === 'sqlite'
+  // Path-based engines (sqlite, duckdb) come from the registry — the form
+  // never hardcodes engine names.
+  const isPathBased =
+    engines.data?.find((e) => e.dbType === effectiveType)?.pathBased ?? false
   const picked = (connections.data ?? []).find((c) => c.id === pickedId) ?? null
 
   const readSchema = async () => {
@@ -126,7 +129,7 @@ export default function DraftFromDbDialog() {
     try {
       const body = picked
         ? { connectionId: picked.id }
-        : isSqlite
+        : isPathBased
           ? { dbType: effectiveType, database }
           : { dbType: effectiveType, host, port: port ? Number(port) : undefined, database, username, password }
       const data = await api.post<{ schema: SchemaModel; tableCount: number }>(
@@ -325,7 +328,7 @@ export default function DraftFromDbDialog() {
                     form would flash before flipping to the sqlite path. */}
                 {engines.isLoading ? (
                   <p className="text-ink-3 text-xs">{t('common.loading')}</p>
-                ) : isSqlite ? (
+                ) : isPathBased ? (
                   <div className="grid grid-cols-[7rem_1fr] items-center gap-2">
                     <span className={labelCls}>{t('draftDialog.path')}</span>
                     <Input
