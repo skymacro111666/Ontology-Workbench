@@ -1,7 +1,9 @@
 """Database engine registry (spec §4): new engines register here.
 
-`installed` reflects the driver's importability so the UI can gray out
-engines whose extra is not installed (GET /api/v1/db-connections/engines).
+Drivers ship as core dependencies, so `installed` is True for every
+registered engine today; the flag (and the UI gray-out it feeds) stays as
+the extension switch for a future engine whose driver cannot ship in a
+wheel (GET /api/v1/db-connections/engines).
 """
 
 from __future__ import annotations
@@ -26,11 +28,34 @@ def installed(dialect: Dialect) -> bool:
     return importlib.util.find_spec(dialect.driver_module) is not None
 
 
+def classify_connect_error(exc: Exception) -> str:
+    """Bucket a driver connect failure for the UI's human-readable line.
+
+    Pattern-matches the driver message (DBAPI errors carry no stable
+    cross-engine codes once SQLAlchemy wraps them); a miss lands in
+    UNKNOWN with the raw text still shown alongside.
+    """
+    msg = str(exc).lower()
+    # Order matters: pymysql's timeout message also says "can't connect".
+    if "timeout" in msg or "timed out" in msg:
+        return "TIMEOUT"
+    if "connection refused" in msg or "can't connect" in msg or "cannot connect" in msg:
+        return "REFUSED"
+    if "password authentication" in msg or "authentication failed" in msg or "access denied" in msg:
+        return "AUTH_FAILED"
+    if "unknown database" in msg or ("database" in msg and "does not exist" in msg):
+        return "DB_NOT_FOUND"
+    if "unable to open database file" in msg:
+        return "PATH_NOT_FOUND"
+    return "UNKNOWN"
+
+
 __all__ = [
     "COMMON_TYPE_MAP",
     "ENGINES",
     "ConnValues",
     "Dialect",
+    "classify_connect_error",
     "installed",
     "map_type",
 ]

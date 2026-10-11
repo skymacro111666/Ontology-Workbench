@@ -94,14 +94,11 @@ def test_delete_owned(client: TestClient) -> None:
 
 
 def test_engines_lists_installed_flags(client: TestClient) -> None:
-    """All three engines list; uninstalled extras are flagged."""
-    import importlib.util
-
+    """All three engines list; core-dep drivers all report installed."""
     data = client.get("/api/v1/db-connections/engines").json()["data"]
     by = {e["dbType"]: e for e in data}
     assert set(by) == {"postgres", "mysql", "sqlite"}
-    assert by["sqlite"]["installed"] is True
-    assert by["postgres"]["installed"] is (importlib.util.find_spec("psycopg") is not None)
+    assert all(e["installed"] is True for e in by.values())
 
 
 def test_engines_carry_default_ports(client: TestClient) -> None:
@@ -120,4 +117,18 @@ def test_test_endpoint_bad_path_fails_cleanly(client: TestClient) -> None:
         json={"dbType": "sqlite", "database": "/nonexistent-dir/x.db"},
     )
     assert r.status_code == 200
-    assert r.json()["data"]["ok"] is False
+    data = r.json()["data"]
+    assert data["ok"] is False
+    assert data["reason"] == "PATH_NOT_FOUND"
+    assert data["message"]
+
+
+def test_test_endpoint_ok_reports_elapsed(client: TestClient, tmp_path) -> None:
+    """A healthy sqlite target answers ok with an elapsed-time figure."""
+    r = client.post(
+        "/api/v1/db-connections/test",
+        json={"dbType": "sqlite", "database": str(tmp_path / "ok.db")},
+    )
+    data = r.json()["data"]
+    assert data["ok"] is True
+    assert isinstance(data["elapsedMs"], int) and data["elapsedMs"] >= 0

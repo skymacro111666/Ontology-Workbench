@@ -7,6 +7,7 @@ decrypt in-request only. The connect test does SELECT 1 — nothing else.
 
 from __future__ import annotations
 
+import time
 import uuid
 
 import structlog
@@ -16,7 +17,13 @@ from pydantic.alias_generators import to_camel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from ontoworkbench.core.db_engines import ENGINES, ConnValues, Dialect, installed
+from ontoworkbench.core.db_engines import (
+    ENGINES,
+    ConnValues,
+    Dialect,
+    classify_connect_error,
+    installed,
+)
 from ontoworkbench.core.errors import CoreError
 from ontoworkbench.db.models import DbConnection, User
 from ontoworkbench.db.repositories import DbConnectionRepository
@@ -111,9 +118,14 @@ def _fernet(request: Request):
 
 
 def _check_connect(dialect: Dialect, values: ConnValues) -> dict:
-    """SELECT 1 against the target; ok=False (OK envelope) on failure."""
+    """SELECT 1 against the target; ok=False (OK envelope) on failure.
+
+    Failures bucket into a reason code (see classify_connect_error) so the
+    UI can lead with a human-readable line; the raw driver text rides along.
+    """
     from sqlalchemy import create_engine
 
+    start = time.perf_counter()
     try:
         engine = create_engine(dialect.url(values), connect_args=dict(dialect.connect_args))
         try:
@@ -122,8 +134,8 @@ def _check_connect(dialect: Dialect, values: ConnValues) -> dict:
         finally:
             engine.dispose()
     except Exception as e:  # noqa: BLE001 - the test endpoint reports any failure
-        return {"ok": False, "message": str(e)[:300]}
-    return {"ok": True}
+        return {"ok": False, "reason": classify_connect_error(e), "message": str(e)[:300]}
+    return {"ok": True, "elapsedMs": round((time.perf_counter() - start) * 1000)}
 
 
 @router.get("")
