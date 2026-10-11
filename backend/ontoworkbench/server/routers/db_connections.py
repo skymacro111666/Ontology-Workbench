@@ -249,6 +249,9 @@ def list_engines(user: User = Depends(get_current_user)) -> dict:
                 "label": d.label,
                 "installed": installed(d),
                 "defaultPort": d.default_port,
+                # None default_port is the registry's path-based invariant —
+                # the form shows a path field instead of host/port.
+                "pathBased": d.default_port is None,
             }
             for d in ENGINES.values()
         ]
