@@ -184,3 +184,33 @@ def test_max_tokens_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     p = _Recording([ModelResponse(text=DECISIONS_BOTH, in_tokens=1, out_tokens=1)])
     asyncio.run(generate_draft(p, _schema(2), namespace="https://local/shop#", label_language="zh"))
     assert p.max_tokens == [555]
+
+
+def test_cancel_between_batches_stops_the_loop() -> None:
+    """should_cancel is checked at each batch top.
+
+    Abandoning after batch 1 saves every remaining LLM call (one scripted
+    response left unexhausted proves batch 2 never hit the provider).
+    """
+    schema = SchemaModel(database_name="shop", tables=[_table("customer"), _table("orders")])
+    seen_first = False
+
+    def progress(k: int, n: int) -> None:
+        nonlocal seen_first
+        if k == 1:
+            seen_first = True
+
+    provider = FakeProvider([ModelResponse(text=DECISIONS_CUSTOMER, in_tokens=1, out_tokens=1)])
+    with pytest.raises(CoreError) as ei:
+        asyncio.run(
+            generate_draft(
+                provider,
+                schema,
+                namespace="https://local/x#",
+                label_language="zh",
+                batch_tables=1,
+                progress=progress,
+                should_cancel=lambda: seen_first,
+            )
+        )
+    assert ei.value.code == "DRAFT_CANCELLED"

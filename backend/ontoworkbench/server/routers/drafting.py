@@ -143,7 +143,7 @@ def generate_endpoint(
     """Kick off the drafting pipeline as a background job; jobId immediately."""
     namespace = body.namespace or f"https://local/{body.schema_.database_name}#"
 
-    def factory(progress):
+    def factory(progress, cancelled):
         async def run() -> dict:
             r = await generate_draft(
                 provider,
@@ -151,6 +151,7 @@ def generate_endpoint(
                 namespace=namespace,
                 label_language=body.label_language,
                 progress=progress,
+                should_cancel=cancelled,
             )
             return {
                 "decisions": r.decisions.model_dump(by_alias=True),
@@ -182,6 +183,25 @@ def job_endpoint(job_id: str, request: Request, user: User = Depends(get_current
         payload["code"] = job["code"]
         payload["message"] = job["message"]
     return respond(payload)
+
+
+@router.post("/jobs/{job_id}/cancel")
+def cancel_job_endpoint(
+    job_id: str, request: Request, user: User = Depends(get_current_user)
+) -> dict:
+    """Abandon a running generate (wizard 放弃): flags the batch loop to stop.
+
+    Best-effort by design — the in-flight LLM call finishes, later batches
+    are skipped, and the next poll reports status=cancelled.
+    """
+    runner = request.app.state.draft_jobs
+    if runner.get(job_id) is None:
+        raise ApiError(ErrorCode.NOT_FOUND, "No such job")
+    # cancel() only flags: the thread settles status=cancelled a beat later,
+    # so report the armed state, not the not-yet-flipped dict field.
+    took = runner.cancel(job_id)
+    status = "cancelled" if took else runner.get(job_id)["status"]
+    return respond({"jobId": job_id, "status": status})
 
 
 @router.post("/import", status_code=201)

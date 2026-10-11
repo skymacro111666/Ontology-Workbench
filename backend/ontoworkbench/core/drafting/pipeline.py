@@ -44,8 +44,13 @@ async def generate_draft(
     batch_tables: int | None = None,
     max_tables: int | None = None,
     progress: Callable[[int, int], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> DraftResult:
-    """Run the full drafting pipeline; progress(k, n) fires after each batch."""
+    """Run the full drafting pipeline; progress(k, n) fires after each batch.
+
+    should_cancel is polled at each batch top (the wizard's 放弃): raising
+    between batches keeps every remaining LLM call unspent.
+    """
     batch_tables = (
         batch_tables if batch_tables is not None else _env_int("AI_DRAFT_BATCH_TABLES", 35)
     )
@@ -63,6 +68,8 @@ async def generate_draft(
     usage: list[ModelResponse] = []
     decisions: list[DecisionSet] = []
     for k, batch in enumerate(batches, start=1):
+        if should_cancel is not None and should_cancel():
+            raise CoreError("DRAFT_CANCELLED", "draft cancelled by user")
         batch_schema = SchemaModel(database_name=schema.database_name, tables=batch)
         prompt = build_prompt(batch_schema, all_names, namespace, label_language)
         decisions.append(

@@ -1,5 +1,6 @@
 """Drafting endpoints: schema reflect, generate job, agent import."""
 
+import asyncio
 import sqlite3
 import time
 from pathlib import Path
@@ -10,6 +11,8 @@ from fastapi.testclient import TestClient
 from ontoworkbench.core.ai.fake import FakeProvider
 from ontoworkbench.core.ai.structured import parse_json_block
 from ontoworkbench.core.ai.types import ModelResponse
+from ontoworkbench.core.errors import CoreError
+from ontoworkbench.server.routers import drafting as drafting_router
 from ontoworkbench.server.routers.ai_settings import get_ai_provider
 
 AI_ENV = ("AI_MODEL_PROVIDER", "AI_BASE_URL", "AI_API_KEY", "AI_MODEL")
@@ -271,3 +274,48 @@ def test_import_rejects_ttl_breaking_names(client: TestClient, shop_db: Path) ->
     )
     assert r.status_code == 422
     assert r.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_cancel_endpoint_404_on_unknown_job(client: TestClient) -> None:
+    """Cancelling a job id that never existed reads as plain 404."""
+    r = client.post("/api/v1/ontologies/drafting/jobs/zzz/cancel")
+    assert r.status_code == 404
+    assert r.json()["code"] == "NOT_FOUND"
+
+
+def test_cancel_endpoint_stops_a_running_job(
+    client: TestClient, shop_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The wizard's 放弃 button hits this endpoint.
+
+    A running generate settles as cancelled (never done/failed) and the
+    poll payload says so.
+    """
+
+    async def slow_draft(
+        provider, schema, *, namespace, label_language, progress=None, should_cancel=None
+    ):
+        while not (should_cancel and should_cancel()):
+            await asyncio.sleep(0.01)
+        raise CoreError("DRAFT_CANCELLED", "draft cancelled by user")
+
+    monkeypatch.setattr(drafting_router, "generate_draft", slow_draft)
+    client.app.dependency_overrides[get_ai_provider] = lambda: FakeProvider([])
+    try:
+        r = client.post(
+            "/api/v1/ontologies/drafting/generate", json={"schema": _reflected(client, shop_db)}
+        )
+        assert r.status_code == 202
+        job_id = r.json()["data"]["jobId"]
+        r2 = client.post(f"/api/v1/ontologies/drafting/jobs/{job_id}/cancel")
+        assert r2.status_code == 200
+        assert r2.json()["data"]["status"] == "cancelled"
+    finally:
+        client.app.dependency_overrides.clear()
+    d = None
+    for _ in range(200):
+        d = client.get(f"/api/v1/ontologies/drafting/jobs/{job_id}").json()["data"]
+        if d["status"] != "running":
+            break
+        time.sleep(0.05)
+    assert d is not None and d["status"] == "cancelled"

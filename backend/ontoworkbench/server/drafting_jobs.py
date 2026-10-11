@@ -34,8 +34,16 @@ class DraftJobRunner:
         """Start empty; jobs arrive only via submit."""
         self.jobs: dict[str, dict[str, Any]] = {}
 
-    def submit(self, coro_factory: Callable[[Callable[[int, int], None]], Any]) -> str:
-        """Run coro_factory(progress) in a background thread; return the job id."""
+    def submit(
+        self,
+        coro_factory: Callable[[Callable[[int, int], None], Callable[[], bool]], Any],
+    ) -> str:
+        """Run coro_factory(progress, cancelled) in a background thread.
+
+        The cancelled callable reads the job's abandon flag — the pipeline
+        checks it between batches so a wizard 放弃 stops paying for LLM
+        calls it will never collect (user call 2026-10-11).
+        """
         self._sweep()
         job_id = uuid.uuid4().hex
         job: dict[str, Any] = {
@@ -45,6 +53,7 @@ class DraftJobRunner:
             "result": None,
             "code": None,
             "message": None,
+            "cancelled": False,
             "created": time.time(),
         }
         self.jobs[job_id] = job
@@ -53,10 +62,17 @@ class DraftJobRunner:
             job["batch"] = k
             job["batchCount"] = n
 
+        def cancelled() -> bool:
+            return bool(job["cancelled"])
+
         def run() -> None:
             try:
-                result = asyncio.run(coro_factory(progress))
+                result = asyncio.run(coro_factory(progress, cancelled))
             except CoreError as e:
+                if str(e.code) == "DRAFT_CANCELLED":
+                    job.update(status="cancelled")
+                    _log.info("drafting.job_cancelled", job_id=job_id)
+                    return
                 job.update(status="failed", code=str(e.code), message=e.message)
                 _log.error(
                     "drafting.job_failed",
@@ -84,6 +100,19 @@ class DraftJobRunner:
     def get(self, job_id: str) -> dict[str, Any] | None:
         """The job dict, or None when unknown or already swept."""
         return self.jobs.get(job_id)
+
+    def cancel(self, job_id: str) -> bool:
+        """Flag a running job for cancellation; True when it took effect.
+
+        The flag is advisory — the pipeline observes it between batches, so
+        the in-flight LLM call still lands (those tokens are already spent)
+        while every later batch is skipped.
+        """
+        job = self.jobs.get(job_id)
+        if job is None or job["status"] != "running":
+            return False
+        job["cancelled"] = True
+        return True
 
     def _sweep(self) -> None:
         """Drop entries older than the TTL (lazy: only submit pays for it)."""
