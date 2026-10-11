@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { MemoryRouter, useLocation } from 'react-router'
@@ -284,6 +284,15 @@ function cancelRouter() {
   return { fetchMock, cancels }
 }
 
+/** A real user's misclick on the dimmed area: the full pointer sequence on
+ *  the overlay (Radix dismisses on the interaction, not bare pointerdown). */
+function clickOutside() {
+  const overlay = document.querySelector('[data-slot="dialog-overlay"]') as HTMLElement
+  fireEvent.pointerDown(overlay)
+  fireEvent.pointerUp(overlay)
+  fireEvent.click(overlay)
+}
+
 describe('DraftFromDbDialog — step 2 选表与生成', () => {
   it('renders the table list with comments, counts, search and 已选 counter', async () => {
     const { fetchMock } = step2Router()
@@ -404,6 +413,43 @@ describe('DraftFromDbDialog — step 2 选表与生成', () => {
 
     // the wizard never collects the result, so the job must not keep burning
     await waitFor(() => expect(cancels).toEqual(['/api/v1/ontologies/drafting/jobs/job-x/cancel']))
+  })
+
+  it('blocks accidental dismissal (outside click / ESC) while generating', async () => {
+    const { fetchMock, cancels } = cancelRouter()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep2()
+
+    await userEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+    expect(await screen.findByText('正在生成草稿… 第 1/2 批')).toBeTruthy()
+
+    // a misclick on the overlay must not destroy the wizard session (nor
+    // cancel the job via the close-fires-cancel backstop)
+    clickOutside()
+    expect(useUiStore.getState().draftOpen).toBe(true)
+    expect(screen.getByText('选表与选项', { selector: '[data-step-name]' })).toBeTruthy()
+
+    // ESC is the other accidental vector
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(useUiStore.getState().draftOpen).toBe(true)
+    expect(cancels).toEqual([])
+
+    // settle: close while still mounted so the poll loop is orphaned
+    // cleanly (cleanup-first would let its next fetch land in a later
+    // test's mock and skew their poll counts)
+    act(() => {
+      useUiStore.getState().setDraftOpen(false)
+    })
+  })
+
+  it('keeps the standard outside-click close when idle', async () => {
+    const { fetchMock } = cancelRouter()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep2()
+
+    // idle (no busy window): overlay dismissal stays the app-wide grammar
+    clickOutside()
+    await waitFor(() => expect(useUiStore.getState().draftOpen).toBe(false))
   })
 })
 

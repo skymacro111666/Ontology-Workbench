@@ -285,7 +285,19 @@ export default function DraftFromDbDialog() {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && setDraftOpen(false)}>
-      <DialogContent className="sm:max-w-2xl">
+      {/* Overlay clicks and ESC are accidental vectors: while a read/
+          generate/import is in flight they must not wipe the wizard (and,
+          via the close backstop, cancel the job). Explicit exits — X,
+          取消/放弃 — stay available. */}
+      <DialogContent
+        className="sm:max-w-2xl"
+        onPointerDownOutside={(e) => {
+          if (busy) e.preventDefault()
+        }}
+        onEscapeKeyDown={(e) => {
+          if (busy) e.preventDefault()
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{t('draftDialog.title')}</DialogTitle>
           <DialogDescription data-step-name>
