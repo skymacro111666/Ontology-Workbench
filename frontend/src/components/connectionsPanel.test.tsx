@@ -47,13 +47,22 @@ const CONNS = [
 
 /** Fetch mock routing the panel's three endpoints; extras fold into opts. */
 function routerMock(
-  opts: { conns?: unknown[]; engines?: unknown[]; testOk?: boolean; testMsg?: string } = {},
+  opts: {
+    conns?: unknown[]
+    engines?: unknown[]
+    testOk?: boolean
+    testMsg?: string
+    testReason?: string
+    testMs?: number
+  } = {},
 ) {
   return vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('/db-connections/engines')) return ok(opts.engines ?? ENGINES)
     if (u.includes('/db-connections/test') && init?.method === 'POST')
-      return opts.testOk === false ? ok({ ok: false, message: opts.testMsg ?? 'boom' }) : ok({ ok: true })
+      return opts.testOk === false
+        ? ok({ ok: false, reason: opts.testReason ?? 'UNKNOWN', message: opts.testMsg ?? 'boom' })
+        : ok({ ok: true, elapsedMs: opts.testMs ?? 820 })
     if (u.match(/\/db-connections\/[\w-]+$/) && init?.method === 'DELETE') return ok(null)
     if (u.match(/\/db-connections\/[\w-]+$/) && init?.method === 'PUT')
       return ok({ ...CONNS[0], ...JSON.parse(String(init.body)) })
@@ -152,7 +161,7 @@ describe('ConnectionsPanel — 新建', () => {
       database: '/data/shop.db',
     })
     expect(bodies(fetchMock, '/db-connections/test')[0]).not.toHaveProperty('connectionId')
-    expect(await screen.findByText('连接成功')).toBeTruthy()
+    expect(await screen.findByText(/连接成功/)).toBeTruthy()
   })
 })
 
@@ -214,17 +223,39 @@ describe('ConnectionsPanel — 编辑与删除', () => {
     expect(posts).toHaveLength(0)
   })
 
-  it('tests a saved row by connectionId and reports the outcome on the button row', async () => {
-    const fetchMock = routerMock({ testOk: false, testMsg: 'connection refused' })
+  it('tests a saved row by connectionId; failure detail expands below the row', async () => {
+    const fetchMock = routerMock({
+      testOk: false,
+      testReason: 'REFUSED',
+      testMsg: 'connection refused',
+    })
     renderPanel(fetchMock)
-    await userEvent.click((await screen.findAllByRole('button', { name: '测试' }))[0])
 
+    // Fresh session: every row's status column starts quiet
+    expect(await screen.findAllByText('未测试')).toHaveLength(2)
+
+    await userEvent.click((await screen.findAllByRole('button', { name: '测试' }))[0])
     await waitFor(() => expect(bodies(fetchMock, '/db-connections/test')).toHaveLength(1))
     expect(bodies(fetchMock, '/db-connections/test')[0]).toEqual({ connectionId: 'c1' })
-    // The outcome lands on the action row (after 删除), never on a line below
-    const outcome = await screen.findByText(/connection refused/)
-    const del = screen.getAllByRole('button', { name: '删除' })[0]
-    expect(outcome.parentElement).toBe(del.parentElement)
+
+    // The failure badge lands in the status column (no raw text on the row yet)
+    const badge = await screen.findByRole('button', { name: /连接失败/ })
+    expect(screen.queryByText('connection refused')).toBeNull()
+
+    // Clicking the badge expands the sub-row: reason one-liner + raw driver text
+    await userEvent.click(badge)
+    expect(screen.getByText('连接被拒绝：主机/端口不通或被防火墙拦截')).toBeTruthy()
+    expect(screen.getByText('connection refused')).toBeTruthy()
+
+    // A second click collapses it again
+    await userEvent.click(badge)
+    expect(screen.queryByText('connection refused')).toBeNull()
+  })
+
+  it('shows the elapsed time on a successful row test', async () => {
+    renderPanel(routerMock())
+    await userEvent.click((await screen.findAllByRole('button', { name: '测试' }))[0])
+    expect(await screen.findByText('连接成功 · 0.8秒')).toBeTruthy()
   })
 
   it('delete asks for confirmation, then DELETEs and refreshes', async () => {

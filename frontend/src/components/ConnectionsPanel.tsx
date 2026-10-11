@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ApiErr, api } from '../api/client'
@@ -36,23 +36,81 @@ export function targetOf(c: DbConnectionSummary): string {
   return `${host}${port}/${c.database}`
 }
 
-/** Inline connect-test outcome, shared by list rows and the form. Sits on
- *  the action row (after 删除); long failures truncate with the full text
- *  on hover. */
-function TestOutcome({ state }: { state?: TestState | null }) {
+/** One connect-test outcome: pending spinner, ok line with elapsed time,
+ *  or a failure carrying the backend's bucketed reason code plus the raw
+ *  driver text. */
+type TestState =
+  | { status: 'pending' }
+  | { status: 'done'; ok: true; elapsedMs?: number }
+  | { status: 'done'; ok: false; reason?: string; message?: string }
+
+/** The bucketed reason's localized one-liner (fallback: UNKNOWN). */
+function failReasonText(reason: string | undefined, t: (k: string) => string) {
+  return t(`conn.failReason.${reason ?? 'UNKNOWN'}`)
+}
+
+/** Success line: 连接成功 · 0.8 秒 — shared by the status column and the dialog. */
+function OkLine({ elapsedMs }: { elapsedMs?: number }) {
   const { t } = useTranslation()
-  if (!state || state.status !== 'done') return null
-  if (state.ok)
-    return <span className="text-xs text-emerald-600">{t('conn.testOk')}</span>
   return (
-    <span className="text-destructive max-w-52 truncate text-xs" title={state.message}>
-      {state.message}
+    <span className="text-xs text-emerald-600">
+      {t('conn.testOk')}
+      {elapsedMs != null && ` · ${(elapsedMs / 1000).toFixed(1)}${t('conn.secUnit')}`}
     </span>
   )
 }
 
-/** One connect-test outcome: pending spinner, ok line, or failure message. */
-type TestState = { status: 'pending' } | { status: 'done'; ok: boolean; message?: string }
+/** Inline connect-test outcome for the create dialog's raw-value test:
+ *  ok line, or the reason one-liner with the raw driver text truncated
+ *  behind it (full text on hover). */
+function TestOutcome({ state }: { state?: TestState | null }) {
+  const { t } = useTranslation()
+  if (!state || state.status !== 'done') return null
+  if (state.ok) return <OkLine elapsedMs={state.elapsedMs} />
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-destructive text-xs">{failReasonText(state.reason, t)}</span>
+      {state.message && (
+        <span className="text-ink-3 truncate font-mono text-xs" title={state.message}>
+          {state.message}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** The status column cell: quiet until tested, then this session's test
+ *  outcome. A failed result is a dotted-underline button toggling the
+ *  detail sub-row below the connection's row. */
+function StatusCell({
+  state,
+  expanded,
+  onToggle,
+}: {
+  state?: TestState
+  expanded: boolean
+  onToggle: () => void
+}) {
+  const { t } = useTranslation()
+  if (!state) return <span className="text-ink-3 text-xs">{t('conn.untested')}</span>
+  if (state.status === 'pending')
+    return <span className="text-ink-3 animate-pulse text-xs">{t('conn.testing')}</span>
+  if (state.ok) return <OkLine elapsedMs={state.elapsedMs} />
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      title={t('conn.toggleReason')}
+      className="text-destructive inline-flex items-center gap-0.5 text-xs underline decoration-dotted underline-offset-2"
+    >
+      {t('conn.testFail')}
+      <span aria-hidden className={expanded ? 'rotate-180 transition-transform' : 'transition-transform'}>
+        ▾
+      </span>
+    </button>
+  )
+}
 
 /** Create/edit form state; `editing` null = create. Blank password in edit
  *  mode means "keep the stored ciphertext" — the PUT body omits the key. */
@@ -98,8 +156,10 @@ export default function ConnectionsPanel() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [formErr, setFormErr] = useState<string | null>(null)
   // Row tests (by saved id) and form tests (raw values) each show their
-  // outcome inline next to where they were triggered.
+  // outcome inline next to where they were triggered. Row status is
+  // session-only (no persistence): a fresh page shows 未测试 everywhere.
   const [rowTests, setRowTests] = useState<Record<string, TestState>>({})
+  const [expandedRow, setExpandedRow] = useState<string | null>(null)
   const [formTest, setFormTest] = useState<TestState | null>(null)
 
   const installed = (engines.data ?? []).filter((e) => e.installed)
@@ -206,12 +266,22 @@ export default function ConnectionsPanel() {
   })
 
   /** SELECT 1 either way: raw form values (create dialog, nothing persisted)
-   *  or the saved id (list rows). */
+   *  or the saved id (list rows). Failures arrive bucketed (reason code +
+   *  raw driver text) for the human-readable line. */
   const runTest = async (body: Record<string, unknown>, onDone: (s: TestState) => void) => {
     onDone({ status: 'pending' })
     try {
-      const r = await api.post<{ ok: boolean; message?: string }>('/api/v1/db-connections/test', body)
-      onDone({ status: 'done', ok: r.ok, message: r.message })
+      const r = await api.post<{
+        ok: boolean
+        elapsedMs?: number
+        reason?: string
+        message?: string
+      }>('/api/v1/db-connections/test', body)
+      onDone(
+        r.ok
+          ? { status: 'done', ok: true, elapsedMs: r.elapsedMs }
+          : { status: 'done', ok: false, reason: r.reason, message: r.message },
+      )
     } catch (e) {
       onDone({
         status: 'done',
@@ -241,60 +311,92 @@ export default function ConnectionsPanel() {
             <TableHead>{t('conn.dbType')}</TableHead>
             <TableHead>{t('conn.target')}</TableHead>
             <TableHead>{t('conn.createdAt')}</TableHead>
+            <TableHead>{t('conn.status')}</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
         <TableBody>
-          {(connections.data ?? []).map((c) => (
-            <TableRow key={c.id}>
-              <TableCell className="text-xs">
-                {c.name}
-                {!c.hasPassword && <span className="text-ink-3 ml-2">{t('conn.noPassword')}</span>}
-              </TableCell>
-              <TableCell className="font-mono text-xs">{c.dbType}</TableCell>
-              <TableCell className="font-mono text-xs">{targetOf(c)}</TableCell>
-              <TableCell className="text-xs">{new Date(c.createdAt).toLocaleString()}</TableCell>
-              <TableCell>
-                <div className="flex items-center gap-1">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setRowTests((s) => ({ ...s, [c.id]: { status: 'pending' } }))
-                      void runTest({ connectionId: c.id }, (s) =>
-                        setRowTests((prev) => ({ ...prev, [c.id]: s })),
-                      )
-                    }}
-                  >
-                    {rowTests[c.id]?.status === 'pending' ? t('conn.testing') : t('conn.test')}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>
-                    {t('conn.edit')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-destructive"
-                    onClick={() => {
-                      // Native confirm for v1 (same idiom as token revoke).
-                      if (
-                        window.confirm(
-                          `${t('conn.deleteConfirmTitle')}\n${t('conn.deleteConfirmDesc')}`,
-                        )
-                      )
-                        remove.mutate(c.id)
-                    }}
-                  >
-                    {t('conn.delete')}
-                  </Button>
-                  <TestOutcome state={rowTests[c.id]} />
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+          {(connections.data ?? []).map((c) => {
+            const st = rowTests[c.id]
+            // Narrowed failure (or null) so the sub-row JSX can read it safely.
+            const fail = st?.status === 'done' && !st.ok ? st : null
+            return (
+              <Fragment key={c.id}>
+                <TableRow>
+                  <TableCell className="text-xs">
+                    {c.name}
+                    {!c.hasPassword && (
+                      <span className="text-ink-3 ml-2">{t('conn.noPassword')}</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{c.dbType}</TableCell>
+                  <TableCell className="font-mono text-xs">{targetOf(c)}</TableCell>
+                  <TableCell className="text-xs">{new Date(c.createdAt).toLocaleString()}</TableCell>
+                  <TableCell className="text-xs">
+                    <StatusCell
+                      state={st}
+                      expanded={expandedRow === c.id}
+                      onToggle={() => setExpandedRow((cur) => (cur === c.id ? null : c.id))}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setExpandedRow(null)
+                          setRowTests((s) => ({ ...s, [c.id]: { status: 'pending' } }))
+                          void runTest({ connectionId: c.id }, (s) =>
+                            setRowTests((prev) => ({ ...prev, [c.id]: s })),
+                          )
+                        }}
+                      >
+                        {rowTests[c.id]?.status === 'pending' ? t('conn.testing') : t('conn.test')}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => openEdit(c)}>
+                        {t('conn.edit')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive"
+                        onClick={() => {
+                          // Native confirm for v1 (same idiom as token revoke).
+                          if (
+                            window.confirm(
+                              `${t('conn.deleteConfirmTitle')}\n${t('conn.deleteConfirmDesc')}`,
+                            )
+                          )
+                            remove.mutate(c.id)
+                        }}
+                      >
+                        {t('conn.delete')}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+                {/* Failure detail sub-row: reason one-liner + selectable raw text. */}
+                {fail && expandedRow === c.id && (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={6} className="bg-panel-2 px-4 py-3">
+                      <div className="text-destructive text-xs">
+                        {failReasonText(fail.reason, t)}
+                      </div>
+                      {fail.message && (
+                        <div className="text-ink-3 mt-1 select-text font-mono text-xs whitespace-pre-wrap break-all">
+                          {fail.message}
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            )
+          })}
           {connections.data?.length === 0 && (
             <TableRow>
-              <TableCell colSpan={5} className="text-ink-3 py-6 text-center text-xs">
+              <TableCell colSpan={6} className="text-ink-3 py-6 text-center text-xs">
                 {t('conn.empty')}
               </TableCell>
             </TableRow>
