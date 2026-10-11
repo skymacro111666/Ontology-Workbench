@@ -120,7 +120,9 @@ def test_test_endpoint_bad_path_fails_cleanly(client: TestClient) -> None:
     data = r.json()["data"]
     assert data["ok"] is False
     assert data["reason"] == "PATH_NOT_FOUND"
-    assert data["message"]
+    # the message is the bare driver text — no SQLAlchemy wrapper boilerplate
+    # ("(sqlite3.OperationalError) … (Background on this error at: …)")
+    assert data["message"] == "unable to open database file"
 
 
 def test_test_endpoint_ok_reports_elapsed(client: TestClient, tmp_path) -> None:

@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -408,7 +407,6 @@ export default function ConnectionsPanel() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editing ? t('conn.edit') : t('conn.new')}</DialogTitle>
-            <DialogDescription>{t('conn.subtitle')}</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-3">

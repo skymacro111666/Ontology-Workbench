@@ -134,7 +134,16 @@ def _check_connect(dialect: Dialect, values: ConnValues) -> dict:
         finally:
             engine.dispose()
     except Exception as e:  # noqa: BLE001 - the test endpoint reports any failure
-        return {"ok": False, "reason": classify_connect_error(e), "message": str(e)[:300]}
+        # SQLAlchemy wraps driver failures as "(dialect.Error) message
+        # (Background on this error at: https://sqlalche.me/e/…)" and appends
+        # [SQL: …] — unwrap .orig so the payload carries the bare driver text
+        # instead of wrapper boilerplate that floods the UI.
+        source = getattr(e, "orig", e)
+        return {
+            "ok": False,
+            "reason": classify_connect_error(source),
+            "message": str(source)[:300],
+        }
     return {"ok": True, "elapsedMs": round((time.perf_counter() - start) * 1000)}
 
 
