@@ -1,9 +1,8 @@
 """Dialect protocol for database reflection (spec §4).
 
 A dialect is a frozen value object: identity, URL building, connect args,
-type-mapping overrides, and which optional extra provides the driver.
-Adding an engine = new module + one ENGINES registration + one extra;
-core never changes.
+and type-mapping overrides. Drivers ship as core dependencies; adding an
+engine = new module + one ENGINES registration — core never changes.
 """
 
 from __future__ import annotations
@@ -50,7 +49,6 @@ class Dialect:
 
     db_type: str
     label: str
-    extra_name: str | None  # None = driver ships with Python (sqlite3)
     driver_module: str  # import name checked for `installed`
     url: Callable[[ConnValues], str]
     default_port: int | None = None  # form prefill; None = path-based (sqlite)

@@ -1,7 +1,5 @@
 """db_engines registry: dialects, urls, installed flags, type mapping."""
 
-import importlib.util
-
 import pytest
 
 from ontoworkbench.core.db_engines import (
@@ -39,12 +37,10 @@ def test_url_builders() -> None:
 
 
 def test_installed_flags() -> None:
-    """sqlite3 is always present; extras-gated drivers reflect the environment."""
+    """Drivers are core dependencies now — every engine reports installed."""
     assert installed(ENGINES["sqlite"]) is True
-    # In CI neither [postgres] nor [mysql] is installed; on a dev box with the
-    # extras the assertion flips, so assert consistency with find_spec instead.
-    assert installed(ENGINES["postgres"]) is (importlib.util.find_spec("psycopg") is not None)
-    assert installed(ENGINES["mysql"]) is (importlib.util.find_spec("pymysql") is not None)
+    assert installed(ENGINES["postgres"]) is True
+    assert installed(ENGINES["mysql"]) is True
 
 
 def test_map_type_strips_lengths_and_falls_back() -> None:
@@ -76,11 +72,14 @@ def test_dialect_is_frozen_dataclass() -> None:
         d.db_type = "other"  # type: ignore[misc]
 
 
-def test_extras_declared() -> None:
-    """Pyproject declares the driver extras named by the dialects."""
+def test_drivers_are_core_dependencies() -> None:
+    """Pyproject lists the drivers as core deps — no extras regression.
+
+    Guards against a refactor quietly moving psycopg/pymysql back into an
+    optional extra (the DB engines would gray out on a default install).
+    """
     from pathlib import Path
 
     pyproject = (Path(__file__).parents[3] / "pyproject.toml").read_text(encoding="utf-8")
-    for d in ENGINES.values():
-        if d.extra_name:
-            assert d.extra_name in pyproject
+    deps = pyproject.split("[project.optional-dependencies]")[0]
+    assert "psycopg" in deps and "pymysql" in deps

@@ -1,4 +1,4 @@
-"""LLM provider abstraction (optional [ai] extra; SDKs load lazily)."""
+"""LLM provider abstraction (SDKs are core dependencies; they load lazily)."""
 
 from __future__ import annotations
 
@@ -33,17 +33,15 @@ __all__ = [
     "Done",
 ]
 
-_INSTALL_HINT = (
-    "install the optional extra: uv sync --extra ai (or pip install ontology-workbench[ai])"
-)
+_INSTALL_HINT = "the SDK ships with ontology-workbench; reinstall the package (uv sync)"
 
 
 def get_provider(cfg: AiConfig, http_client: Any | None = None) -> ModelProvider:
     """Build the adapter for the configured protocol family.
 
     The SDK modules import lazily here so a bare `import ontoworkbench.core.ai`
-    works without the [ai] extra; only provider construction can fail, and it
-    fails as AI_NOT_CONFIGURED with the install hint.
+    stays cheap; only provider construction can touch the SDK, and a broken
+    install fails as AI_NOT_CONFIGURED with the reinstall hint.
     """
     if cfg.provider == "anthropic":
         try:

@@ -1,4 +1,4 @@
-"""PostgreSQL dialect (driver: psycopg, extra [postgres])."""
+"""PostgreSQL dialect (driver: psycopg, a core dependency)."""
 
 from __future__ import annotations
 
@@ -34,7 +34,6 @@ def _url(v: ConnValues) -> str:
 DIALECT = Dialect(
     db_type="postgres",
     label="PostgreSQL",
-    extra_name="postgres",
     driver_module="psycopg",
     url=_url,
     default_port=5432,

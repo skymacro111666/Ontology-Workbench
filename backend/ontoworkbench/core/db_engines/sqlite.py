@@ -14,7 +14,6 @@ def _url(v: ConnValues) -> str:
 DIALECT = Dialect(
     db_type="sqlite",
     label="SQLite",
-    extra_name=None,
     driver_module="sqlite3",
     url=_url,
     connect_args={},

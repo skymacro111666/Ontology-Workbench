@@ -42,4 +42,4 @@ def test_missing_sdk_raises_not_configured(monkeypatch: pytest.MonkeyPatch) -> N
     with pytest.raises(CoreError) as ei:
         get_provider(cfg)
     assert ei.value.code == "AI_NOT_CONFIGURED"
-    assert "ai" in (ei.value.hint or "")
+    assert "reinstall" in (ei.value.hint or "")

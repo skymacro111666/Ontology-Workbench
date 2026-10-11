@@ -60,7 +60,7 @@ def reflect_schema(values: ConnValues, dialect: Dialect) -> SchemaModel:
         raise CoreError(
             "DB_DRIVER_MISSING",
             f"driver for {dialect.db_type} is not installed",
-            hint=f"pip install 'ontology-workbench[{dialect.extra_name}]'",
+            hint=f"driver module '{dialect.driver_module}' missing — reinstall ontology-workbench",
         ) from e
     try:
         inspector = sa.inspect(engine)

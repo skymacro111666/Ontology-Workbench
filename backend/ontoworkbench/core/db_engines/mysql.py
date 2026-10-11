@@ -1,4 +1,4 @@
-"""MySQL dialect (driver: pymysql, extra [mysql])."""
+"""MySQL dialect (driver: pymysql, a core dependency)."""
 
 from __future__ import annotations
 
@@ -33,7 +33,6 @@ def _url(v: ConnValues) -> str:
 DIALECT = Dialect(
     db_type="mysql",
     label="MySQL",
-    extra_name="mysql",
     driver_module="pymysql",
     url=_url,
     default_port=3306,
