@@ -375,6 +375,67 @@ describe('GraphView', () => {
     })
     expect(onSelect).toHaveBeenCalledWith('http://ex/worksIn')
   })
+
+  /* C (user call 2026-10-11): a focus that rides a hidden kind dimension
+     opens it — lint findings point at properties a class-only canvas would
+     never show. The property's owning (domain) class carries the selection;
+     edges themselves stay unhighlighted. Opening is session-local only. */
+  describe('focus opens hidden kind dimensions', () => {
+    it('opens 数据 for a hidden datatype-property focus and pans to its domain class', async () => {
+      draw({ focusId: 'd', defaultKinds: CLASS_ONLY })
+      await waitFor(() =>
+        expect(lastData('setData').nodes.map((n: { id: string }) => n.id)).toContain('d'),
+      )
+      expect(screen.getByRole('button', { name: '数据' }).getAttribute('aria-pressed')).toBe('true')
+      const g = lastG6()!
+      await waitFor(() => expect(g.focusElement).toHaveBeenCalledWith('a'))
+    })
+
+    it('opens 对象属性 for a direct-edge object property and selects the domain class', async () => {
+      draw({
+        edges: [
+          ...EDGES,
+          { source: 'b', target: 'c', kind: 'objectProperty', label: 'worksIn', eid: 'http://ex/worksIn' },
+        ],
+        focusId: 'http://ex/worksIn',
+        defaultKinds: CLASS_ONLY,
+      })
+      await waitFor(() =>
+        expect(
+          lastData('setData').edges.some((e) => e.data?.kind === 'objectProperty'),
+        ).toBe(true),
+      )
+      expect(screen.getByRole('button', { name: '对象' }).getAttribute('aria-pressed')).toBe('true')
+      const g = lastG6()!
+      await waitFor(() => expect(g.focusElement).toHaveBeenCalledWith('b'))
+    })
+
+    it('leaves the dimensions alone for a class focus', () => {
+      draw({ focusId: 'a', defaultKinds: CLASS_ONLY })
+      expect(lastG6()!.setData).not.toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: '数据' }).getAttribute('aria-pressed')).toBe('false')
+    })
+
+    it('opens only — later class focuses never close what opened before', async () => {
+      const { view } = draw({ focusId: 'd', defaultKinds: CLASS_ONLY })
+      await waitFor(() =>
+        expect(lastData('setData').nodes.map((n: { id: string }) => n.id)).toContain('d'),
+      )
+      view.rerender(
+        <ThemeProvider>
+          <GraphView
+            nodes={NODES}
+            edges={EDGES}
+            focusId="a"
+            defaultKinds={CLASS_ONLY}
+            onSelect={vi.fn()}
+          />
+        </ThemeProvider>,
+      )
+      expect(screen.getByRole('button', { name: '数据' }).getAttribute('aria-pressed')).toBe('true')
+      expect(screen.getByRole('button', { name: '对象' }).getAttribute('aria-pressed')).toBe('false')
+    })
+  })
 })
 
 describe('toG6Edges', () => {

@@ -9,7 +9,7 @@ import { localName } from '../lib/localName'
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore } from '../stores/uiStore'
 import GraphContextMenu, { type MenuItem } from './GraphContextMenu'
-import GraphView, { type GraphViewNode } from './GraphView'
+import GraphView, { focusTargetOf, type GraphViewNode } from './GraphView'
 import { cardDisplayName, cardWidth } from './cardSize'
 import { insertChildren } from './insertLayout'
 import { useLint } from './LintPanel'
@@ -465,8 +465,12 @@ export default function GraphOverview({
         byId.set(n.id, { ...n, label: { '': t('canvas.prefixBucket') } })
     }
     if (focus) {
-      const hit = byId.get(focus)
-      if (hit) byId.set(focus, { ...hit, highlighted: true })
+      // A property focus marks its owning (domain) class — the selection
+      // lands on the class while GraphView opens the property's dimension
+      // (user call 2026-10-11; property edges never highlight).
+      const { nodeId } = focusTargetOf([...byId.values()], data?.edges ?? [], focus)
+      const hit = nodeId ? byId.get(nodeId) : undefined
+      if (nodeId && hit) byId.set(nodeId, { ...hit, highlighted: true })
     }
     return [...byId.values()]
   }, [data, anchor, focus, revealed, expandedAll, t])

@@ -394,14 +394,40 @@ function fanParallelEdges(edges: EdgeData[]): EdgeData[] {
   return edges
 }
 
+/** The KindFilter dimension covering a node — visibleOf's key selector. */
+const kindKeyOf = (n: GraphViewNode): keyof KindFilter =>
+  n.kind !== 'property' ? 'classes' : n.ptype === 'DatatypeProperty' ? 'dataProps' : 'objectProps'
+
 function visibleOf(nodes: GraphViewNode[], kinds: KindFilter): GraphViewNode[] {
-  return nodes.filter((n) =>
-    n.kind !== 'property'
-      ? kinds.classes
-      : n.ptype === 'DatatypeProperty'
-        ? kinds.dataProps
-        : kinds.objectProps,
+  return nodes.filter((n) => kinds[kindKeyOf(n)])
+}
+
+/** Resolve what a focus (deep link / tree / lint click) points AT on the
+ *  canvas. A node focus targets the node itself; a property focus marks its
+ *  owning (domain) class — the selection state lands on the class while the
+ *  kind dimension that reveals the property opens alongside (user call
+ *  2026-10-11; the edges themselves stay unhighlighted). */
+export function focusTargetOf(
+  nodes: GraphViewNode[],
+  edges: GEdge[],
+  focusId?: string | null,
+): { nodeId?: string; kindKey?: keyof KindFilter } {
+  if (!focusId) return {}
+  const node = nodes.find((n) => n.id === focusId)
+  if (node && node.kind !== 'property') return { nodeId: focusId, kindKey: kindKeyOf(node) }
+  // Direct class→class object property: the edge's source is the domain.
+  const direct = edges.find((e) => e.kind === 'objectProperty' && e.eid === focusId)
+  if (direct) return { nodeId: direct.source, kindKey: 'objectProps' }
+  // Property in node form: its attach edge runs class → property.
+  const attach = edges.find(
+    (e) => (e.kind === 'property' || e.kind === 'datatype') && e.target === focusId,
   )
+  if (attach)
+    return {
+      nodeId: attach.source,
+      kindKey: attach.kind === 'datatype' ? 'dataProps' : 'objectProps',
+    }
+  return {}
 }
 
 /** Direct class→class object-property edges follow the 对象属性 filter,
@@ -516,6 +542,9 @@ export default function GraphView({
    *  savedPositions, backfilled from the layout engine, updated by drags. */
   const positionsRef = useRef<Record<string, Pt>>({})
   const saveTimerRef = useRef<number | undefined>(undefined)
+  /** A focus arrived whose kind dimension is still closed: the kinds effect
+   *  owns the pan for it (the node is not on stage yet). */
+  const pendingFocusRef = useRef(false)
   // onSelect through a ref so the build effect never re-runs for a new callback.
   const onSelectRef = useRef(onSelect)
   useEffect(() => {
@@ -722,9 +751,11 @@ export default function GraphView({
         }
         // A stale focus (the entity was just deleted) must not skip the
         // fitView branch — focusElement on a missing node moves nothing and
-        // the canvas read blank until the user pressed 适配.
-        if (snap.focusId && snap.nodes.some((nd) => nd.id === snap.focusId)) {
-          void graph.focusElement(snap.focusId)
+        // the canvas read blank until the user pressed 适配. Property
+        // focuses resolve to their domain class (focusTargetOf).
+        const { nodeId: focusNode } = focusTargetOf(snap.nodes, snap.edges, snap.focusId)
+        if (focusNode) {
+          void graph.focusElement(focusNode)
         } else {
           // Folded oversized maps tower over the viewport (36k px tall): a raw
           // fitView lands near 2% zoom where cards are invisible dots. Clamp
@@ -819,16 +850,37 @@ export default function GraphView({
       }
     }
     g.setData(data)
-    void g.render()
+    const settle = g.render()
+    // A focus that opened this dimension pans once its nodes are staged.
+    if (pendingFocusRef.current) {
+      pendingFocusRef.current = false
+      const { nodeId } = focusTargetOf(snap.nodes, snap.edges, snap.focusId)
+      if (nodeId) void settle.then(() => g.focusElement(nodeId))
+    }
   }, [kinds])
+
+  /** A focus riding a closed kind dimension opens it (user call 2026-10-11):
+   *  lint findings point at properties a class-only canvas would never show.
+   *  Opens only — never closes — and stays session-local: a remount re-seeds
+   *  defaultKinds (the toggle state is deliberately not remembered). */
+  useEffect(() => {
+    if (!focusId) return
+    const snap = stateRef.current
+    const { kindKey } = focusTargetOf(snap.nodes, snap.edges, focusId)
+    if (!kindKey || snap.kinds[kindKey]) return
+    pendingFocusRef.current = true
+    setKinds((k) => ({ ...k, [kindKey]: true }))
+  }, [focusId, nodes, edges])
 
   /** Focus follow: fit the focused entity without rebuilding the graph. */
   useEffect(() => {
     const g = graphRef.current
     if (!g || !focusId) return
+    // The pan waits for its dimension to open (the kinds effect above).
+    if (pendingFocusRef.current) return
     // Stale focus (the entity was just deleted): nothing to center on.
-    if (!stateRef.current.nodes.some((nd) => nd.id === focusId)) return
-    void g.focusElement(focusId)
+    const { nodeId } = focusTargetOf(stateRef.current.nodes, stateRef.current.edges, focusId)
+    if (nodeId) void g.focusElement(nodeId)
   }, [focusId])
 
   const zoomBy = async (ratio: number) => {

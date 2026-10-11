@@ -793,3 +793,34 @@ describe('GraphOverview view override and reveal anchor', () => {
     )
   })
 })
+
+/* C (user call 2026-10-11): a property focus marks its owning (domain)
+   class as the canvas selection and opens the kind dimension that shows
+   the property — lint findings at properties must land somewhere visible. */
+
+describe('GraphOverview property focus selects the domain class', () => {
+  const PROP_OVERVIEW: NodesEdges = {
+    nodes: [
+      { id: 'a', curie: 'ex:A', label: {}, kind: 'class' },
+      { id: 'd', curie: 'ex:desc', label: {}, kind: 'property', ptype: 'DatatypeProperty' },
+    ],
+    edges: [{ source: 'a', target: 'd', kind: 'datatype' }],
+    truncated: false,
+    totalCount: 2,
+  }
+
+  it('opens the 数据 dimension and highlights the domain class', async () => {
+    draw(stubFetch(null, PROP_OVERVIEW), 'd')
+    await waitForGraph()
+    await waitFor(() => {
+      const data = lastG6()!.setData.mock.lastCall?.[0] as {
+        nodes: { id: string; style?: Record<string, unknown> }[]
+      }
+      // The property node joined the canvas (dimension opened)…
+      expect(data?.nodes.some((n) => n.id === 'd')).toBe(true)
+      // …and its domain class carries the selection styling (2px border).
+      const a = data?.nodes.find((n) => n.id === 'a')
+      expect(a?.style?.lineWidth).toBe(2)
+    })
+  })
+})
