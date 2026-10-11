@@ -457,6 +457,7 @@
     "AI_REQUEST_FAILED": "AI 请求失败",
     "AI_TIMEOUT": "AI 请求超时",
     "LLM_OUTPUT_INVALID": "模型输出无效，请重试或换模型",
+    "LLM_OUTPUT_TRUNCATED": "输出被长度上限截断：请调大 AI_DRAFT_MAX_TOKENS 或减少一次生成的表数量",
     "DB_DRIVER_MISSING": "数据库驱动未安装",
     "DB_CONNECT_FAILED": "数据库连接失败"
   },

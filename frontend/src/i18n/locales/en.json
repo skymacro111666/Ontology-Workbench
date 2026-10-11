@@ -457,6 +457,7 @@
     "AI_REQUEST_FAILED": "AI request failed",
     "AI_TIMEOUT": "AI request timed out",
     "LLM_OUTPUT_INVALID": "Invalid model output — retry or switch models",
+    "LLM_OUTPUT_TRUNCATED": "Output was truncated by the max-token cap: raise AI_DRAFT_MAX_TOKENS or generate fewer tables per run",
     "DB_DRIVER_MISSING": "Database driver not installed",
     "DB_CONNECT_FAILED": "Database connection failed"
   },
