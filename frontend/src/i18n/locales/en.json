@@ -97,7 +97,9 @@
     "dirtyDesc": "The text view has unsaved changes — choose how to proceed before switching.",
     "discardSwitch": "Discard and switch",
     "saveSwitch": "Save and switch",
-    "viewR2rml": "R2RML"
+    "viewR2rml": "R2RML",
+    "exportR2rml": "R2RML mapping",
+    "noR2rml": "No R2RML mapping — only ontologies drafted from a database have one"
   },
   "r2rml": {
     "title": "R2RML mapping",

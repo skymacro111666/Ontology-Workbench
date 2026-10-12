@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import AppShell from './AppShell'
 import { AuthProvider, LAST_OID_KEY, TOKEN_KEY } from '../auth/AuthContext'
-import { api } from '../api/client'
+import { api, ApiErr } from '../api/client'
 import { ThemeProvider } from '../theme/ThemeProvider'
 import { useUiStore } from '../stores/uiStore'
 
@@ -17,6 +17,7 @@ vi.mock('../api/client', () => ({
       String(url).includes('/db-connections') ? [] : { items: [], total: 0 },
     ),
     download: vi.fn(async () => 'mini.jsonld'),
+    downloadBinary: vi.fn(async () => ({ name: 'shop.r2rml.ttl', truncated: false })),
   },
   ApiErr: class extends Error {},
 }))
@@ -360,4 +361,42 @@ it('switches freely when the text view is clean', async () => {
   await userEvent.click(screen.getByRole('radio', { name: /文本/ }))
   expect(useUiStore.getState().browseView).toBe('text')
   expect(screen.queryByRole('alertdialog')).toBeNull()
+})
+
+it('File▸Export offers R2RML download; 404 toasts the guide copy', async () => {
+  // The api module is mocked at file level, so the 404 path is driven by
+  // rejecting downloadBinary with the mocked ApiErr carrying the code —
+  // the real fetch stub never reaches this component in this file.
+  const toastErrorSpy = (await import('sonner')).toast.error as unknown as
+    ReturnType<typeof vi.fn>
+  vi.mocked(api.downloadBinary).mockRejectedValueOnce(
+    // Full 4-arg ctor (tsc checks against the real module types; the mocked
+    // class is a bare Error subclass, so code rides in via Object.assign).
+    Object.assign(new ApiErr('NOT_FOUND', 'No R2RML mapping', null, 'r'), {
+      code: 'NOT_FOUND',
+    }),
+  )
+  localStorage.setItem(LAST_OID_KEY, 'oid-1')
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider>
+        <MemoryRouter>
+          <AuthProvider>
+            <AppShell>
+              <div>content</div>
+            </AppShell>
+          </AuthProvider>
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>,
+  )
+
+  await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))
+  await userEvent.hover(await screen.findByText('导出'))
+  await userEvent.click(await screen.findByText('R2RML 映射'))
+
+  await waitFor(() =>
+    expect(toastErrorSpy).toHaveBeenCalledWith('该本体没有 R2RML 映射——来自数据库起草的本体才有'),
+  )
 })

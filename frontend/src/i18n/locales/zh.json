@@ -97,7 +97,9 @@
     "dirtyDesc": "文本视图有未保存的修改，切换前请选择保留方式。",
     "discardSwitch": "放弃并切换",
     "saveSwitch": "保存并切换",
-    "viewR2rml": "R2RML"
+    "viewR2rml": "R2RML",
+    "exportR2rml": "R2RML 映射",
+    "noR2rml": "该本体没有 R2RML 映射——来自数据库起草的本体才有"
   },
   "r2rml": {
     "title": "R2RML 映射",

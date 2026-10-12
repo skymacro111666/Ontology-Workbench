@@ -20,7 +20,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { LAST_OID_KEY, useAuth } from '../auth/AuthContext'
-import { api } from '../api/client'
+import { ApiErr, api } from '../api/client'
 import { errText } from '../i18n/errText'
 import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { useTheme } from '../theme/ThemeProvider'
@@ -126,6 +126,29 @@ export default function AppShell({ children }: { children?: ReactNode }) {
     }
   }
 
+  /** Download the ontology's R2RML mapping companion (draft-from-database
+   *  ontologies only; a 404 gets the guide copy instead of a raw error). */
+  const downloadR2rml = async () => {
+    const last = localStorage.getItem(LAST_OID_KEY)
+    if (!last) {
+      toast(t('shell.pickOntologyFirst'))
+      return
+    }
+    try {
+      const { name } = await api.downloadBinary(
+        `/api/v1/ontologies/${last}/r2rml/download`,
+        'mapping.r2rml.ttl',
+      )
+      toast.success(t('shell.exportedToast', { name }))
+    } catch (err) {
+      if (err instanceof ApiErr && err.code === 'NOT_FOUND') {
+        toast.error(t('shell.noR2rml'))
+        return
+      }
+      toast.error(errText(err, t))
+    }
+  }
+
   const isWorkspace = location.pathname.startsWith('/browse') || location.pathname.startsWith('/graph')
   const themeLabels = {
     light: t('shell.themeLight'),
@@ -217,6 +240,10 @@ export default function AppShell({ children }: { children?: ReactNode }) {
                       {label}
                     </DropdownMenuItem>
                   ))}
+                  <DropdownMenuItem className="text-xs" onSelect={() => void downloadR2rml()}>
+                    <NetworkIcon />
+                    {t('shell.exportR2rml')}
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-xs"
