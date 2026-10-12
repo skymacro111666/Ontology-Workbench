@@ -22,9 +22,10 @@ from ontoworkbench.core.drafting.guard import run_guardrails
 from ontoworkbench.core.drafting.merge import apply_rejections, merge_decisions, render_ttl
 from ontoworkbench.core.drafting.models import DecisionSet, SchemaModel
 from ontoworkbench.core.drafting.pipeline import _prefix_for, generate_draft
+from ontoworkbench.core.drafting.r2rml import render_r2rml, schema_hash
 from ontoworkbench.core.drafting.reflect import reflect_schema
 from ontoworkbench.core.errors import CoreError
-from ontoworkbench.db.models import User
+from ontoworkbench.db.models import OntologyR2rml, User
 from ontoworkbench.db.repositories import DbConnectionRepository
 from ontoworkbench.db.session import get_session
 from ontoworkbench.server.crypto import decrypt_str, fernet_from_jwt_secret
@@ -72,6 +73,9 @@ class ImportIn(CamelModel):
     namespace: str = Field(min_length=1, max_length=512)
     filename: str | None = Field(default=None, max_length=255)
     label_language: str = Field(default="zh", pattern="^(zh|en)$")
+    # Explicit alias: to_camel mangles r2rml → "generateR2Rml"; the spec's
+    # wire name is generateR2rml.
+    generate_r2rml: bool = Field(default=False, alias="generateR2rml")
 
 
 def _dialect(db_type: str | None) -> Dialect:
@@ -231,4 +235,32 @@ def import_endpoint(
         source="agent",
         journal_origin="agent",
     )
-    return respond({"ontologyId": str(row.id), "title": row.title, "lintFindings": findings})
+    r2rml_payload = None
+    if body.generate_r2rml:
+        # The companion serializes from the same kept decisions as the TTL;
+        # import time is the only moment schema + decisions coexist.
+        rendered = render_r2rml(draft, body.schema_, body.namespace)
+        stem = (body.filename or f"{body.schema_.database_name}-draft.ttl").removesuffix(".ttl")
+        r2rml_name = f"{stem}.r2rml.ttl"
+        path = request.app.state.store.save(user.id, row.id, r2rml_name, rendered.ttl)
+        session.add(
+            OntologyR2rml(
+                ontology_id=row.id,
+                filename=r2rml_name,
+                storage_path=str(path),
+                namespace=body.namespace,
+                base_revision=row.revision,
+                schema_hash=schema_hash(body.schema_),
+                skipped_tables=rendered.skipped_tables,
+            )
+        )
+        session.commit()
+        r2rml_payload = {"filename": r2rml_name, "skippedTables": rendered.skipped_tables}
+    return respond(
+        {
+            "ontologyId": str(row.id),
+            "title": row.title,
+            "lintFindings": findings,
+            "r2rml": r2rml_payload,
+        }
+    )

@@ -4,14 +4,18 @@ import asyncio
 import sqlite3
 import time
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from ontoworkbench.core.ai.fake import FakeProvider
 from ontoworkbench.core.ai.structured import parse_json_block
 from ontoworkbench.core.ai.types import ModelResponse
 from ontoworkbench.core.errors import CoreError
+from ontoworkbench.db.models import OntologyR2rml
+from ontoworkbench.db.session import sessionmaker_or_fail
 from ontoworkbench.server.routers import drafting as drafting_router
 from ontoworkbench.server.routers.ai_settings import get_ai_provider
 
@@ -150,6 +154,70 @@ def test_import_creates_agent_ontology(client: TestClient, shop_db: Path) -> Non
     assert meta["source"] == "agent"
     events = client.get(f"/api/v1/ontologies/{oid}/events").json()["data"]
     assert events["items"][0]["origin"] == "agent"
+
+
+def _imported(client: TestClient, shop_db: Path, generate_r2rml: bool) -> dict:
+    """Import the fixture decisions; optionally ask for the R2RML companion."""
+    body = {
+        "schema": _reflected(client, shop_db),
+        "decisions": DECISIONS_OBJ,
+        "rejectedClassNames": [],
+        "namespace": "https://local/shop#",
+        "filename": "shop.ttl",
+        "labelLanguage": "zh",
+    }
+    if generate_r2rml:
+        body["generateR2rml"] = True
+    r = client.post("/api/v1/ontologies/drafting/import", json=body)
+    assert r.status_code == 201
+    return r.json()["data"]
+
+
+def _r2rml_row(oid: str) -> OntologyR2rml | None:
+    """The companion row for an ontology, straight from the DB."""
+    with sessionmaker_or_fail()() as s:
+        return s.scalar(select(OntologyR2rml).where(OntologyR2rml.ontology_id == UUID(oid)))
+
+
+def test_import_with_generate_r2rml_lands_file_and_row(client: TestClient, shop_db: Path) -> None:
+    """generateR2rml lands file and row.
+
+    The DB row carries the P3 drift inputs (namespace, schema hash, base
+    revision).
+    """
+    payload = _imported(client, shop_db, generate_r2rml=True)
+    assert payload["r2rml"]["filename"] == "shop.r2rml.ttl"
+    assert payload["r2rml"]["skippedTables"] == []
+    row = _r2rml_row(payload["ontologyId"])
+    assert row is not None
+    assert row.namespace == "https://local/shop#"
+    assert len(row.schema_hash) == 64
+    assert row.base_revision >= 0
+    p = Path(row.storage_path)
+    assert p.exists() and p.name == "shop.r2rml.ttl"
+    assert b"rr:TriplesMap" in p.read_bytes()
+
+
+def test_import_without_generate_r2rml_has_no_row(client: TestClient, shop_db: Path) -> None:
+    """Default off: no companion file, no DB row, response r2rml is null."""
+    payload = _imported(client, shop_db, generate_r2rml=False)
+    assert payload["r2rml"] is None
+    assert _r2rml_row(payload["ontologyId"]) is None
+
+
+def test_import_delete_cascades_r2rml(client: TestClient, shop_db: Path) -> None:
+    """Deleting the ontology drops the companion row and its file.
+
+    The row goes in an explicit delete stage (SQLite runs without FK
+    enforcement); the file dies with the store directory.
+    """
+    payload = _imported(client, shop_db, generate_r2rml=True)
+    row = _r2rml_row(payload["ontologyId"])
+    path = Path(row.storage_path)
+    r = client.delete(f"/api/v1/ontologies/{payload['ontologyId']}")
+    assert r.status_code == 200
+    assert _r2rml_row(payload["ontologyId"]) is None
+    assert not path.exists()
 
 
 def test_import_rejection_cascades(client: TestClient, shop_db: Path) -> None:

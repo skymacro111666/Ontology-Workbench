@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from pyoxigraph import DefaultGraph, NamedNode, Store
 from pyoxigraph import Literal as OxLiteral
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ontoworkbench.core import terms
@@ -23,7 +24,7 @@ from ontoworkbench.core.ir_cache import write_ir_cache
 from ontoworkbench.core.owl2.profile import classify
 from ontoworkbench.core.parsing import sniff_format, timed_parse_store
 from ontoworkbench.core.store import LocalUserDirStore
-from ontoworkbench.db.models import Ontology, User
+from ontoworkbench.db.models import Ontology, OntologyR2rml, User
 from ontoworkbench.db.repositories import (
     LayoutRepository,
     MutationEventRepository,
@@ -591,6 +592,22 @@ def delete_ontology(
     except Exception as exc:
         _audit_failed("layout", exc)
         raise
+    # SQLite runs without FK enforcement (no PRAGMA in init_engine), so the
+    # declared ON DELETE CASCADE never fires — child rows go in explicit
+    # stages like the layout above. The r2rml companion file already died
+    # with the store directory; this drops its DB row.
+    r2rml_existed = False
+    try:
+        oid_uuid = UUID(str(row.id))
+        r2rml_existed = (
+            session.scalar(select(OntologyR2rml).where(OntologyR2rml.ontology_id == oid_uuid))
+            is not None
+        )
+        if r2rml_existed:
+            session.execute(delete(OntologyR2rml).where(OntologyR2rml.ontology_id == oid_uuid))
+    except Exception as exc:
+        _audit_failed("r2rml", exc)
+        raise
     try:
         cache_evicted = cache.drop(str(row.id))
     except Exception as exc:
@@ -604,6 +621,7 @@ def delete_ontology(
         filename=row.filename,
         size_bytes=row.file_size_bytes,
         layout_deleted=layout_existed,
+        r2rml_deleted=r2rml_existed,
         cache_evicted=cache_evicted,
         duration_ms=round((time.perf_counter() - started) * 1000, 1),
     )

@@ -312,3 +312,26 @@ class ChatMessage(Base):
     role: Mapped[str] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())
+
+
+class OntologyR2rml(Base):
+    """Per-ontology R2RML mapping companion (R2RML P1).
+
+    Generated once at draft-import; read-only in P1. base_revision +
+    schema_hash exist for the P3 drift check — import time is the only
+    moment both come for free.
+    """
+
+    __tablename__ = "ontology_r2rmls"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    ontology_id: Mapped[UUID] = mapped_column(
+        ForeignKey("ontologies.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    filename: Mapped[str] = mapped_column(String(256))
+    storage_path: Mapped[str] = mapped_column(String(512))
+    namespace: Mapped[str] = mapped_column(String(512))
+    base_revision: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    schema_hash: Mapped[str] = mapped_column(String(64))
+    skipped_tables: Mapped[list[str]] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())
