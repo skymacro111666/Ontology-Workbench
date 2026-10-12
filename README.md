@@ -24,6 +24,8 @@
 - **集成SPARQL** —— 只读查询支持 SELECT/ASK/CONSTRUCT，IRI 自动缩写为 CURIE
 - **集成SHACL** —— 内置及自定义 shapes，对本体运行标准一致性校验，violation/warning/info三档报告
 - **兼容OWL2定级** —— Manchester 公理渲染与 EL/QL/RL/DL profile 检测(词表级近似)
+- **AI 对话** —— 每本体独立会话,ContextPack 自动打包上下文,7 个只读工具按需调用,回答 Markdown 渲染
+- **数据库起草** —— 直连 PostgreSQL/MySQL/SQLite/DuckDB/ClickHouse 反射表结构,LLM 起草类与属性,lint 护栏+逐项人审后入库
 - **离线文档导出** —— 生成完全零外部依赖的静态站点
 - **内置MCP功能** —— MCP服务器提供10个工具，支持Agent按需调用
 

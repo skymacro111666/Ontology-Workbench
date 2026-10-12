@@ -24,6 +24,8 @@
 - **Integrated SPARQL** — read-only queries with SELECT/ASK/CONSTRUCT support; IRIs auto-shortened to CURIEs
 - **Integrated SHACL** — built-in and custom shapes run standard consistency validation against the ontology, reporting violations at violation/warning/info levels
 - **OWL 2 compatible & profile-graded** — Manchester axiom rendering plus EL/QL/RL/DL profile detection (vocabulary-level approximation)
+- **AI chat** — per-ontology conversations with an assistant; ContextPack auto-packs context, 7 read-only tools on demand, Markdown-rendered replies
+- **Draft from database** — reflect the schema of PostgreSQL/MySQL/SQLite/DuckDB/ClickHouse, let an LLM draft classes and properties, gate through lint plus per-item human review before import
 - **Offline docs export** — generates a static site with zero external dependencies
 - **Built-in MCP** — an MCP server exposing 10 tools for agents to call on demand
 
