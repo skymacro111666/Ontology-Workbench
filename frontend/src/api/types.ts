@@ -458,6 +458,38 @@ export interface DraftResult {
   stats: DraftStats
 }
 
+/** R2RML mapping view (GET /ontologies/{oid}/r2rml). */
+export interface R2rmlColumnProp {
+  predicate: string
+  column: string
+  datatype: string
+}
+
+export interface R2rmlFkProp {
+  predicate: string
+  childColumn: string
+  parentTable: string
+  parentColumn: string
+}
+
+export interface R2rmlTriplesMap {
+  table: string
+  className: string
+  subjectTemplate: string
+  columnProps: R2rmlColumnProp[]
+  fkProps: R2rmlFkProp[]
+}
+
+export interface R2rmlDoc {
+  filename: string
+  baseRevision: number
+  schemaHash: string
+  createdAt: string
+  skippedTables: string[]
+  content: string
+  structure: R2rmlTriplesMap[]
+}
+
 /** Polled generate job (GET /drafting/jobs/{id}). */
 export interface DraftJob {
   status: 'running' | 'done' | 'failed' | 'cancelled'

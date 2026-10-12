@@ -254,6 +254,8 @@
     "followUi": "Follow UI",
     "generate": "Generate draft",
     "generatingBatch": "Generating draft… batch {{k}}/{{n}}",
+    "genR2rml": "Also generate R2RML mapping",
+    "r2rmlSkipped": "Skipped tables without a primary key: {{tables}}",
     "abandon": "Abandon",
     "abandoning": "Abandoning…",
     "cancelledToast": "Generation abandoned",

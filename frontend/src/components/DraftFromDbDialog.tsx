@@ -66,6 +66,9 @@ export default function DraftFromDbDialog() {
   const [keptData, setKeptData] = useState<Set<string>>(new Set())
   const [genLang, setGenLang] = useState<'zh' | 'en'>('zh')
   const [filename, setFilename] = useState('')
+  // R2RML companion switch: on by default (P1 副产品级 — zero cost, the
+  // downstream story needs it; unchecking keeps the import body lean).
+  const [genR2rml, setGenR2rml] = useState(true)
   // Invalidate in-flight poll loops on any open toggle or new generate: a
   // loop from a closed session must not land its result in a fresh one.
   const pollGen = useRef(0)
@@ -107,6 +110,7 @@ export default function DraftFromDbDialog() {
       setKeptData(new Set())
       setGenLang('zh')
       setFilename('')
+      setGenR2rml(true)
     }
   }
 
@@ -245,25 +249,33 @@ export default function DraftFromDbDialog() {
     setBusy(true)
     setError(null)
     try {
-      const meta = await api.post<{ ontologyId: string; title: string; lintFindings: unknown[] }>(
-        '/api/v1/ontologies/drafting/import',
-        {
-          schema,
-          decisions: {
-            classes: result.decisions.classes.filter((c) => kept.has(c.name)),
-            objectProperties: result.decisions.objectProperties.filter((p) => keptObj.has(p.name)),
-            dataProperties: result.decisions.dataProperties.filter((d) =>
-              keptData.has(`${d.domain}.${d.name}`),
-            ),
-          },
-          rejectedClassNames: result.decisions.classes
-            .filter((c) => !kept.has(c.name))
-            .map((c) => c.name),
-          namespace,
-          filename: filename.trim() || `${schema.databaseName}-draft.ttl`,
-          labelLanguage: genLang,
+      const meta = await api.post<{
+        ontologyId: string
+        title: string
+        lintFindings: unknown[]
+        r2rml: { filename: string; skippedTables: string[] } | null
+      }>('/api/v1/ontologies/drafting/import', {
+        schema,
+        decisions: {
+          classes: result.decisions.classes.filter((c) => kept.has(c.name)),
+          objectProperties: result.decisions.objectProperties.filter((p) => keptObj.has(p.name)),
+          dataProperties: result.decisions.dataProperties.filter((d) =>
+            keptData.has(`${d.domain}.${d.name}`),
+          ),
         },
-      )
+        rejectedClassNames: result.decisions.classes
+          .filter((c) => !kept.has(c.name))
+          .map((c) => c.name),
+        namespace,
+        filename: filename.trim() || `${schema.databaseName}-draft.ttl`,
+        labelLanguage: genLang,
+        generateR2rml: genR2rml,
+      })
+      if (meta.r2rml?.skippedTables.length) {
+        toast.info(
+          t('draftDialog.r2rmlSkipped', { tables: meta.r2rml.skippedTables.join('、') }),
+        )
+      }
       toast.success(t('draftDialog.importedToast', { name: meta.title }), {
         description: t('draftDialog.importedSub', {
           classes: kept.size,
@@ -647,6 +659,17 @@ export default function DraftFromDbDialog() {
                 className="text-ink text-xs"
               />
             </div>
+
+            <label className="text-ink-2 flex cursor-pointer items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={genR2rml}
+                onChange={(e) => setGenR2rml(e.target.checked)}
+                className="accent-primary"
+                aria-label={t('draftDialog.genR2rml')}
+              />
+              {t('draftDialog.genR2rml')}
+            </label>
 
             {result.lintFindings.some((r) => r.findings.length > 0) && (
               <div className="border-line bg-panel-2 flex flex-col gap-1 rounded-ctl border px-2 py-1.5">

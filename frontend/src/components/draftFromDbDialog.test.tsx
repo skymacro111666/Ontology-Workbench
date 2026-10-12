@@ -483,7 +483,7 @@ const RESULT = {
 }
 
 /** Router carrying the dialog through generate to step 3. */
-function step3Router() {
+function step3Router(opts: { skippedTables?: string[] } = {}) {
   const imports: unknown[] = []
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
@@ -495,7 +495,10 @@ function step3Router() {
     if (u.includes('/drafting/jobs/')) return ok({ status: 'done', batch: 1, batchCount: 1, result: RESULT })
     if (u.includes('/drafting/import') && init?.method === 'POST') {
       imports.push(JSON.parse(String(init.body)))
-      return ok({ ontologyId: 'oid-9', title: 'shop', lintFindings: [] })
+      return ok({
+        ontologyId: 'oid-9', title: 'shop', lintFindings: [],
+        r2rml: { filename: 'shop.r2rml.ttl', skippedTables: opts.skippedTables ?? [] },
+      })
     }
     if (u === '/api/v1/ontologies') return ok({ items: [], total: 0 })
     return ok(null)
@@ -579,6 +582,7 @@ describe('DraftFromDbDialog — step 3 预览与导入', () => {
       namespace: 'https://local/shop#',
       filename: 'shop-draft.ttl',
       labelLanguage: 'zh',
+      generateR2rml: true,
     })
   })
 
@@ -704,5 +708,44 @@ describe('DraftFromDbDialog — step 3 预览与导入', () => {
     expect(await screen.findByText('customer')).toBeTruthy()
     expect(screen.getByText('已选 2/500')).toBeTruthy()
     expect(screen.queryByText('hasCustomer')).toBeNull()
+  })
+
+  it('defaults the R2RML switch on and posts generateR2rml; unchecking drops it', async () => {
+    const { fetchMock, imports } = step3Router()
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep3()
+
+    const cb = screen.getByLabelText('同时生成 R2RML 映射') as HTMLInputElement
+    expect(cb.checked).toBe(true)
+    await userEvent.click(screen.getByRole('button', { name: '导入' }))
+    await waitFor(() => expect(imports).toHaveLength(1))
+    expect(imports[0]).toMatchObject({ generateR2rml: true })
+
+    // fresh session for the unchecked variant (import closes + navigates)
+    act(() => {
+      useUiStore.getState().setDraftOpen(true)
+    })
+    await screen.findByLabelText('路径')
+    await userEvent.type(screen.getByLabelText('路径'), '/tmp/shop.db')
+    await userEvent.click(screen.getByRole('button', { name: '读取表结构' }))
+    await screen.findByText('customer')
+    await userEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+    await screen.findByText('hasCustomer')
+    await userEvent.click(screen.getByLabelText('同时生成 R2RML 映射'))
+    await userEvent.click(screen.getByRole('button', { name: '导入' }))
+    await waitFor(() => expect(imports).toHaveLength(2))
+    expect(imports[1]).toMatchObject({ generateR2rml: false })
+  })
+
+  it('toasts skipped tables when the mapping left pkless tables out', async () => {
+    const toastInfo = vi.spyOn(toast, 'info')
+    const { fetchMock } = step3Router({ skippedTables: ['audit_log'] })
+    vi.stubGlobal('fetch', fetchMock)
+    await atStep3()
+
+    await userEvent.click(screen.getByRole('button', { name: '导入' }))
+
+    await waitFor(() =>
+      expect(toastInfo).toHaveBeenCalledWith('已跳过无主键表:audit_log'))
   })
 })

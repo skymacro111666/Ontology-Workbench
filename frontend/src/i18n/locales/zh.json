@@ -254,6 +254,8 @@
     "followUi": "跟随界面",
     "generate": "生成草稿",
     "generatingBatch": "正在生成草稿… 第 {{k}}/{{n}} 批",
+    "genR2rml": "同时生成 R2RML 映射",
+    "r2rmlSkipped": "已跳过无主键表:{{tables}}",
     "abandon": "放弃",
     "abandoning": "正在放弃…",
     "cancelledToast": "已放弃本次生成",
