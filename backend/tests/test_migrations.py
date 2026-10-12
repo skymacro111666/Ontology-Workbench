@@ -27,7 +27,7 @@ def test_upgrade_head_on_fresh_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         ontology_cols = {row[1] for row in conn.execute(sa.text("PRAGMA table_info(ontologies)"))}
     engine.dispose()
 
-    assert version == "0011"
+    assert version == "0012"
     assert "ontology_layouts" in tables
     assert "lint_rules" in tables
     assert "validation_shapes" in tables
@@ -37,6 +37,8 @@ def test_upgrade_head_on_fresh_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert "db_connections" in tables
     assert "chat_sessions" in tables
     assert "chat_messages" in tables
+    # 0012: r2rml mapping companion (R2RML P1).
+    assert "ontology_r2rmls" in tables
     # 0005: provenance column lands with its upload default (no backfill).
     assert "source" in ontology_cols
     # 0006: edit-axis optimistic lock lands at 0 for every existing row.
