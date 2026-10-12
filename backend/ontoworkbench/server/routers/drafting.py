@@ -240,6 +240,13 @@ def import_endpoint(
         # The companion serializes from the same kept decisions as the TTL;
         # import time is the only moment schema + decisions coexist.
         rendered = render_r2rml(draft, body.schema_, body.namespace)
+        # Drift baseline covers the kept subset only: the wire body carries
+        # the full reflection, and a table the user never checked must not
+        # flip the stored hash when P3 compares against a fresh reflect.
+        kept_tables = {c.source_table for c in draft.classes}
+        selected = body.schema_.model_copy(
+            update={"tables": [t for t in body.schema_.tables if t.name in kept_tables]}
+        )
         stem = (body.filename or f"{body.schema_.database_name}-draft.ttl").removesuffix(".ttl")
         r2rml_name = f"{stem}.r2rml.ttl"
         path = request.app.state.store.save(user.id, row.id, r2rml_name, rendered.ttl)
@@ -250,7 +257,7 @@ def import_endpoint(
                 storage_path=str(path),
                 namespace=body.namespace,
                 base_revision=row.revision,
-                schema_hash=schema_hash(body.schema_),
+                schema_hash=schema_hash(selected),
                 skipped_tables=rendered.skipped_tables,
             )
         )

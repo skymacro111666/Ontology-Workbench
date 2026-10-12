@@ -13,6 +13,8 @@ from sqlalchemy import select
 from ontoworkbench.core.ai.fake import FakeProvider
 from ontoworkbench.core.ai.structured import parse_json_block
 from ontoworkbench.core.ai.types import ModelResponse
+from ontoworkbench.core.drafting.models import ColumnSpec, SchemaModel, TableSpec
+from ontoworkbench.core.drafting.r2rml import schema_hash
 from ontoworkbench.core.errors import CoreError
 from ontoworkbench.db.models import OntologyR2rml
 from ontoworkbench.db.session import sessionmaker_or_fail
@@ -218,6 +220,76 @@ def test_import_delete_cascades_r2rml(client: TestClient, shop_db: Path) -> None
     assert r.status_code == 200
     assert _r2rml_row(payload["ontologyId"]) is None
     assert not path.exists()
+
+
+def test_import_schema_hash_covers_kept_tables_only(client: TestClient, shop_db: Path) -> None:
+    """Unchecked tables must not enter the stored P3 drift baseline.
+
+    The spec pins the hash to the *selected* subset — a user editing a
+    table they never checked must not flip it. The wire body carries the
+    full reflection, so the endpoint must filter before hashing.
+    """
+    schema = _reflected(client, shop_db)
+    schema["tables"].append(
+        TableSpec(
+            name="audit_log",
+            columns=[
+                ColumnSpec(name="id", type="INTEGER", nullable=False, primary_key=True, unique=True)
+            ],
+        ).model_dump(by_alias=True)
+    )
+    r = client.post(
+        "/api/v1/ontologies/drafting/import",
+        json={
+            "schema": schema,
+            "decisions": DECISIONS_OBJ,
+            "rejectedClassNames": [],
+            "namespace": "https://local/shop#",
+            "generateR2rml": True,
+        },
+    )
+    assert r.status_code == 201
+    row = _r2rml_row(r.json()["data"]["ontologyId"])
+    full = SchemaModel.model_validate(schema)
+    kept = full.model_copy(update={"tables": [t for t in full.tables if t.name != "audit_log"]})
+    assert row is not None
+    assert row.schema_hash == schema_hash(kept)
+    assert row.schema_hash != schema_hash(full)
+
+
+def test_import_rejects_unqualified_decision_refs(client: TestClient, shop_db: Path) -> None:
+    """sourceColumn/sourceFk missing the table prefix must 422 at the boundary.
+
+    The R2RML renderer splits on the dot; without this guard an LLM that
+    writes "name" instead of "customer.name" 500s after the ontology row
+    is already committed (and the retry then hits DUPLICATE_FILENAME).
+    """
+    body = {
+        "schema": _reflected(client, shop_db),
+        "rejectedClassNames": [],
+        "namespace": "https://local/shop#",
+        "generateR2rml": True,
+    }
+    bare_column = {
+        **DECISIONS_OBJ,
+        "dataProperties": [
+            {**dp, "sourceColumn": "name"} for dp in DECISIONS_OBJ["dataProperties"]
+        ],
+    }
+    bare_fk = {
+        **DECISIONS_OBJ,
+        "objectProperties": [
+            {
+                "name": "hasCustomer",
+                "domain": "Order",
+                "range": "Customer",
+                "sourceFk": "customer_id",
+            }
+        ],
+    }
+    for decisions in (bare_column, bare_fk):
+        r = client.post("/api/v1/ontologies/drafting/import", json={**body, "decisions": decisions})
+        assert r.status_code == 422
 
 
 def test_import_rejection_cascades(client: TestClient, shop_db: Path) -> None:

@@ -150,6 +150,9 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   }
 
   const isWorkspace = location.pathname.startsWith('/browse') || location.pathname.startsWith('/graph')
+  // The R2RML dialog only mounts on Browse; on /graph the button would be a
+  // dead click whose open flag lingers and pops the dialog on the next visit.
+  const isBrowse = location.pathname.startsWith('/browse')
   const themeLabels = {
     light: t('shell.themeLight'),
     dark: t('shell.themeDark'),
@@ -298,9 +301,9 @@ export default function AppShell({ children }: { children?: ReactNode }) {
             </ToggleGroup>
           )}
 
-          {/* Workspace-only R2RML view (dialog renders on Browse pages;
+          {/* Browse-only R2RML view (the dialog mounts there;
               draft-from-database ontologies are its only audience). */}
-          {isWorkspace && (
+          {isBrowse && (
             <Button variant="outline" size="sm" onClick={() => setR2rmlOpen(true)}>
               <NetworkIcon aria-hidden="true" />
               {t('shell.viewR2rml')}

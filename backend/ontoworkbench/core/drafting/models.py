@@ -13,6 +13,11 @@ from pydantic.alias_generators import to_camel
 # whitespace, quotes, angle brackets or backslashes may ride along.
 NAME_SAFE = r"^[^\s\"'<>\\]+$"
 
+# Source refs are "table.column" — the R2RML renderer splits on the dot,
+# and an LLM dropping the table prefix would 500 after the ontology row
+# is already committed (generate retries, import 422s).
+QUALIFIED_REF = r"^[^\s.]+\.[^\s.]+$"
+
 
 class CamelModel(BaseModel):
     """Wire style: camelCase aliases, snake_case accepted."""
@@ -75,7 +80,7 @@ class ObjectPropertyDecision(CamelModel):
     label: str | None = None
     domain: str = Field(pattern=NAME_SAFE)
     range: str = Field(pattern=NAME_SAFE)
-    source_fk: str  # "table.column" of the FK edge
+    source_fk: str = Field(pattern=QUALIFIED_REF)  # "table.column" of the FK edge
 
 
 class DataPropertyDecision(CamelModel):
@@ -85,7 +90,7 @@ class DataPropertyDecision(CamelModel):
     label: str | None = None
     domain: str = Field(pattern=NAME_SAFE)
     datatype: str
-    source_column: str  # "table.column"
+    source_column: str = Field(pattern=QUALIFIED_REF)  # "table.column"
 
 
 class DecisionSet(CamelModel):
