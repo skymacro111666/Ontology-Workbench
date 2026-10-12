@@ -9,6 +9,7 @@ import {
   HistoryIcon,
   KeyRoundIcon,
   LogOutIcon,
+  NetworkIcon,
   SearchCodeIcon,
   Share2Icon,
   ShieldCheckIcon,
@@ -81,6 +82,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const setAiSettingsOpen = useUiStore((s) => s.setAiSettingsOpen)
   const aiChatOpen = useUiStore((s) => s.aiChatOpen)
   const setAiChatOpen = useUiStore((s) => s.setAiChatOpen)
+  const setR2rmlOpen = useUiStore((s) => s.setR2rmlOpen)
   const browseView = useUiStore((s) => s.browseView)
   const setBrowseView = useUiStore((s) => s.setBrowseView)
   const pendingView = useUiStore((s) => s.pendingView)
@@ -267,6 +269,15 @@ export default function AppShell({ children }: { children?: ReactNode }) {
                 {t('shell.viewRegistry')}
               </ToggleGroupItem>
             </ToggleGroup>
+          )}
+
+          {/* Workspace-only R2RML view (dialog renders on Browse pages;
+              draft-from-database ontologies are its only audience). */}
+          {isWorkspace && (
+            <Button variant="outline" size="sm" onClick={() => setR2rmlOpen(true)}>
+              <NetworkIcon aria-hidden="true" />
+              {t('shell.viewR2rml')}
+            </Button>
           )}
 
           {/* Read-only AI assistant drawer toggle (the drawer renders on

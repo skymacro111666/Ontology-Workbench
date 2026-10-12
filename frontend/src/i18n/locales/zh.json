@@ -96,7 +96,14 @@
     "dirtyTitle": "未保存的修改",
     "dirtyDesc": "文本视图有未保存的修改，切换前请选择保留方式。",
     "discardSwitch": "放弃并切换",
-    "saveSwitch": "保存并切换"
+    "saveSwitch": "保存并切换",
+    "viewR2rml": "R2RML"
+  },
+  "r2rml": {
+    "title": "R2RML 映射",
+    "noMapping": "该本体没有 R2RML 映射——来自数据库起草的本体才有",
+    "skippedBadge": "未入映射(无主键)",
+    "source": "Turtle 源码"
   },
   "browse": {
     "notFound": "本体不存在",

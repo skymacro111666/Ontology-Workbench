@@ -49,6 +49,8 @@ export const useUiStore = create<{
   setAiSettingsOpen: (open: boolean) => void
   aiChatOpen: boolean
   setAiChatOpen: (open: boolean) => void
+  r2rmlOpen: boolean
+  setR2rmlOpen: (open: boolean) => void
   browseView: BrowseView
   setBrowseView: (view: BrowseView) => void
   /** Sidebar collapse (rail mode): collapsed panels stay mounted, hidden. */
@@ -114,6 +116,8 @@ export const useUiStore = create<{
       set({ aiChatOpen })
       syncAiCollapse()
     },
+    r2rmlOpen: false,
+    setR2rmlOpen: (r2rmlOpen) => set({ r2rmlOpen }),
     aiChatSavedCollapse: null,
     browseView: 'graph',
     setBrowseView: (browseView) => {

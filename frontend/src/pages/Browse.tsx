@@ -17,6 +17,7 @@ const QueryConsole = lazy(() => import('../components/QueryConsole'))
 const ValidationConsole = lazy(() => import('../components/ValidationConsole'))
 const RegistryConsole = lazy(() => import('../components/RegistryConsole'))
 const AiChatDrawer = lazy(() => import('../components/ai/AiChatDrawer'))
+const R2rmlDialog = lazy(() => import('../components/R2rmlDialog'))
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
@@ -258,6 +259,12 @@ export default function Browse() {
       {/* A2 canvas-editing dialogs + B2 instance dialogs (menus/inspector). */}
       <EntityDialogs oid={oid} />
       <InstanceDialogs oid={oid} />
+
+      {/* R2RML mapping view (shell button, workspace pages only). A null
+       *  fallback keeps the lazy chunk from ever adding a grid item. */}
+      <Suspense fallback={null}>
+        <R2rmlDialog oid={oid} />
+      </Suspense>
     </div>
   )
 }

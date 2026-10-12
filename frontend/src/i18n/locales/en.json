@@ -96,7 +96,14 @@
     "dirtyTitle": "Unsaved changes",
     "dirtyDesc": "The text view has unsaved changes — choose how to proceed before switching.",
     "discardSwitch": "Discard and switch",
-    "saveSwitch": "Save and switch"
+    "saveSwitch": "Save and switch",
+    "viewR2rml": "R2RML"
+  },
+  "r2rml": {
+    "title": "R2RML mapping",
+    "noMapping": "No R2RML mapping — only ontologies drafted from a database have one",
+    "skippedBadge": "Excluded (no primary key)",
+    "source": "Turtle source"
   },
   "browse": {
     "notFound": "Ontology not found",
