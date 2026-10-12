@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from pyoxigraph import DefaultGraph, NamedNode, Store
@@ -18,6 +19,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ontoworkbench.core import terms
+from ontoworkbench.core.drafting.r2rml import parse_r2rml
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir_store
 from ontoworkbench.core.ir_cache import write_ir_cache
@@ -440,6 +442,49 @@ def get_meta(
     if verdict is not None:
         meta["profile"] = ProfileReport(**verdict).model_dump(by_alias=True)
     return respond(meta)
+
+
+@router.get("/ontologies/{ontology_id}/r2rml")
+def get_r2rml(
+    ontology_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Mapping view: metadata + Turtle + parsed structure for the browse dialog."""
+    row = _owned(user, session, ontology_id)
+    doc = session.scalar(select(OntologyR2rml).where(OntologyR2rml.ontology_id == row.id))
+    if doc is None:
+        raise ApiError(ErrorCode.NOT_FOUND, "No R2RML mapping for this ontology")
+    ttl = Path(doc.storage_path).read_bytes()
+    return respond(
+        {
+            "filename": doc.filename,
+            "baseRevision": doc.base_revision,
+            "schemaHash": doc.schema_hash,
+            "createdAt": doc.created_at.isoformat(),
+            "skippedTables": doc.skipped_tables,
+            "content": ttl.decode(),
+            "structure": [m.model_dump(by_alias=True) for m in parse_r2rml(ttl, doc.namespace)],
+        }
+    )
+
+
+@router.get("/ontologies/{ontology_id}/r2rml/download")
+def download_r2rml(
+    ontology_id: str,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> FileResponse:
+    """Stream the mapping file outside the JSON envelope (archive precedent).
+
+    Binary payload, envelope-borne errors: auth still applies via the bearer
+    header and failures still answer with the JSON envelope.
+    """
+    row = _owned(user, session, ontology_id)
+    doc = session.scalar(select(OntologyR2rml).where(OntologyR2rml.ontology_id == row.id))
+    if doc is None:
+        raise ApiError(ErrorCode.NOT_FOUND, "No R2RML mapping for this ontology")
+    return FileResponse(doc.storage_path, media_type="text/turtle", filename=doc.filename)
 
 
 @router.put("/ontologies/{ontology_id}/source")
