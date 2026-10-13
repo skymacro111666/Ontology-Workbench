@@ -14,6 +14,7 @@ from ontoworkbench.core.drafting.r2rml import (
     parse_r2rml,
     render_r2rml,
     schema_hash,
+    validate_r2rml,
 )
 
 NS = "https://local/shop#"
@@ -214,3 +215,138 @@ def test_schema_hash_order_independent_and_subset_scoped():
     assert schema_hash(a) == schema_hash(b)
     only_customer = _schema(SHOP_DB.tables[0])  # 子集不同 → 哈希不同
     assert schema_hash(a) != schema_hash(only_customer)
+
+
+# --- R2RML P2: three-layer save gate -------------------------------------
+
+
+GATE_NS = "https://local/shop#"
+
+GATE_SCHEMA = SchemaModel(
+    database_name="shop",
+    tables=[
+        TableSpec(
+            name="customer",
+            columns=[
+                _col("id", primary_key=True, unique=True),
+                _col("name", type="VARCHAR"),
+            ],
+        )
+    ],
+)
+
+VALID_TTL = (
+    "@prefix rr: <http://www.w3.org/ns/r2rml#> .\n"
+    "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n"
+    "@prefix shop: <https://local/shop#> .\n"
+    "\n"
+    "<https://local/shop/r2rml/Customer> a rr:TriplesMap ;\n"
+    '    rr:logicalTable [ rr:tableName "customer" ] ;\n'
+    "    rr:subjectMap [\n"
+    '        rr:template "https://local/shop/customer/{id}" ;\n'
+    "        rr:class shop:Customer ;\n"
+    "    ] ;\n"
+    "    rr:predicateObjectMap [\n"
+    "        rr:predicate shop:name ;\n"
+    '        rr:objectMap [ rr:column "name" ; rr:datatype xsd:string ] ;\n'
+    "    ] .\n"
+)
+
+
+def test_gate_accepts_valid_subset():
+    """窄子集自产文档过三层门(空 findings)."""
+    assert validate_r2rml(VALID_TTL.encode(), GATE_NS, GATE_SCHEMA) == []
+
+
+def test_gate_l1_rejects_bad_syntax():
+    """坏 Turtle 在 L1 被拒,信息含解析错误."""
+    findings = validate_r2rml(b"@prefix broken <<", GATE_NS, GATE_SCHEMA)
+    assert len(findings) == 1
+    assert findings[0].layer == 1
+
+
+def test_gate_l2_rejects_superset_triples():
+    """rr:join(合法 Turtle、R2RML 超集)在 L2 被逐三元组拒绝."""
+    superset = VALID_TTL.replace(
+        '        rr:objectMap [ rr:column "name" ; rr:datatype xsd:string ] ;\n',
+        '        rr:objectMap [ rr:column "name" ; rr:datatype xsd:string ;\n'
+        '            rr:join ( [ rr:child "a" ] [ rr:parent "b" ] ) ] ;\n',
+    )
+    findings = validate_r2rml(superset.encode(), GATE_NS, GATE_SCHEMA)
+    assert findings and all(f.layer == 2 for f in findings)
+    assert any(f.location for f in findings)
+
+
+def test_gate_l2_rejects_sql_query_superset():
+    """rr:sqlQuery 逻辑表(超集核心风险)被拒."""
+    sql = VALID_TTL.replace(
+        '    rr:logicalTable [ rr:tableName "customer" ] ;\n',
+        '    rr:logicalTable [ rr:sqlQuery "SELECT id FROM customer" ] ;\n',
+    )
+    findings = validate_r2rml(sql.encode(), GATE_NS, GATE_SCHEMA)
+    assert any(f.layer == 2 for f in findings)
+
+
+def test_gate_l2_rejects_annotation_triple():
+    """夹带 rdfs:label 注解三元组(子集外谓词)被拒."""
+    annotated = (
+        VALID_TTL
+        + "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
+        + '\n<https://local/shop/r2rml/Customer> rdfs:label "map" .\n'
+    )
+    findings = validate_r2rml(annotated.encode(), GATE_NS, GATE_SCHEMA)
+    # Quads carry full IRIs — match the label predicate, not the prefix form.
+    assert any(f.layer == 2 and "rdf-schema#label" in (f.location or "") for f in findings)
+
+
+def test_gate_l2_rejects_dangling_parent():
+    """ParentTriplesMap 指向非 TriplesMap 的 IRI 被拒."""
+    dangling = VALID_TTL + (
+        "\n<https://local/shop/r2rml/Customer> rr:predicateObjectMap [\n"
+        "    rr:predicate shop:rel ;\n"
+        "    rr:objectMap [ rr:parentTriplesMap <https://nope/m> ]\n"
+        "] .\n"
+    )
+    findings = validate_r2rml(dangling.encode(), GATE_NS, GATE_SCHEMA)
+    assert any(f.layer == 2 for f in findings)
+
+
+def test_gate_l3_unknown_column_lists_available():
+    """拼错列名在 L3 被拒,且信息列出该表可用列."""
+    typo = VALID_TTL.replace('rr:column "name"', 'rr:column "nme"')
+    findings = validate_r2rml(typo.encode(), GATE_NS, GATE_SCHEMA)
+    assert findings and all(f.layer == 3 for f in findings)
+    assert "id、name" in findings[0].message  # 可用列清单(排序拼接)
+
+
+def test_gate_l3_template_placeholder_unknown():
+    """Template 占位符引用不存在的列被拒."""
+    typo = VALID_TTL.replace("customer/{id}", "customer/{idd}")
+    findings = validate_r2rml(typo.encode(), GATE_NS, GATE_SCHEMA)
+    assert any(f.layer == 3 and "{idd}" in f.message for f in findings)
+
+
+def test_gate_l3_fk_columns_checked():
+    """FK join 的 child/parent 列都要在快照中(此处 child 拼错)."""
+    fk = VALID_TTL + (
+        "\n<https://local/shop/r2rml/Customer> rr:predicateObjectMap [\n"
+        "    rr:predicate shop:rel ;\n"
+        "    rr:objectMap [ rr:parentTriplesMap <https://local/shop/r2rml/Customer> ;\n"
+        '        rr:joinCondition [ rr:child "nm" ; rr:parent "id" ] ]\n'
+        "] .\n"
+    )
+    findings = validate_r2rml(fk.encode(), GATE_NS, GATE_SCHEMA)
+    assert any(f.layer == 3 and "nm" in f.message for f in findings)
+
+
+def test_gate_l3_datatype_must_be_iri():
+    """Datatype 给成字面量在 L3 被拒(spec §4.1 L3 行)."""
+    bad_dt = VALID_TTL.replace("rr:datatype xsd:string", 'rr:datatype "string"')
+    findings = validate_r2rml(bad_dt.encode(), GATE_NS, GATE_SCHEMA)
+    assert any(f.layer == 3 and "datatype" in f.message for f in findings)
+
+
+def test_gate_l3_skipped_without_snapshot():
+    """无快照(P1 存量行):L3 整体跳过,坏列名也能过(降级=仅 L1+L2)."""
+    typo = VALID_TTL.replace('rr:column "name"', 'rr:column "nme"')
+    assert validate_r2rml(typo.encode(), GATE_NS, None) == []

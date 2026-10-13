@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 
 import pyoxigraph as ox
@@ -246,3 +247,182 @@ def parse_r2rml(ttl: bytes, namespace: str) -> list[R2rmlTriplesMap]:
             )
         )
     return out
+
+
+class R2rmlFinding(CamelModel):
+    """One save-gate rejection (P2 spec §4.1). Empty list = save may proceed."""
+
+    layer: int  # 1 syntax / 2 subset shape / 3 snapshot semantics
+    message: str
+    location: str | None = None
+
+
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+
+# Structural edges: map IRI → bnode. The predicate that points AT a bnode
+# fixes its role; roles gate which predicates the bnode itself may carry.
+_BNODE_ROLES = {
+    f"{RR}logicalTable",
+    f"{RR}subjectMap",
+    f"{RR}predicateObjectMap",
+    f"{RR}objectMap",
+    f"{RR}joinCondition",
+}
+# Predicates allowed on each node kind ("" = the map IRI subject itself).
+_ALLOWED_ON = {
+    "": {f"{RR}logicalTable", f"{RR}subjectMap", f"{RR}predicateObjectMap"},
+    f"{RR}logicalTable": {f"{RR}tableName"},
+    f"{RR}subjectMap": {f"{RR}template", f"{RR}class"},
+    f"{RR}predicateObjectMap": {f"{RR}predicate", f"{RR}objectMap"},
+    f"{RR}objectMap": {
+        f"{RR}column",
+        f"{RR}datatype",
+        f"{RR}parentTriplesMap",
+        f"{RR}joinCondition",
+    },
+    f"{RR}joinCondition": {f"{RR}child", f"{RR}parent"},
+}
+# Literal-valued leaves; structural edges take bnodes; everything else on a
+# bnode (predicate/class/datatype/parentTriplesMap) takes an IRI.
+_LITERAL_LEAVES = {f"{RR}tableName", f"{RR}template", f"{RR}column", f"{RR}child", f"{RR}parent"}
+
+
+def validate_r2rml(ttl: bytes, namespace: str, schema: SchemaModel | None) -> list[R2rmlFinding]:
+    """Three-layer save gate (P2 spec §4.1).
+
+    L1 Turtle syntax; L2 every quad accounted to the narrow subset shape
+    (anti-superset: joins / logical tables / smuggled annotations reject);
+    L3 snapshot semantics — columns referenced must exist, datatype must be
+    an IRI. Skips L3 when the row predates snapshots (schema is None).
+
+    Role routing is anti-superset, not full shape validation: a bnode shared
+    by two structural edges is malformed input the gate may pass — the
+    parse-back (browse view) then yields garbage, which is acceptable here.
+    """
+    # L1 — syntax (pyoxigraph surfaces parse errors as built-in SyntaxError).
+    store = ox.Store()
+    try:
+        store.load(input=ttl, format=ox.RdfFormat.TURTLE, to_graph=ox.DefaultGraph())
+    except SyntaxError as exc:
+        return [R2rmlFinding(layer=1, message=f"Turtle 解析失败:{exc}")]
+    quads = list(store)
+
+    maps = {
+        q.subject.value
+        for q in quads
+        if q.predicate.value == RDF_TYPE and q.object.value == f"{RR}TriplesMap"
+    }
+    # Role assignment is a bounded structural walk: the map IRI anchors
+    # logicalTable/subjectMap/predicateObjectMap; objectMap nests under a
+    # pom bnode and joinCondition under an objectMap bnode — three hops
+    # deep in the narrow subset, so propagate until fixpoint (≤3 rounds).
+    role: dict[str, str] = {}  # bnode id -> incoming structural predicate
+    for _ in range(3):
+        grew = False
+        for q in quads:
+            pv = q.predicate.value
+            if pv not in _BNODE_ROLES or not isinstance(q.object, ox.BlankNode):
+                continue
+            if isinstance(q.subject, ox.NamedNode):
+                anchored = q.subject.value in maps
+            else:
+                anchored = q.subject.value in role
+            if anchored and q.object.value not in role:
+                role[q.object.value] = pv
+                grew = True
+        if not grew:
+            break
+
+    findings: list[R2rmlFinding] = []
+    for q in quads:
+        s, pv, o = q.subject, q.predicate.value, q.object
+        where = f"{s.value} {pv} {o.value}"
+        if pv == RDF_TYPE:
+            if o.value != f"{RR}TriplesMap" or s.value not in maps:
+                findings.append(R2rmlFinding(layer=2, message="子集外的三元组", location=where))
+            continue
+        if isinstance(s, ox.NamedNode):
+            ok = s.value in maps and pv in _ALLOWED_ON[""] and isinstance(o, ox.BlankNode)
+        else:
+            r = role.get(s.value)
+            ok = r is not None and pv in _ALLOWED_ON[r]
+            if ok:
+                if pv in _LITERAL_LEAVES:
+                    ok = isinstance(o, ox.Literal)
+                elif pv in _BNODE_ROLES:
+                    ok = isinstance(o, ox.BlankNode)
+                elif pv == f"{RR}datatype":
+                    # Spec files datatype under L3 — tag it before the
+                    # generic IRI kind check can fail it into L2.
+                    if not isinstance(o, ox.NamedNode):
+                        findings.append(
+                            R2rmlFinding(
+                                layer=3,
+                                message="datatype 必须是 IRI(如 xsd:string)",
+                                location=where,
+                            )
+                        )
+                        ok = False
+                elif not isinstance(o, ox.NamedNode):
+                    ok = False
+                if ok and pv == f"{RR}parentTriplesMap" and o.value not in maps:
+                    findings.append(
+                        R2rmlFinding(
+                            layer=2, message="parentTriplesMap 指向非 TriplesMap", location=where
+                        )
+                    )
+                    ok = False
+        if not ok:
+            findings.append(R2rmlFinding(layer=2, message="子集外的三元组", location=where))
+    if findings:
+        return findings
+
+    # L3 — snapshot semantics. Datatype-IRI rides the L2 walk above (kind
+    # check re-tags it as layer 3 per the spec); column checks reuse the
+    # parse-back model.
+    if schema is None:
+        return findings
+    snap = {t.name: {c.name for c in t.columns} for t in schema.tables}
+
+    def avail(table: str) -> str:
+        return "、".join(sorted(snap.get(table, ())))
+
+    for m in parse_r2rml(ttl, namespace):
+        cols = snap.get(m.table)
+        if cols is None:
+            findings.append(R2rmlFinding(layer=3, message=f"表 {m.table} 不在映射快照中"))
+            continue
+        for ph in re.findall(r"\{([^{}]+)\}", m.subject_template):
+            if ph not in cols:
+                findings.append(
+                    R2rmlFinding(
+                        layer=3,
+                        message=f"模板占位符 {{{ph}}} 不是表 {m.table} 的列;可用:{avail(m.table)}",
+                    )
+                )
+        for p in m.column_props:
+            if p.column not in cols:
+                findings.append(
+                    R2rmlFinding(
+                        layer=3,
+                        message=f"列 {m.table}.{p.column} 不存在;可用:{avail(m.table)}",
+                    )
+                )
+        for fk in m.fk_props:
+            if fk.child_column not in cols:
+                findings.append(
+                    R2rmlFinding(
+                        layer=3,
+                        message=f"列 {m.table}.{fk.child_column} 不存在;可用:{avail(m.table)}",
+                    )
+                )
+            pcols = snap.get(fk.parent_table)
+            if pcols is None:
+                findings.append(
+                    R2rmlFinding(layer=3, message=f"FK 父表 {fk.parent_table} 不在映射快照中")
+                )
+            elif fk.parent_column not in pcols:
+                avail_parent = avail(fk.parent_table)
+                msg = f"列 {fk.parent_table}.{fk.parent_column} 不存在;可用:{avail_parent}"
+                findings.append(R2rmlFinding(layer=3, message=msg))
+    return findings
