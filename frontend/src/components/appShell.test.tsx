@@ -262,14 +262,25 @@ it('hides the 图形/文本 switch outside the workspace', () => {
   expect(screen.queryByRole('radio', { name: /文本/ })).toBeNull()
 })
 
-it('mounts the R2RML view button on /browse only (the dialog lives there)', () => {
+it('mounts the R2RML view button on /browse only (the page lives there)', () => {
   const { unmount } = shell('/browse/oid-1')
   expect(screen.getByRole('button', { name: 'R2RML' })).toBeTruthy()
   unmount()
   shell('/graph/oid-1')
-  // /graph hosts no dialog: a stray click there would only arm the open
-  // flag, and the dialog would pop "by itself" on the next /browse visit.
+  // /graph never hosts the workbench: the button stays browse-only.
   expect(screen.queryByRole('button', { name: 'R2RML' })).toBeNull()
+})
+
+it('toggles r2rmlOpen from the R2RML button', async () => {
+  /** 按钮 toggle:点击置 open(aria-pressed 跟随),再点收回。 */
+  shell('/browse/oid-1')
+  const btn = screen.getByRole('button', { name: 'R2RML' })
+  expect(btn.getAttribute('aria-pressed')).toBe('false')
+  await userEvent.click(btn)
+  expect(useUiStore.getState().r2rmlOpen).toBe(true)
+  expect(screen.getByRole('button', { name: 'R2RML' }).getAttribute('aria-pressed')).toBe('true')
+  await userEvent.click(screen.getByRole('button', { name: 'R2RML' }))
+  expect(useUiStore.getState().r2rmlOpen).toBe(false)
 })
 
 it('opens the blank-create dialog from the file menu 新建 submenu', async () => {

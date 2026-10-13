@@ -487,6 +487,8 @@ export interface R2rmlDoc {
   createdAt: string
   skippedTables: string[]
   content: string
+  contentHash: string
+  previousExists: boolean
   structure: R2rmlTriplesMap[]
 }
 

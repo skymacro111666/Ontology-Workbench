@@ -82,6 +82,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const setAiSettingsOpen = useUiStore((s) => s.setAiSettingsOpen)
   const aiChatOpen = useUiStore((s) => s.aiChatOpen)
   const setAiChatOpen = useUiStore((s) => s.setAiChatOpen)
+  const r2rmlOpen = useUiStore((s) => s.r2rmlOpen)
   const setR2rmlOpen = useUiStore((s) => s.setR2rmlOpen)
   const browseView = useUiStore((s) => s.browseView)
   const setBrowseView = useUiStore((s) => s.setBrowseView)
@@ -300,10 +301,15 @@ export default function AppShell({ children }: { children?: ReactNode }) {
             </ToggleGroup>
           )}
 
-          {/* Browse-only R2RML view (the dialog mounts there;
-              draft-from-database ontologies are its only audience). */}
+          {/* Browse-only R2RML workbench toggle (the page takes the content
+              area; draft-from-database ontologies are its audience). */}
           {isBrowse && (
-            <Button variant="outline" size="sm" onClick={() => setR2rmlOpen(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-pressed={r2rmlOpen}
+              onClick={() => setR2rmlOpen(!r2rmlOpen)}
+            >
               <NetworkIcon aria-hidden="true" />
               {t('shell.viewR2rml')}
             </Button>

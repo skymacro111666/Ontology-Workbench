@@ -105,7 +105,9 @@
     "title": "R2RML mapping",
     "noMapping": "No R2RML mapping — only ontologies drafted from a database have one",
     "skippedBadge": "Excluded (no primary key)",
-    "source": "Turtle source"
+    "source": "Turtle source",
+    "tabStructure": "Structure",
+    "tabSource": "Source"
   },
   "browse": {
     "notFound": "Ontology not found",

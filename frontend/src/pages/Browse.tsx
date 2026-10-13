@@ -17,7 +17,7 @@ const QueryConsole = lazy(() => import('../components/QueryConsole'))
 const ValidationConsole = lazy(() => import('../components/ValidationConsole'))
 const RegistryConsole = lazy(() => import('../components/RegistryConsole'))
 const AiChatDrawer = lazy(() => import('../components/ai/AiChatDrawer'))
-const R2rmlDialog = lazy(() => import('../components/R2rmlDialog'))
+const R2rmlPage = lazy(() => import('../components/R2rmlPage'))
 import { useBrowseStore } from '../stores/browseStore'
 import { useUiStore, type BrowseView } from '../stores/uiStore'
 import { Button } from '@/components/ui/button'
@@ -100,6 +100,7 @@ export default function Browse() {
   const setLeftCollapsed = useUiStore((s) => s.setLeftCollapsed)
   const setRightCollapsed = useUiStore((s) => s.setRightCollapsed)
   const aiChatOpen = useUiStore((s) => s.aiChatOpen)
+  const r2rmlOpen = useUiStore((s) => s.r2rmlOpen)
   // Deep links (?eid=… or the redirected /graph focus param) preselect.
   useEffect(() => {
     const target = focusParam ?? eidParam
@@ -156,7 +157,7 @@ export default function Browse() {
     <div
       className={cn(
         'grid h-full min-h-0 grid-rows-[1fr_30px] transition-[grid-template-columns] duration-200',
-        colsFor(browseView, leftCollapsed, rightCollapsed, aiChatOpen),
+        colsFor(r2rmlOpen ? 'text' : browseView, leftCollapsed, rightCollapsed, aiChatOpen),
       )}
     >
       {/* Zone 1: class tree. Collapses to a left rail; the panel stays
@@ -184,7 +185,9 @@ export default function Browse() {
        *  per the topbar's 图形/文本 switch (spec: single content view). */}
       <section aria-label={t('browse.contentArea')} className="border-line min-h-0 border-r p-1">
         <Suspense fallback={<div className="text-ink-3 py-16 text-center text-sm">{t('common.loading')}</div>}>
-          {browseView === 'graph' ? (
+          {r2rmlOpen ? (
+            <R2rmlPage oid={oid} />
+          ) : browseView === 'graph' ? (
             <GraphOverview oid={oid} focus={selectedEid} />
           ) : browseView === 'text' ? (
             <SourceView oid={oid} />
@@ -199,8 +202,9 @@ export default function Browse() {
       </section>
 
       {/* Zone 3: resident inspector (graph mode only). Collapses to a
-       *  right rail the same way; text mode drops the column entirely. */}
-      {browseView === 'graph' && (
+       *  right rail the same way; text mode drops the column entirely.
+       *  The R2RML workbench page takes the content area alone. */}
+      {browseView === 'graph' && !r2rmlOpen && (
         <aside className="relative min-h-0 overflow-hidden">
           {rightCollapsed ? (
             <Rail label={t('browse.expandInspector')} chev="«" onExpand={() => setRightCollapsed(false)} />
@@ -223,7 +227,7 @@ export default function Browse() {
       {/* Zone 3.5: read-only AI assistant drawer (graph mode only, spec-2 §5).
        *  Rendered only while open so the grid column count always matches
        *  colsFor; text views keep their two-column layout unchanged. */}
-      {browseView === 'graph' && aiChatOpen && (
+      {browseView === 'graph' && aiChatOpen && !r2rmlOpen && (
         <aside className="min-h-0 overflow-hidden">
           <Suspense fallback={<div className="text-ink-3 py-16 text-center text-sm">{t('common.loading')}</div>}>
             <AiChatDrawer oid={oid} />
@@ -259,12 +263,6 @@ export default function Browse() {
       {/* A2 canvas-editing dialogs + B2 instance dialogs (menus/inspector). */}
       <EntityDialogs oid={oid} />
       <InstanceDialogs oid={oid} />
-
-      {/* R2RML mapping view (shell button, workspace pages only). A null
-       *  fallback keeps the lazy chunk from ever adding a grid item. */}
-      <Suspense fallback={null}>
-        <R2rmlDialog oid={oid} />
-      </Suspense>
     </div>
   )
 }

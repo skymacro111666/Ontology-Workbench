@@ -105,7 +105,9 @@
     "title": "R2RML 映射",
     "noMapping": "该本体没有 R2RML 映射——来自数据库起草的本体才有",
     "skippedBadge": "未入映射(无主键)",
-    "source": "Turtle 源码"
+    "source": "Turtle 源码",
+    "tabStructure": "结构",
+    "tabSource": "源码"
   },
   "browse": {
     "notFound": "本体不存在",
