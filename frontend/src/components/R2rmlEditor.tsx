@@ -5,8 +5,9 @@ import { toast } from 'sonner'
 import { EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap, lineNumbers } from '@codemirror/view'
 import { StreamLanguage, syntaxHighlighting } from '@codemirror/language'
-import { search, searchKeymap } from '@codemirror/search'
+import { openSearchPanel, search, searchKeymap } from '@codemirror/search'
 import { turtle } from '@codemirror/legacy-modes/mode/turtle'
+import { SearchIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -186,6 +187,16 @@ export default function R2rmlEditor({ oid, doc }: { oid: string; doc: R2rmlDoc }
           {t('r2rml.rollback')}
         </Button>
         {dirty && <span className="text-ink-3 text-xs">{t('r2rml.unsaved')}</span>}
+        <Button
+          size="sm"
+          variant="outline"
+          className="ml-auto h-6 gap-1 px-2 text-xs"
+          title={t('r2rml.findReplace')}
+          onClick={() => viewRef.current && openSearchPanel(viewRef.current)}
+        >
+          <SearchIcon className="size-3" aria-hidden="true" />
+          {t('r2rml.search')}
+        </Button>
       </div>
       <AlertDialog open={rollbackOpen} onOpenChange={setRollbackOpen}>
         <AlertDialogContent>

@@ -118,7 +118,9 @@
     "rollbackTitle": "Roll back to previous",
     "rollbackDesc": "The file swaps back to the previous version; the current one moves into the rollback slot — roll back again to redo.",
     "rollbackDescDirty": "Unsaved edits will be lost; the file swaps back to the previous version and the last saved one moves into the rollback slot.",
-    "rollbackConfirm": "Roll back"
+    "rollbackConfirm": "Roll back",
+    "search": "Search",
+    "findReplace": "Find/Replace (Ctrl+F)"
   },
   "browse": {
     "notFound": "Ontology not found",

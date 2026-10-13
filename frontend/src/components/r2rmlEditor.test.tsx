@@ -169,4 +169,20 @@ describe('R2rmlEditor rollback', () => {
     await userEvent.click(screen.getByRole('button', { name: '回退上一版' }))
     expect(await screen.findByText(/未保存的修改将丢失/)).toBeTruthy()
   })
+
+  it('offers find/replace via the toolbar search button', async () => {
+    /** 工具栏「搜索」按钮打开 CM6 官方面板(与文本页同引擎),输入即命中。 */
+    const { container } = renderEditor(vi.fn(async () => ok(DOC)))
+    const content = container.querySelector('.cm-content') as HTMLElement
+    await waitFor(() => expect(content.getAttribute('contenteditable')).toBeTruthy())
+    await userEvent.click(screen.getByRole('button', { name: '搜索' }))
+    const panel = container.querySelector('.cm-panel.cm-search')
+    expect(panel).not.toBeNull()
+    const find = panel?.querySelector('input[name="search"]') as HTMLInputElement
+    await userEvent.type(find, 'rr')
+    await waitFor(
+      () => expect(container.querySelectorAll('.cm-searchMatch').length).toBeGreaterThanOrEqual(1),
+      { timeout: 4000 },
+    )
+  })
 })
