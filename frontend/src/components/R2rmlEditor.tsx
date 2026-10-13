@@ -217,8 +217,8 @@ export default function R2rmlEditor({ oid, doc }: { oid: string; doc: R2rmlDoc }
       {findings && (
         <div className="border-line bg-panel-2 rounded-ctl border p-2 text-xs">
           <p className="text-ink-1 mb-1 font-medium">{t('r2rml.findingsTitle')}</p>
-          {findings.map((f) => (
-            <p key={f} className="text-ink-2 font-mono">
+          {findings.map((f, i) => (
+            <p key={`${i}-${f}`} className="text-ink-2 font-mono">
               {f}
             </p>
           ))}

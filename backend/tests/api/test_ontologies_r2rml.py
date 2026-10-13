@@ -233,3 +233,14 @@ def test_put_r2rml_rejects_oversize(
     r = client.put(f"/api/v1/ontologies/{oid}/r2rml", json={"content": "x" * 11, "baseHash": "z"})
     assert r.status_code == 413
     assert r.json()["code"] == "UPLOAD_TOO_LARGE"
+
+
+def test_r2rml_file_missing_404_not_500(client: TestClient, shop_db: Path) -> None:
+    """伴生文件被删而行还在(P1 终审 minor):GET/下载答 404 而非裸 500."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    Path(_row(oid).storage_path).unlink()
+    r = client.get(f"/api/v1/ontologies/{oid}/r2rml")
+    assert r.status_code == 404
+    assert r.json()["code"] == "NOT_FOUND"
+    r2 = client.get(f"/api/v1/ontologies/{oid}/r2rml/download")
+    assert r2.status_code == 404

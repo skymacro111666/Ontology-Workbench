@@ -60,22 +60,22 @@ function R2rmlStructure({ doc }: { doc: R2rmlDoc }) {
         </p>
       )}
       <div className="border-line overflow-auto rounded-ctl border text-xs">
-        {doc.structure.map((m) => (
+        {doc.structure.map((m, mi) => (
           <div
-            key={m.table}
+            key={`${mi}-${m.table}`}
             className="border-line border-b border-dashed px-2 py-1.5 last:border-0"
           >
             <div className="font-mono">
               {m.table} → {m.className}
             </div>
-            {m.columnProps.map((p) => (
-              <div key={p.column} className="text-ink-2 font-mono">
+            {m.columnProps.map((p, ci) => (
+              <div key={`${ci}-${p.column}`} className="text-ink-2 font-mono">
                 {'  '}
                 {p.column} → {p.predicate} ({p.datatype})
               </div>
             ))}
-            {m.fkProps.map((p) => (
-              <div key={p.predicate} className="text-primary font-mono">
+            {m.fkProps.map((p, fi) => (
+              <div key={`${fi}-${p.predicate}`} className="text-primary font-mono">
                 {'  '}
                 {p.predicate}: {p.childColumn} → {p.parentTable}.{p.parentColumn}
               </div>

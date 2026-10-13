@@ -99,7 +99,8 @@ def render_r2rml(draft: MergedDraft, schema: SchemaModel, namespace: str) -> Ren
         table = tables.get(cls.source_table)
         cols = _identity_columns(table) if table else []
         if not cols:
-            skipped.append(cls.source_table)
+            if cls.source_table not in skipped:  # two classes may share a table
+                skipped.append(cls.source_table)
         else:
             idents[cls.source_table] = cols
     live = {c.name for c in draft.classes if c.source_table in idents}

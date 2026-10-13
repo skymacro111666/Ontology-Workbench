@@ -401,3 +401,23 @@ def test_parse_includes_foreign_iri_maps():
     maps = parse_r2rml(FOREIGN_TTL.encode(), GATE_NS)
     # 按全 IRI 排序(elsewhere < local),跨前缀时的确定性同样成立
     assert [m.class_name for m in maps] == ["Order", "Customer"]
+
+
+def test_render_skipped_tables_deduped():
+    """两个类共用同一张无主键表(P1 终审 minor):skipped 列表只列一次."""
+    schema = _schema(TableSpec(name="notes", columns=[_col("body", type="TEXT")]))
+    draft = merge_decisions(
+        [
+            DecisionSet(
+                classes=[
+                    {"name": "NoteA", "label": "备注A", "sourceTable": "notes"},
+                    {"name": "NoteB", "label": "备注B", "sourceTable": "notes"},
+                ],
+                objectProperties=[],
+                dataProperties=[],
+            )
+        ],
+        schema,
+    )
+    r = render_r2rml(draft, schema, NS)
+    assert r.skipped_tables == ["notes"]

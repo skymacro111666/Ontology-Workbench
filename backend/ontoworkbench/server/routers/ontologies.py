@@ -456,7 +456,7 @@ def get_r2rml(
     doc = session.scalar(select(OntologyR2rml).where(OntologyR2rml.ontology_id == row.id))
     if doc is None:
         raise ApiError(ErrorCode.NOT_FOUND, "No R2RML mapping for this ontology")
-    ttl = Path(doc.storage_path).read_bytes()
+    ttl = _r2rml_bytes(doc)
     return respond(
         {
             "filename": doc.filename,
@@ -487,6 +487,8 @@ def download_r2rml(
     doc = session.scalar(select(OntologyR2rml).where(OntologyR2rml.ontology_id == row.id))
     if doc is None:
         raise ApiError(ErrorCode.NOT_FOUND, "No R2RML mapping for this ontology")
+    if not Path(doc.storage_path).is_file():
+        raise ApiError(ErrorCode.NOT_FOUND, "The mapping file is missing on disk")
     return FileResponse(doc.storage_path, media_type="text/turtle", filename=doc.filename)
 
 
@@ -512,6 +514,14 @@ def _r2rml_doc(user: User, session: Session, ontology_id: str) -> tuple[Ontology
     return row, doc
 
 
+def _r2rml_bytes(doc: OntologyR2rml) -> bytes:
+    """Mapping bytes; a companion file deleted under the row answers 404, not a bare 500."""
+    try:
+        return Path(doc.storage_path).read_bytes()
+    except OSError:
+        raise ApiError(ErrorCode.NOT_FOUND, "The mapping file is missing on disk") from None
+
+
 def _r2rml_payload(doc: OntologyR2rml, ttl: bytes) -> dict:
     """PUT/rollback response shape (P2 spec §5)."""
     return {
@@ -533,15 +543,16 @@ def put_r2rml(
     """Gate the edited mapping, then overwrite the file verbatim (P2 §4.2).
 
     Write order is row-then-file: previous_ttl commits before the bytes
-    move, so a failed save self-heals (row rollback) instead of stranding
-    a new file with no undo slot.
+    move. A failure between the two leaves previous_ttl holding the same
+    content as the untouched file — a harmless duplicate undo slot, not a
+    stranded file with no undo.
     """
     row, doc = _r2rml_doc(user, session, ontology_id)
     data = body.content.encode()
     if len(data) > MAX_UPLOAD:  # same cap as PUT /source (MCP/P4 exposure)
         ow_uploads_total.labels("too_large").inc()
         raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
-    current = Path(doc.storage_path).read_bytes()
+    current = _r2rml_bytes(doc)
     if LocalUserDirStore.file_hash(current) != body.base_hash:
         raise ApiError(
             ErrorCode.R2RML_STALE,
@@ -577,7 +588,7 @@ def rollback_r2rml(
     row, doc = _r2rml_doc(user, session, ontology_id)
     if doc.previous_ttl is None:
         raise ApiError(ErrorCode.R2RML_NO_PREVIOUS, "没有可回退的上一版")
-    current = Path(doc.storage_path).read_bytes()
+    current = _r2rml_bytes(doc)
     if LocalUserDirStore.file_hash(current) != body.base_hash:
         raise ApiError(
             ErrorCode.R2RML_STALE,

@@ -85,3 +85,30 @@ describe('R2rmlPage', () => {
     expect(await screen.findByText(/来自数据库起草的本体才有/)).toBeTruthy()
   })
 })
+
+describe('R2rmlPage key hygiene', () => {
+  it('renders duplicate table names without React key collisions', async () => {
+    /** 手打两 map 共用同名表(P2 终审 minor):结构列表不得触发 React 同 key 告警. */
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const dup = {
+      ...DOC,
+      structure: [
+        ...DOC.structure,
+        {
+          table: 'customer',
+          className: 'Customer2',
+          subjectTemplate: 'https://local/shop/customer2/{id}',
+          columnProps: [],
+          fkProps: [],
+        },
+      ],
+    }
+    vi.stubGlobal('fetch', vi.fn(async () => ok(dup)))
+    page()
+    await screen.findAllByText(/customer → Customer/)
+    expect(
+      errSpy.mock.calls.some((c) => String(c[0]).includes('same key')),
+    ).toBe(false)
+    errSpy.mockRestore()
+  })
+})

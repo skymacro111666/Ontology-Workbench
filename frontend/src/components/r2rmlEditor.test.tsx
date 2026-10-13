@@ -186,3 +186,35 @@ describe('R2rmlEditor rollback', () => {
     )
   })
 })
+
+describe('R2rmlEditor key hygiene', () => {
+  it('renders duplicate findings without React key collisions', async () => {
+    /** 422 hint 出现两行相同(P2 终审 minor):findings 面板不得触发同 key 告警. */
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      if (init?.method === 'PUT')
+        return new Response(
+          JSON.stringify({
+            code: 'R2RML_INVALID', message: 'R2RML 映射未通过校验(2 处)',
+            data: null, hint: 'L2: 子集外的三元组\nL2: 子集外的三元组', request_id: 'r',
+          }),
+          { status: 422, headers: { 'Content-Type': 'application/json' } },
+        )
+      return ok(DOC)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = renderEditor(fetchMock)
+    const content = container.querySelector('.cm-content') as HTMLElement
+    await waitFor(() => expect(content.getAttribute('contenteditable')).toBeTruthy())
+    await userEvent.click(content)
+    await userEvent.keyboard('x')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() =>
+      expect(screen.getByText(/校验未通过/)).toBeTruthy(),
+    )
+    expect(
+      errSpy.mock.calls.some((c) => String(c[0]).includes('same key')),
+    ).toBe(false)
+    errSpy.mockRestore()
+  })
+})
