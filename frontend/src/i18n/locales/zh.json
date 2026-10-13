@@ -107,7 +107,13 @@
     "skippedBadge": "未入映射(无主键)",
     "source": "Turtle 源码",
     "tabStructure": "结构",
-    "tabSource": "源码"
+    "tabSource": "源码",
+    "save": "保存",
+    "unsaved": "● 未保存",
+    "findingsTitle": "校验未通过",
+    "dirtyTitle": "有未保存的修改",
+    "dirtyDesc": "离开将丢失编辑器中未保存的修改。",
+    "discardEdits": "放弃修改"
   },
   "browse": {
     "notFound": "本体不存在",
@@ -475,7 +481,10 @@
     "LLM_OUTPUT_INVALID": "模型输出无效，请重试或换模型",
     "LLM_OUTPUT_TRUNCATED": "输出被长度上限截断：请调大 AI_DRAFT_MAX_TOKENS 或减少一次生成的表数量",
     "DB_DRIVER_MISSING": "数据库驱动未安装",
-    "DB_CONNECT_FAILED": "数据库连接失败"
+    "DB_CONNECT_FAILED": "数据库连接失败",
+    "R2RML_INVALID": "R2RML 映射未通过校验",
+    "R2RML_STALE": "映射已被其他修改更新，请重新加载",
+    "R2RML_NO_PREVIOUS": "没有可回退的上一版"
   },
   "query": {
     "samples": "示例查询",

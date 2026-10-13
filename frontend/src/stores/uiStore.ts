@@ -64,6 +64,9 @@ export const useUiStore = create<{
   aiChatSavedCollapse: { left: boolean | null; right: boolean | null } | null
   sourceDirty: boolean
   setSourceDirty: (dirty: boolean) => void
+  /** R2RML editor dirtiness — the shell guard reads it (P2 spec §6). */
+  r2rmlDirty: boolean
+  setR2rmlDirty: (dirty: boolean) => void
   pendingView: BrowseView | null
   setPendingView: (view: BrowseView | null) => void
   sourceSaveFn: SourceSaveFn | null
@@ -138,6 +141,8 @@ export const useUiStore = create<{
       })),
     sourceDirty: false,
     setSourceDirty: (sourceDirty) => set({ sourceDirty }),
+    r2rmlDirty: false,
+    setR2rmlDirty: (r2rmlDirty) => set({ r2rmlDirty }),
     pendingView: null,
     setPendingView: (pendingView) => set({ pendingView }),
     sourceSaveFn: null,

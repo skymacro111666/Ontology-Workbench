@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
@@ -41,7 +41,7 @@ const DOC = {
 }
 
 function page() {
-  render(
+  return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter>
         <R2rmlPage oid="oid-1" />
@@ -67,12 +67,15 @@ describe('R2rmlPage', () => {
   })
 
   it('switches to the source tab showing the Turtle text', async () => {
-    /** 源码页签展示文件内容(编辑器 Task 5 接入,先只读展示)。 */
+    /** 源码页签=CM6 编辑器,内容在 .cm-content(CM6 按行拆节点,取 textContent)。 */
     vi.stubGlobal('fetch', vi.fn(async () => ok(DOC)))
-    page()
+    const { container } = page()
     await screen.findByText('customer → Customer')
     await userEvent.click(screen.getByRole('radio', { name: '源码' }))
-    expect(await screen.findByText(/@prefix rr:/)).toBeTruthy()
+    await waitFor(() => {
+      const content = container.querySelector('.cm-content') as HTMLElement
+      expect(content?.textContent).toContain('@prefix rr:')
+    })
   })
 
   it('shows the guide copy when the ontology has no mapping', async () => {

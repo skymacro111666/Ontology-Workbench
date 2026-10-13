@@ -84,14 +84,22 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   const setAiChatOpen = useUiStore((s) => s.setAiChatOpen)
   const r2rmlOpen = useUiStore((s) => s.r2rmlOpen)
   const setR2rmlOpen = useUiStore((s) => s.setR2rmlOpen)
+  const setR2rmlDirty = useUiStore((s) => s.setR2rmlDirty)
   const browseView = useUiStore((s) => s.browseView)
   const setBrowseView = useUiStore((s) => s.setBrowseView)
   const pendingView = useUiStore((s) => s.pendingView)
   const setPendingView = useUiStore((s) => s.setPendingView)
   const [pwdOpen, setPwdOpen] = useState(false)
+  /** R2RML dirty guard: 'close' (button toggle) or the view being switched
+   *  to — confirmed = discard edits, close the page, apply. */
+  const [r2rmlGuard, setR2rmlGuard] = useState<null | 'close' | BrowseView>(null)
 
   /** View switch with a dirty-text guard: route through the dialog. */
   const switchView = (v: BrowseView) => {
+    if (r2rmlOpen && useUiStore.getState().r2rmlDirty) {
+      setR2rmlGuard(v) // the workbench page owns the content area — guard it
+      return
+    }
     if (browseView === 'text' && v !== 'text' && useUiStore.getState().sourceDirty) {
       setPendingView(v)
       return
@@ -308,7 +316,10 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               variant="outline"
               size="sm"
               aria-pressed={r2rmlOpen}
-              onClick={() => setR2rmlOpen(!r2rmlOpen)}
+              onClick={() => {
+                if (r2rmlOpen && useUiStore.getState().r2rmlDirty) setR2rmlGuard('close')
+                else setR2rmlOpen(!r2rmlOpen)
+              }}
             >
               <NetworkIcon aria-hidden="true" />
               {t('shell.viewR2rml')}
@@ -425,6 +436,34 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               }}
             >
               {t('shell.saveSwitch')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* R2RML dirty guard: discard-only (save lives in the editor itself). */}
+      <AlertDialog
+        open={r2rmlGuard !== null}
+        onOpenChange={(o) => {
+          if (!o) setR2rmlGuard(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('r2rml.dirtyTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('r2rml.dirtyDesc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (r2rmlGuard !== null && r2rmlGuard !== 'close') setBrowseView(r2rmlGuard)
+                setR2rmlOpen(false)
+                setR2rmlDirty(false)
+                setR2rmlGuard(null)
+              }}
+            >
+              {t('r2rml.discardEdits')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

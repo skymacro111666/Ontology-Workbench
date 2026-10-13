@@ -107,7 +107,13 @@
     "skippedBadge": "Excluded (no primary key)",
     "source": "Turtle source",
     "tabStructure": "Structure",
-    "tabSource": "Source"
+    "tabSource": "Source",
+    "save": "Save",
+    "unsaved": "● Unsaved",
+    "findingsTitle": "Validation failed",
+    "dirtyTitle": "Unsaved changes",
+    "dirtyDesc": "Leaving will lose your unsaved edits in the editor.",
+    "discardEdits": "Discard edits"
   },
   "browse": {
     "notFound": "Ontology not found",
@@ -475,7 +481,10 @@
     "LLM_OUTPUT_INVALID": "Invalid model output — retry or switch models",
     "LLM_OUTPUT_TRUNCATED": "Output was truncated by the max-token cap: raise AI_DRAFT_MAX_TOKENS or generate fewer tables per run",
     "DB_DRIVER_MISSING": "Database driver not installed",
-    "DB_CONNECT_FAILED": "Database connection failed"
+    "DB_CONNECT_FAILED": "Database connection failed",
+    "R2RML_INVALID": "The R2RML mapping failed validation",
+    "R2RML_STALE": "The mapping changed since it was loaded — reload it",
+    "R2RML_NO_PREVIOUS": "No previous version to roll back to"
   },
   "query": {
     "samples": "Sample queries",

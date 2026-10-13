@@ -283,6 +283,19 @@ it('toggles r2rmlOpen from the R2RML button', async () => {
   expect(useUiStore.getState().r2rmlOpen).toBe(false)
 })
 
+it('blocks view switch while r2rml dirty; confirming discards and closes', async () => {
+  /** dirty 时切视图先弹确认;确认后 r2rmlOpen 关、dirty 清、视图切换。 */
+  shell('/browse/oid-1')
+  useUiStore.setState({ r2rmlOpen: true, r2rmlDirty: true })
+  await userEvent.click(screen.getByRole('radio', { name: /文本/ }))
+  expect(useUiStore.getState().r2rmlOpen).toBe(true) // 未确认,不动
+  await userEvent.click(await screen.findByRole('button', { name: /放弃修改/ }))
+  expect(useUiStore.getState().r2rmlOpen).toBe(false)
+  expect(useUiStore.getState().r2rmlDirty).toBe(false)
+  expect(useUiStore.getState().browseView).toBe('text')
+  useUiStore.setState({ r2rmlOpen: false, r2rmlDirty: false })
+})
+
 it('opens the blank-create dialog from the file menu 新建 submenu', async () => {
   shell('/')
   await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))

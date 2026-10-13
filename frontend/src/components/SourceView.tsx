@@ -44,7 +44,7 @@ export function languageFor(format: string) {
 
 /* CodeMirror renders real DOM, so its theme can use CSS variables directly —
    light/dark follow ThemeProvider for free, no rebuild on theme switch. */
-const editorTheme = EditorView.theme({
+export const editorTheme = EditorView.theme({
   '&': { height: '100%' },
   '.cm-scroller': {
     fontFamily: 'var(--font-mono)',
@@ -112,7 +112,7 @@ const editorTheme = EditorView.theme({
 
 /** Three-tone highlighting from the project palette: comments grey,
  *  keywords violet, IRIs/literals/numbers indigo, identifiers ink. */
-const editorHighlight = HighlightStyle.define([
+export const editorHighlight = HighlightStyle.define([
   { tag: t.comment, color: 'var(--color-ink-3)', fontStyle: 'italic' },
   { tag: t.keyword, color: 'var(--color-edge-sub)' },
   { tag: t.string, color: 'var(--color-primary)' },

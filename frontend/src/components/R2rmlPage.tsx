@@ -4,10 +4,11 @@ import { useQuery } from '@tanstack/react-query'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { ApiErr, api } from '../api/client'
 import type { R2rmlDoc } from '../api/types'
+import R2rmlEditor from './R2rmlEditor'
 
 /** Browse content-area R2RML workbench (P2): 结构 view + 源码 edit tabs.
- *  The source tab's editor arrives with Task 5; until then it renders the
- *  Turtle text read-only. */
+ *  Both panes stay mounted (hidden, not unmounted) so the editor keeps its
+ *  text and dirty state across tab switches. */
 export default function R2rmlPage({ oid }: { oid: string }) {
   const { t } = useTranslation()
   const [tab, setTab] = useState<'structure' | 'source'>('structure')
@@ -35,13 +36,14 @@ export default function R2rmlPage({ oid }: { oid: string }) {
       ) : missing ? (
         <p className="text-ink-2 p-8 text-center text-xs">{t('r2rml.noMapping')}</p>
       ) : doc.data ? (
-        tab === 'structure' ? (
-          <R2rmlStructure doc={doc.data} />
-        ) : (
-          <pre className="border-line text-ink-2 min-h-0 flex-1 overflow-auto rounded-ctl border p-2 font-mono text-xs whitespace-pre-wrap">
-            {doc.data.content}
-          </pre>
-        )
+        <>
+          <div className={tab === 'structure' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+            <R2rmlStructure doc={doc.data} />
+          </div>
+          <div className={tab === 'source' ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+            <R2rmlEditor oid={oid} doc={doc.data} />
+          </div>
+        </>
       ) : null}
     </div>
   )
