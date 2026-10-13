@@ -459,3 +459,36 @@ def test_cancel_endpoint_stops_a_running_job(
             break
         time.sleep(0.05)
     assert d is not None and d["status"] == "cancelled"
+
+
+def test_import_persists_schema_snapshot(client: TestClient, shop_db: Path) -> None:
+    """Import stores the kept-subset snapshot in schema_json (hash-scoped).
+
+    The P2 gate reads this snapshot for its L3 column checks, and unchecked
+    tables must not ride along — same filtering as the drift hash.
+    """
+    schema = _reflected(client, shop_db)
+    schema["tables"].append(
+        TableSpec(
+            name="audit_log",
+            columns=[
+                ColumnSpec(name="id", type="INTEGER", nullable=False, primary_key=True, unique=True)
+            ],
+        ).model_dump(by_alias=True)
+    )
+    r = client.post(
+        "/api/v1/ontologies/drafting/import",
+        json={
+            "schema": schema,
+            "decisions": DECISIONS_OBJ,
+            "rejectedClassNames": [],
+            "namespace": "https://local/shop#",
+            "generateR2rml": True,
+        },
+    )
+    assert r.status_code == 201
+    row = _r2rml_row(r.json()["data"]["ontologyId"])
+    assert row is not None and row.schema_json
+    snap = SchemaModel.model_validate_json(row.schema_json)
+    assert {t.name for t in snap.tables} == {"customer", "orders"}  # audit_log 未勾选,不入快照
+    assert row.previous_ttl is None

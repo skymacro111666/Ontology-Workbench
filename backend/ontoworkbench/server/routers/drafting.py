@@ -258,6 +258,7 @@ def import_endpoint(
                 namespace=body.namespace,
                 base_revision=row.revision,
                 schema_hash=schema_hash(selected),
+                schema_json=selected.model_dump_json(by_alias=True),
                 skipped_tables=rendered.skipped_tables,
             )
         )

@@ -334,4 +334,8 @@ class OntologyR2rml(Base):
     base_revision: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     schema_hash: Mapped[str] = mapped_column(String(64))
     skipped_tables: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # P2: kept-subset snapshot (gate L3 + P3 drift diff) and the one-step
+    # rollback slot (file ↔ previous swap).
+    schema_json: Mapped[str | None] = mapped_column(Text, default=None)
+    previous_ttl: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())
