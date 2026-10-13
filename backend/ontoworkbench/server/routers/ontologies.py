@@ -19,7 +19,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ontoworkbench.core import terms
-from ontoworkbench.core.drafting.r2rml import parse_r2rml
+from ontoworkbench.core.drafting.models import SchemaModel
+from ontoworkbench.core.drafting.r2rml import parse_r2rml, validate_r2rml
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir_store
 from ontoworkbench.core.ir_cache import write_ir_cache
@@ -464,6 +465,8 @@ def get_r2rml(
             "createdAt": doc.created_at.isoformat(),
             "skippedTables": doc.skipped_tables,
             "content": ttl.decode(),
+            "contentHash": LocalUserDirStore.file_hash(ttl),
+            "previousExists": doc.previous_ttl is not None,
             "structure": [m.model_dump(by_alias=True) for m in parse_r2rml(ttl, doc.namespace)],
         }
     )
@@ -485,6 +488,104 @@ def download_r2rml(
     if doc is None:
         raise ApiError(ErrorCode.NOT_FOUND, "No R2RML mapping for this ontology")
     return FileResponse(doc.storage_path, media_type="text/turtle", filename=doc.filename)
+
+
+class R2rmlUpdate(CamelModel):
+    """PUT /r2rml body: full new text + the content hash it was based on."""
+
+    content: str
+    base_hash: str
+
+
+class R2rmlRollback(CamelModel):
+    """POST /r2rml/rollback body: content hash the rollback is based on."""
+
+    base_hash: str
+
+
+def _r2rml_doc(user: User, session: Session, ontology_id: str) -> tuple[Ontology, OntologyR2rml]:
+    """Owned ontology + its mapping row, or the shared 404s."""
+    row = _owned(user, session, ontology_id)
+    doc = session.scalar(select(OntologyR2rml).where(OntologyR2rml.ontology_id == row.id))
+    if doc is None:
+        raise ApiError(ErrorCode.NOT_FOUND, "No R2RML mapping for this ontology")
+    return row, doc
+
+
+def _r2rml_payload(doc: OntologyR2rml, ttl: bytes) -> dict:
+    """PUT/rollback response shape (P2 spec §5)."""
+    return {
+        "filename": doc.filename,
+        "content": ttl.decode(),
+        "contentHash": LocalUserDirStore.file_hash(ttl),
+        "previousExists": doc.previous_ttl is not None,
+    }
+
+
+@router.put("/ontologies/{ontology_id}/r2rml")
+def put_r2rml(
+    ontology_id: str,
+    body: R2rmlUpdate,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Gate the edited mapping, then overwrite the file verbatim (P2 §4.2).
+
+    Write order is row-then-file: previous_ttl commits before the bytes
+    move, so a failed save self-heals (row rollback) instead of stranding
+    a new file with no undo slot.
+    """
+    row, doc = _r2rml_doc(user, session, ontology_id)
+    current = Path(doc.storage_path).read_bytes()
+    if LocalUserDirStore.file_hash(current) != body.base_hash:
+        raise ApiError(
+            ErrorCode.R2RML_STALE,
+            "The mapping changed since it was loaded",
+            "重新加载映射后在新版本上重放你的修改。",
+        )
+    schema = SchemaModel.model_validate_json(doc.schema_json) if doc.schema_json else None
+    findings = validate_r2rml(body.content.encode(), doc.namespace, schema)
+    if findings:
+        hint = "\n".join(
+            f"L{f.layer}: {f.message}" + (f" @{f.location}" if f.location else "") for f in findings
+        )
+        raise ApiError(ErrorCode.R2RML_INVALID, f"R2RML 映射未通过校验({len(findings)} 处)", hint)
+    doc.previous_ttl = current.decode()
+    session.commit()
+    data = body.content.encode()
+    request.app.state.store.save(user.id, UUID(str(row.id)), doc.filename, data)
+    return respond(_r2rml_payload(doc, data))
+
+
+@router.post("/ontologies/{ontology_id}/r2rml/rollback")
+def rollback_r2rml(
+    ontology_id: str,
+    body: R2rmlRollback,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Swap file ↔ previous_ttl (undo and redo are the same button).
+
+    No gate: the previous version either passed the gate before or came
+    from our own serializer (spec §5).
+    """
+    row, doc = _r2rml_doc(user, session, ontology_id)
+    if doc.previous_ttl is None:
+        raise ApiError(ErrorCode.R2RML_NO_PREVIOUS, "没有可回退的上一版")
+    current = Path(doc.storage_path).read_bytes()
+    if LocalUserDirStore.file_hash(current) != body.base_hash:
+        raise ApiError(
+            ErrorCode.R2RML_STALE,
+            "The mapping changed since it was loaded",
+            "重新加载映射后再回退。",
+        )
+    previous = doc.previous_ttl.encode()
+    doc.previous_ttl = current.decode()
+    session.commit()
+    request.app.state.store.save(user.id, UUID(str(row.id)), doc.filename, previous)
+    return respond(_r2rml_payload(doc, previous))
 
 
 @router.put("/ontologies/{ontology_id}/source")

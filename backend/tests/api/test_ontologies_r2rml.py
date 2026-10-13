@@ -92,3 +92,97 @@ def test_download_streams_turtle(client: TestClient, shop_db: Path) -> None:
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/turtle")
     assert b"rr:TriplesMap" in r.content
+
+
+# --- R2RML P2: gated save + swap rollback ---------------------------------
+
+
+def _row(oid: str):
+    """The r2rml row for an ontology, straight from the DB."""
+    from uuid import UUID
+
+    from sqlalchemy import select
+
+    from ontoworkbench.db.models import OntologyR2rml
+    from ontoworkbench.db.session import sessionmaker_or_fail
+
+    with sessionmaker_or_fail()() as s:
+        return s.scalar(select(OntologyR2rml).where(OntologyR2rml.ontology_id == UUID(oid)))
+
+
+def _edited(client: TestClient, oid: str, content: str, base_hash: str):
+    return client.put(
+        f"/api/v1/ontologies/{oid}/r2rml", json={"content": content, "baseHash": base_hash}
+    )
+
+
+def test_get_r2rml_carries_hash_and_previous(client: TestClient, shop_db: Path) -> None:
+    """GET now carries contentHash (64 hex) and previousExists (false at first)."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    d = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    assert len(d["contentHash"]) == 64
+    assert d["previousExists"] is False
+
+
+def test_put_r2rml_saves_verbatim_and_sets_previous(client: TestClient, shop_db: Path) -> None:
+    """PUT writes the submitted bytes verbatim; previous_ttl holds the old text."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    d = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    edited = d["content"] + "\n# hand edit\n"
+    r = _edited(client, oid, edited, d["contentHash"])
+    assert r.status_code == 200
+    assert r.json()["data"]["content"] == edited
+    assert r.json()["data"]["previousExists"] is True
+    row = _row(oid)
+    assert Path(row.storage_path).read_bytes() == edited.encode()  # 逐字节,无重序列化
+    assert row.previous_ttl == d["content"]  # 旧版入槽
+
+
+def test_put_r2rml_422_lists_findings(client: TestClient, shop_db: Path) -> None:
+    """A typo'd column 422s R2RML_INVALID; the hint lists findings + columns."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    d = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    bad = d["content"].replace('rr:column "name"', 'rr:column "nme"')
+    r = _edited(client, oid, bad, d["contentHash"])
+    assert r.status_code == 422
+    env = r.json()
+    assert env["code"] == "R2RML_INVALID"
+    assert "id、name" in env["hint"]
+    assert "L3" in env["hint"]
+
+
+def test_put_r2rml_409_leaves_file_untouched(client: TestClient, shop_db: Path) -> None:
+    """A stale baseHash 409s R2RML_STALE; file and previous_ttl stay put."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    d = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    r = _edited(client, oid, d["content"] + "x", "0" * 64)
+    assert r.status_code == 409
+    assert r.json()["code"] == "R2RML_STALE"
+    assert _row(oid).previous_ttl is None
+    d2 = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    assert d2["contentHash"] == d["contentHash"]
+
+
+def test_rollback_swaps_and_redoes(client: TestClient, shop_db: Path) -> None:
+    """Rollback swaps: once → old text; twice → the edit again (redo)."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    d = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    edited = d["content"] + "\n# hand edit\n"
+    _edited(client, oid, edited, d["contentHash"])
+    h = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]["contentHash"]
+    r = client.post(f"/api/v1/ontologies/{oid}/r2rml/rollback", json={"baseHash": h})
+    assert r.status_code == 200
+    assert r.json()["data"]["content"] == d["content"]  # 回到旧文
+    h2 = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]["contentHash"]
+    r2 = client.post(f"/api/v1/ontologies/{oid}/r2rml/rollback", json={"baseHash": h2})
+    assert r2.status_code == 200
+    assert r2.json()["data"]["content"] == edited  # 再回退=redo
+
+
+def test_rollback_404_when_no_previous(client: TestClient, shop_db: Path) -> None:
+    """Rolling back a first version (no previous) 404s R2RML_NO_PREVIOUS."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    h = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]["contentHash"]
+    r = client.post(f"/api/v1/ontologies/{oid}/r2rml/rollback", json={"baseHash": h})
+    assert r.status_code == 404
+    assert r.json()["code"] == "R2RML_NO_PREVIOUS"
