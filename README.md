@@ -26,6 +26,7 @@
 - **兼容OWL2定级** —— Manchester 公理渲染与 EL/QL/RL/DL profile 检测(词表级近似)
 - **AI 对话** —— 每本体独立会话,ContextPack 自动打包上下文,7 个只读工具按需调用,回答 Markdown 渲染
 - **数据库起草** —— 直连 PostgreSQL/MySQL/SQLite/DuckDB/ClickHouse 反射表结构,LLM 起草类与属性,lint 护栏+逐项人审后入库
+- **R2RML 映射** —— 数据库起草时随导入生成映射文档;受控编辑(语法/子集/schema 快照三层校验门)与一键回退
 - **离线文档导出** —— 生成完全零外部依赖的静态站点
 - **内置MCP功能** —— MCP服务器提供10个工具，支持Agent按需调用
 

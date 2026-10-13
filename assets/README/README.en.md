@@ -26,6 +26,7 @@
 - **OWL 2 compatible & profile-graded** — Manchester axiom rendering plus EL/QL/RL/DL profile detection (vocabulary-level approximation)
 - **AI chat** — per-ontology conversations with an assistant; ContextPack auto-packs context, 7 read-only tools on demand, Markdown-rendered replies
 - **Draft from database** — reflect the schema of PostgreSQL/MySQL/SQLite/DuckDB/ClickHouse, let an LLM draft classes and properties, gate through lint plus per-item human review before import
+- **R2RML mapping** — generated alongside each database draft; controlled editing behind a three-layer validation gate (syntax / subset / schema snapshot) with one-step rollback
 - **Offline docs export** — generates a static site with zero external dependencies
 - **Built-in MCP** — an MCP server exposing 10 tools for agents to call on demand
 

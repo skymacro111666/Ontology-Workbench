@@ -113,7 +113,11 @@
     "findingsTitle": "校验未通过",
     "dirtyTitle": "有未保存的修改",
     "dirtyDesc": "离开将丢失编辑器中未保存的修改。",
-    "discardEdits": "放弃修改"
+    "discardEdits": "放弃修改",
+    "rollback": "回退上一版",
+    "rollbackTitle": "回退上一版",
+    "rollbackDesc": "文件将换回上一版;当前版本移入回退槽,可再次回退找回。",
+    "rollbackConfirm": "确认回退"
   },
   "browse": {
     "notFound": "本体不存在",

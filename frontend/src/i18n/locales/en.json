@@ -113,7 +113,11 @@
     "findingsTitle": "Validation failed",
     "dirtyTitle": "Unsaved changes",
     "dirtyDesc": "Leaving will lose your unsaved edits in the editor.",
-    "discardEdits": "Discard edits"
+    "discardEdits": "Discard edits",
+    "rollback": "Roll back",
+    "rollbackTitle": "Roll back to previous",
+    "rollbackDesc": "The file swaps back to the previous version; the current one moves into the rollback slot — roll back again to redo.",
+    "rollbackConfirm": "Roll back"
   },
   "browse": {
     "notFound": "Ontology not found",

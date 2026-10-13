@@ -113,3 +113,43 @@ describe('R2rmlEditor', () => {
     expect(useUiStore.getState().r2rmlDirty).toBe(true) // 编辑保留
   })
 })
+
+describe('R2rmlEditor rollback', () => {
+  it('rolls back to the previous version after confirmation', async () => {
+    /** previousExists 时回退可点;确认后 POST rollback 带 baseHash,脏标记清零。 */
+    let postBody: { baseHash: string } | undefined
+    const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {
+      if (init?.method === 'POST') {
+        postBody = JSON.parse(String(init.body)) as { baseHash: string }
+        return ok({ ...DOC, content: 'old text', contentHash: 'hash-0', previousExists: false })
+      }
+      return ok({ ...DOC, previousExists: true })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    // The editor takes the doc as a prop (the page owns the query): render
+    // it directly with a previous version present.
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <R2rmlEditor oid="oid-1" doc={{ ...DOC, previousExists: true }} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    const content = container.querySelector('.cm-content') as HTMLElement
+    await waitFor(() => expect(content.getAttribute('contenteditable')).toBeTruthy())
+    await userEvent.click(screen.getByRole('button', { name: '回退上一版' }))
+    await userEvent.click(await screen.findByRole('button', { name: '确认回退' }))
+    await waitFor(() => expect(postBody?.baseHash).toBe('hash-1'))
+    await waitFor(() => expect(useUiStore.getState().r2rmlDirty).toBe(false))
+  })
+
+  it('disables rollback without a previous version', async () => {
+    /** 初版 previousExists=false:回退禁用。 */
+    const { container } = renderEditor(vi.fn(async () => ok(DOC)))
+    const content = container.querySelector('.cm-content') as HTMLElement
+    await waitFor(() => expect(content.getAttribute('contenteditable')).toBeTruthy())
+    expect(
+      screen.getByRole('button', { name: '回退上一版' }).getAttribute('disabled'),
+    ).not.toBeNull()
+  })
+})

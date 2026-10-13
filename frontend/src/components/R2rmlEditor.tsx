@@ -8,6 +8,16 @@ import { StreamLanguage, syntaxHighlighting } from '@codemirror/language'
 import { search, searchKeymap } from '@codemirror/search'
 import { turtle } from '@codemirror/legacy-modes/mode/turtle'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { ApiErr, api } from '../api/client'
 import { errText } from '../i18n/errText'
 import { useUiStore } from '../stores/uiStore'
@@ -36,6 +46,25 @@ export default function R2rmlEditor({ oid, doc }: { oid: string; doc: R2rmlDoc }
   const baseHashRef = useRef(doc.contentHash)
   const [dirty, setDirty] = useState(false)
   const [findings, setFindings] = useState<string[] | null>(null)
+  const [rollbackOpen, setRollbackOpen] = useState(false)
+
+  const rollback = useMutation({
+    mutationFn: () =>
+      api.post<R2rmlSaveResult>(`/api/v1/ontologies/${oid}/r2rml/rollback`, {
+        baseHash: baseHashRef.current,
+      }),
+    onSuccess: (result) => {
+      // The swap already happened server-side; adopt the returned text as
+      // the new baseline so the editor rebuilds clean (never-clobber would
+      // otherwise keep the dirty pre-rollback text).
+      setDirty(false)
+      setR2rmlDirty(false)
+      baselineRef.current = result.content
+      baseHashRef.current = result.contentHash
+      void queryClient.invalidateQueries({ queryKey: ['r2rml', oid] })
+    },
+    onError: (err) => toast.error(errText(err, t)),
+  })
 
   const save = useMutation({
     mutationFn: (content: string) =>
@@ -148,8 +177,30 @@ export default function R2rmlEditor({ oid, doc }: { oid: string; doc: R2rmlDoc }
         >
           {t('r2rml.save')}
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!doc.previousExists || rollback.isPending}
+          onClick={() => setRollbackOpen(true)}
+        >
+          {t('r2rml.rollback')}
+        </Button>
         {dirty && <span className="text-ink-3 text-xs">{t('r2rml.unsaved')}</span>}
       </div>
+      <AlertDialog open={rollbackOpen} onOpenChange={setRollbackOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('r2rml.rollbackTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('r2rml.rollbackDesc')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => rollback.mutate()}>
+              {t('r2rml.rollbackConfirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {findings && (
         <div className="border-line bg-panel-2 rounded-ctl border p-2 text-xs">
           <p className="text-ink-1 mb-1 font-medium">{t('r2rml.findingsTitle')}</p>
