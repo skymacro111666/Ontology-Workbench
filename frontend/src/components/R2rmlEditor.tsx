@@ -191,7 +191,9 @@ export default function R2rmlEditor({ oid, doc }: { oid: string; doc: R2rmlDoc }
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('r2rml.rollbackTitle')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('r2rml.rollbackDesc')}</AlertDialogDescription>
+            <AlertDialogDescription>
+              {t(dirty ? 'r2rml.rollbackDescDirty' : 'r2rml.rollbackDesc')}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>

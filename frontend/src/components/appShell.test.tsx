@@ -296,6 +296,16 @@ it('blocks view switch while r2rml dirty; confirming discards and closes', async
   useUiStore.setState({ r2rmlOpen: false, r2rmlDirty: false })
 })
 
+it('closes the workbench page on a clean view switch', async () => {
+  /** 干净态切视图:工作台页即关(spec §6;与 dirty 路径对称)。 */
+  shell('/browse/oid-1')
+  useUiStore.setState({ r2rmlOpen: true, r2rmlDirty: false })
+  await userEvent.click(screen.getByRole('radio', { name: /文本/ }))
+  expect(useUiStore.getState().r2rmlOpen).toBe(false)
+  expect(useUiStore.getState().browseView).toBe('text')
+  useUiStore.setState({ r2rmlOpen: false, r2rmlDirty: false })
+})
+
 it('opens the blank-create dialog from the file menu 新建 submenu', async () => {
   shell('/')
   await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))

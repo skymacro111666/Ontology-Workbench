@@ -537,6 +537,10 @@ def put_r2rml(
     a new file with no undo slot.
     """
     row, doc = _r2rml_doc(user, session, ontology_id)
+    data = body.content.encode()
+    if len(data) > MAX_UPLOAD:  # same cap as PUT /source (MCP/P4 exposure)
+        ow_uploads_total.labels("too_large").inc()
+        raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
     current = Path(doc.storage_path).read_bytes()
     if LocalUserDirStore.file_hash(current) != body.base_hash:
         raise ApiError(
@@ -545,7 +549,7 @@ def put_r2rml(
             "重新加载映射后在新版本上重放你的修改。",
         )
     schema = SchemaModel.model_validate_json(doc.schema_json) if doc.schema_json else None
-    findings = validate_r2rml(body.content.encode(), doc.namespace, schema)
+    findings = validate_r2rml(data, doc.namespace, schema)
     if findings:
         hint = "\n".join(
             f"L{f.layer}: {f.message}" + (f" @{f.location}" if f.location else "") for f in findings
@@ -553,7 +557,6 @@ def put_r2rml(
         raise ApiError(ErrorCode.R2RML_INVALID, f"R2RML 映射未通过校验({len(findings)} 处)", hint)
     doc.previous_ttl = current.decode()
     session.commit()
-    data = body.content.encode()
     request.app.state.store.save(user.id, UUID(str(row.id)), doc.filename, data)
     return respond(_r2rml_payload(doc, data))
 

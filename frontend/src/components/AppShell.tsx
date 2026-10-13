@@ -100,6 +100,7 @@ export default function AppShell({ children }: { children?: ReactNode }) {
       setR2rmlGuard(v) // the workbench page owns the content area — guard it
       return
     }
+    if (r2rmlOpen) setR2rmlOpen(false) // clean workbench still hides the view — close it
     if (browseView === 'text' && v !== 'text' && useUiStore.getState().sourceDirty) {
       setPendingView(v)
       return

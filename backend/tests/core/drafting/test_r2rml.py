@@ -350,3 +350,54 @@ def test_gate_l3_skipped_without_snapshot():
     """无快照(P1 存量行):L3 整体跳过,坏列名也能过(降级=仅 L1+L2)."""
     typo = VALID_TTL.replace('rr:column "name"', 'rr:column "nme"')
     assert validate_r2rml(typo.encode(), GATE_NS, None) == []
+
+
+# --- final-review fixes: completeness + foreign-IRI maps --------------------
+
+
+def test_gate_l2_rejects_incomplete_shapes():
+    """删块的残缺编辑(逐三元组仍合法)在 L2 报带定位 finding,而非 parse KeyError→500."""
+    cases = {
+        "缺 subjectMap": VALID_TTL.replace(
+            "    rr:subjectMap [\n"
+            '        rr:template "https://local/shop/customer/{id}" ;\n'
+            "        rr:class shop:Customer ;\n"
+            "    ] ;\n",
+            "",
+        ),
+        "缺 template": VALID_TTL.replace(
+            '        rr:template "https://local/shop/customer/{id}" ;\n', ""
+        ),
+        "POM 缺 predicate": VALID_TTL.replace("        rr:predicate shop:name ;\n", ""),
+        "refObjectMap 缺 joinCondition": VALID_TTL.replace(
+            '        rr:objectMap [ rr:column "name" ; rr:datatype xsd:string ] ;\n',
+            "        rr:objectMap [ rr:parentTriplesMap <https://local/shop/r2rml/Customer> ] ;\n",
+        ),
+    }
+    for label, ttl in cases.items():
+        findings = validate_r2rml(ttl.encode(), GATE_NS, GATE_SCHEMA)
+        assert findings and all(f.layer == 2 for f in findings), label
+        assert any(f.location for f in findings), label
+
+
+FOREIGN_TTL = VALID_TTL + (
+    "<https://elsewhere.example/m/Order> a rr:TriplesMap ;\n"
+    '    rr:logicalTable [ rr:tableName "customer" ] ;\n'
+    "    rr:subjectMap [\n"
+    '        rr:template "https://local/shop/order/{idd}" ;\n'
+    "        rr:class shop:Order ;\n"
+    "    ] .\n"
+)
+
+
+def test_gate_l3_checks_foreign_iri_maps():
+    """外来 IRI 下的手打 TriplesMap(spec 决策 1 合法)同样过 L3 列校验."""
+    findings = validate_r2rml(FOREIGN_TTL.encode(), GATE_NS, GATE_SCHEMA)
+    assert any(f.layer == 3 and "{idd}" in f.message for f in findings)
+
+
+def test_parse_includes_foreign_iri_maps():
+    """parse-back 收外来 IRI map → 结构视图可见、可导出校验."""
+    maps = parse_r2rml(FOREIGN_TTL.encode(), GATE_NS)
+    # 按全 IRI 排序(elsewhere < local),跨前缀时的确定性同样成立
+    assert [m.class_name for m in maps] == ["Order", "Customer"]

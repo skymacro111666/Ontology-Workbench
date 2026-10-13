@@ -152,4 +152,21 @@ describe('R2rmlEditor rollback', () => {
       screen.getByRole('button', { name: '回退上一版' }).getAttribute('disabled'),
     ).not.toBeNull()
   })
+
+  it('warns dirty edits are lost when rolling back', async () => {
+    /** dirty 回退:确认框换文案,明示未保存修改将丢失(而非谎称可找回)。 */
+    const { container } = render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <R2rmlEditor oid="oid-1" doc={{ ...DOC, previousExists: true }} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    const content = container.querySelector('.cm-content') as HTMLElement
+    await waitFor(() => expect(content.getAttribute('contenteditable')).toBeTruthy())
+    await userEvent.click(content)
+    await userEvent.keyboard('x')
+    await userEvent.click(screen.getByRole('button', { name: '回退上一版' }))
+    expect(await screen.findByText(/未保存的修改将丢失/)).toBeTruthy()
+  })
 })

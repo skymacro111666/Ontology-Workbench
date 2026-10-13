@@ -117,6 +117,7 @@
     "rollback": "回退上一版",
     "rollbackTitle": "回退上一版",
     "rollbackDesc": "文件将换回上一版;当前版本移入回退槽,可再次回退找回。",
+    "rollbackDescDirty": "未保存的修改将丢失;文件换回上一版,当前已保存版本移入回退槽。",
     "rollbackConfirm": "确认回退"
   },
   "browse": {

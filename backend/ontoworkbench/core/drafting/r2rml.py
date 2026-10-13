@@ -24,6 +24,7 @@ from .pipeline import _prefix_for
 
 RR = "http://www.w3.org/ns/r2rml#"
 XSD = "http://www.w3.org/2001/XMLSchema#"
+RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 
 
 @dataclass
@@ -167,10 +168,10 @@ def parse_r2rml(ttl: bytes, namespace: str) -> list[R2rmlTriplesMap]:
     """Read our own narrow output back into structured models (browse view).
 
     Not a general R2RML parser: only the shapes render_r2rml emits. Blank
-    nodes correlate by id within one Store load; map IRIs are the absolute
-    <{onto_iri}/r2rml/{Class}> form the renderer writes.
+    nodes correlate by id within one Store load; map subjects are every IRI
+    typed rr:TriplesMap — the renderer writes <{onto_iri}/r2rml/{Class}>,
+    but hand-typed maps under any IRI parse (and validate) the same.
     """
-    onto_iri = namespace.rstrip("#/")
     store = ox.Store()
     store.load(input=ttl, format=ox.RdfFormat.TURTLE, to_graph=ox.DefaultGraph())
 
@@ -180,6 +181,12 @@ def parse_r2rml(ttl: bytes, namespace: str) -> list[R2rmlTriplesMap]:
     def xsd_local(iri: str) -> str:
         return "xsd:" + iri[len(XSD) :] if iri.startswith(XSD) else iri
 
+    quads = list(store)
+    map_iris = {
+        q.subject.value
+        for q in quads
+        if q.predicate.value == RDF_TYPE and q.object.value == f"{RR}TriplesMap"
+    }
     # One pass, buckets: blank-node literal props, blank-node→blank-node
     # refs, and TriplesMap-level edges (logicalTable/subjectMap keyed by the
     # map IRI, predicateObjectMap as an ordered list).
@@ -188,12 +195,12 @@ def parse_r2rml(ttl: bytes, namespace: str) -> list[R2rmlTriplesMap]:
     mprops: dict[str, dict[str, str]] = {}  # map iri -> {"a": rr:TriplesMap}
     mrefs: dict[str, dict[str, str]] = {}
     mpoms: dict[str, list[str]] = {}
-    for quad in store:
+    for quad in quads:
         s, p, o = quad.subject, quad.predicate, quad.object
         pv, ov = p.value, o.value  # .value: IRI / lexical form / bnode id
         if isinstance(s, ox.BlankNode):
             (brefs if isinstance(o, ox.BlankNode) else bprops).setdefault(s.value, {})[pv] = ov
-        elif s.value.startswith(f"{onto_iri}/r2rml/"):
+        elif s.value in map_iris:
             if isinstance(o, ox.BlankNode):
                 if pv == f"{RR}predicateObjectMap":
                     mpoms.setdefault(s.value, []).append(ov)
@@ -257,8 +264,6 @@ class R2rmlFinding(CamelModel):
     location: str | None = None
 
 
-RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-
 # Structural edges: map IRI → bnode. The predicate that points AT a bnode
 # fixes its role; roles gate which predicates the bnode itself may carry.
 _BNODE_ROLES = {
@@ -291,7 +296,9 @@ def validate_r2rml(ttl: bytes, namespace: str, schema: SchemaModel | None) -> li
     """Three-layer save gate (P2 spec §4.1).
 
     L1 Turtle syntax; L2 every quad accounted to the narrow subset shape
-    (anti-superset: joins / logical tables / smuggled annotations reject);
+    (anti-superset: joins / logical tables / smuggled annotations reject)
+    plus completeness — the pieces parse-back hard-indexes must be there, so
+    a block-deleting edit dies as a located finding, never a parse error;
     L3 snapshot semantics — columns referenced must exist, datatype must be
     an IRI. Skips L3 when the row predates snapshots (schema is None).
 
@@ -374,6 +381,67 @@ def validate_r2rml(ttl: bytes, namespace: str, schema: SchemaModel | None) -> li
                     ok = False
         if not ok:
             findings.append(R2rmlFinding(layer=2, message="子集外的三元组", location=where))
+
+    # L2 completeness — parse-back (L3 and the browse view) hard-indexes the
+    # narrow shapes, so deleting a block must be a located finding here, not
+    # a KeyError at parse time. Bucket by subject kind mirroring parse_r2rml.
+    m_edge: dict[str, dict[str, str]] = {}  # map iri -> pred -> bnode id
+    m_poms: dict[str, list[str]] = {}
+    b_edge: dict[str, dict[str, str]] = {}  # bnode -> pred -> bnode id
+    b_leaf: dict[str, dict[str, str]] = {}  # bnode -> pred -> literal/IRI
+    for q in quads:
+        sv, pv, ov = q.subject.value, q.predicate.value, q.object.value
+        if isinstance(q.object, ox.BlankNode):
+            if sv in maps:
+                if pv == f"{RR}predicateObjectMap":
+                    m_poms.setdefault(sv, []).append(ov)
+                else:  # logicalTable / subjectMap
+                    m_edge.setdefault(sv, {})[pv] = ov
+            else:
+                b_edge.setdefault(sv, {})[pv] = ov
+        elif isinstance(q.subject, ox.BlankNode):
+            b_leaf.setdefault(sv, {})[pv] = ov
+
+    def need(where: str, present: bool, what: str) -> None:
+        if not present:
+            findings.append(
+                R2rmlFinding(layer=2, message=f"残缺的 TriplesMap:{what}", location=where)
+            )
+
+    for map_iri in sorted(maps):
+        base = f"<{map_iri}>"
+        lt = m_edge.get(map_iri, {}).get(f"{RR}logicalTable")
+        need(
+            base,
+            lt is not None and f"{RR}tableName" in b_leaf.get(lt or "", {}),
+            "缺 rr:logicalTable/rr:tableName",
+        )
+        sm_leaves = b_leaf.get(m_edge.get(map_iri, {}).get(f"{RR}subjectMap") or "", {})
+        need(base, f"{RR}template" in sm_leaves, "缺 rr:subjectMap 的 rr:template")
+        need(base, f"{RR}class" in sm_leaves, "缺 rr:subjectMap 的 rr:class")
+        for pom in m_poms.get(map_iri, []):
+            pw = f"{base} 的 predicateObjectMap"
+            need(pw, f"{RR}predicate" in b_leaf.get(pom, {}), "缺 rr:predicate")
+            om = b_edge.get(pom, {}).get(f"{RR}objectMap")
+            need(pw, om is not None, "缺 rr:objectMap")
+            if om is None:
+                continue
+            ow = f"{pw} 的 objectMap"
+            om_leaves = b_leaf.get(om, {})
+            if f"{RR}column" in om_leaves:
+                need(ow, f"{RR}datatype" in om_leaves, "rr:column objectMap 缺 rr:datatype")
+            else:
+                need(
+                    ow,
+                    f"{RR}parentTriplesMap" in om_leaves,
+                    "objectMap 缺 rr:column 或 rr:parentTriplesMap",
+                )
+                jc_leaves = b_leaf.get(b_edge.get(om, {}).get(f"{RR}joinCondition") or "", {})
+                need(
+                    ow,
+                    f"{RR}child" in jc_leaves and f"{RR}parent" in jc_leaves,
+                    "refObjectMap 缺 rr:joinCondition 的 rr:child/rr:parent",
+                )
     if findings:
         return findings
 

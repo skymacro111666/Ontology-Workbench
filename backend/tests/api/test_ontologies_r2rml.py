@@ -186,3 +186,50 @@ def test_rollback_404_when_no_previous(client: TestClient, shop_db: Path) -> Non
     r = client.post(f"/api/v1/ontologies/{oid}/r2rml/rollback", json={"baseHash": h})
     assert r.status_code == 404
     assert r.json()["code"] == "R2RML_NO_PREVIOUS"
+
+
+# --- final-review fixes: incomplete-shape 422 + size cap --------------------
+
+
+def test_put_r2rml_incomplete_shape_422_even_without_snapshot(
+    client: TestClient, shop_db: Path
+) -> None:
+    """存量行(schema_json NULL)+ 残缺形状:422 带定位而非 500;盘上文件不动."""
+    from uuid import UUID
+
+    from sqlalchemy import select
+
+    from ontoworkbench.db.models import OntologyR2rml
+    from ontoworkbench.db.session import sessionmaker_or_fail
+
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    with sessionmaker_or_fail()() as s:
+        row = s.scalar(select(OntologyR2rml).where(OntologyR2rml.ontology_id == UUID(oid)))
+        row.schema_json = None  # P1 存量行:无快照
+        s.commit()
+    d = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    incomplete = (
+        "@prefix rr: <http://www.w3.org/ns/r2rml#> .\n"
+        "<https://local/shop/r2rml/Customer> a rr:TriplesMap ;\n"
+        '    rr:logicalTable [ rr:tableName "customer" ] .\n'
+    )
+    r = _edited(client, oid, incomplete, d["contentHash"])
+    assert r.status_code == 422
+    assert r.json()["code"] == "R2RML_INVALID"
+    assert "残缺" in (r.json()["hint"] or "")
+    # 门挡下后 GET 仍可用(不写盘、不砖死)
+    d2 = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    assert d2["content"] == d["content"] and d2["contentHash"] == d["contentHash"]
+
+
+def test_put_r2rml_rejects_oversize(
+    client: TestClient, shop_db: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PUT 内容超上限 413,与 PUT /source 同门(MCP/P4 暴露面前先收口)."""
+    from ontoworkbench.server.routers import ontologies as ontologies_router
+
+    monkeypatch.setattr(ontologies_router, "MAX_UPLOAD", 10)
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    r = client.put(f"/api/v1/ontologies/{oid}/r2rml", json={"content": "x" * 11, "baseHash": "z"})
+    assert r.status_code == 413
+    assert r.json()["code"] == "UPLOAD_TOO_LARGE"
