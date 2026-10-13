@@ -404,7 +404,7 @@ it('File▸Export offers R2RML download; 404 toasts the guide copy', async () =>
 
   await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))
   await userEvent.hover(await screen.findByText('导出'))
-  await userEvent.click(await screen.findByText('R2RML 映射'))
+  await userEvent.click(await screen.findByText('R2RML (.ttl)'))
 
   await waitFor(() =>
     expect(toastErrorSpy).toHaveBeenCalledWith('该本体没有 R2RML 映射——来自数据库起草的本体才有'),

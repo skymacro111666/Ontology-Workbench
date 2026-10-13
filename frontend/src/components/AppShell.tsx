@@ -244,7 +244,6 @@ export default function AppShell({ children }: { children?: ReactNode }) {
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuItem className="text-xs" onSelect={() => void downloadR2rml()}>
-                    <NetworkIcon />
                     {t('shell.exportR2rml')}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />

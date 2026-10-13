@@ -98,7 +98,7 @@
     "discardSwitch": "放弃并切换",
     "saveSwitch": "保存并切换",
     "viewR2rml": "R2RML",
-    "exportR2rml": "R2RML 映射",
+    "exportR2rml": "R2RML (.ttl)",
     "noR2rml": "该本体没有 R2RML 映射——来自数据库起草的本体才有"
   },
   "r2rml": {
