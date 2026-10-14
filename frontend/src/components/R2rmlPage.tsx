@@ -46,6 +46,10 @@ export default function R2rmlPage({ oid }: { oid: string }) {
         ),
       )
     } catch (e) {
+      if (e instanceof ApiErr && e.code === 'NOT_FOUND') {
+        setPickOpen(true) // 档案连接已被删 → 回落挑连接(spec 决策 2「档已删」分支)
+        return
+      }
       toast.error(errText(e, t)) // 横幅不动:上次结果保持可见
     } finally {
       setChecking(false)

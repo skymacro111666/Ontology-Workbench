@@ -483,12 +483,14 @@ const RESULT = {
 }
 
 /** Router carrying the dialog through generate to step 3. */
-function step3Router(opts: { skippedTables?: string[] } = {}) {
+function step3Router(
+  opts: { skippedTables?: string[]; connections?: unknown[] } = {},
+) {
   const imports: unknown[] = []
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('/db-connections/engines')) return ok(ENGINES)
-    if (u.includes('/db-connections')) return ok([])
+    if (u.includes('/db-connections')) return ok(opts.connections ?? [])
     if (u.includes('/ai/status')) return ok({ configured: true, provider: 'openai', model: 'm', source: 'env' })
     if (u.includes('/drafting/schema')) return ok({ schema: SCHEMA2, tableCount: 2 })
     if (u.includes('/drafting/generate')) return ok({ jobId: 'job-9' })
@@ -584,6 +586,33 @@ describe('DraftFromDbDialog — step 3 预览与导入', () => {
       labelLanguage: 'zh',
       generateR2rml: true,
     })
+  })
+
+  it('carries dbConnectionId when the schema came from a saved connection', async () => {
+    /** 方案A 落库链:档案连接反射 → import body 带 dbConnectionId(手填路径不带). */
+    const CONN = {
+      id: 'c1',
+      name: 'pg1',
+      dbType: 'postgres',
+      host: 'db.local',
+      port: 5432,
+      database: 'app',
+      username: 'u',
+      hasPassword: true,
+      createdAt: '2026-10-01T00:00:00Z',
+    }
+    const { fetchMock, imports } = step3Router({ connections: [CONN] })
+    vi.stubGlobal('fetch', fetchMock)
+    renderWizard()
+    await screen.findByText(/pg1/)
+    await userEvent.selectOptions(screen.getByLabelText('已保存连接'), 'c1')
+    await userEvent.click(screen.getByRole('button', { name: '读取表结构' }))
+    await screen.findByText('customer')
+    await userEvent.click(screen.getByRole('button', { name: '生成草稿' }))
+    await screen.findByText('hasCustomer')
+    await userEvent.click(screen.getByRole('button', { name: '导入' }))
+    await waitFor(() => expect(imports).toHaveLength(1))
+    expect(imports[0]).toMatchObject({ dbConnectionId: 'c1' })
   })
 
   it('drops unchecked object/data properties from the import body', async () => {

@@ -270,6 +270,8 @@ export default function DraftFromDbDialog() {
         filename: filename.trim() || `${schema.databaseName}-draft.ttl`,
         labelLanguage: genLang,
         generateR2rml: genR2rml,
+        // P3 方案A:档案连接反射时记住来源,漂移检查免挑连接;手填路径不带。
+        ...(picked ? { dbConnectionId: picked.id } : {}),
       })
       if (meta.r2rml?.skippedTables.length) {
         toast.info(

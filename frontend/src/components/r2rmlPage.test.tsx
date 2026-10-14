@@ -178,3 +178,27 @@ describe('R2rmlPage drift check', () => {
     expect(screen.getByText(/列 customer\.name 已删除/)).toBeTruthy()
   })
 })
+
+describe('R2rmlPage drift check fallback', () => {
+  it('falls back to the picker when the saved connection is gone (404)', async () => {
+    /** 行上档案连接已被删:直连 POST 404 → 弹挑连接框(spec 决策2「档已删」分支). */
+    const driftOk = (findings: unknown[]) =>
+      ok({ drifted: findings.length > 0, checkedAt: '2026-10-14T10:30:00Z', findings })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).includes('/r2rml/drift')) {
+          if ((init?.method ?? 'GET') === 'POST') return notFound()
+          return driftOk([])
+        }
+        if (String(url).includes('/db-connections'))
+          return ok([{ id: 'c2', name: 'shop', dbType: 'sqlite' }])
+        return ok({ ...DOC })
+      }),
+    )
+    page()
+    await userEvent.click(await screen.findByRole('button', { name: '检查漂移' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByLabelText(/数据库连接/)).toBeTruthy()
+  })
+})
