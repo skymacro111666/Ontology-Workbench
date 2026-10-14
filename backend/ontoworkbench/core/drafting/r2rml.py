@@ -495,3 +495,63 @@ def validate_r2rml(ttl: bytes, namespace: str, schema: SchemaModel | None) -> li
                 msg = f"列 {fk.parent_table}.{fk.parent_column} 不存在;可用:{avail_parent}"
                 findings.append(R2rmlFinding(layer=3, message=msg))
     return findings
+
+
+class R2rmlDrift(CamelModel):
+    """One drift finding (P3 spec §4.1): snapshot surface vs live database."""
+
+    table: str
+    kind: str  # table_missing | column_missing | column_type | fk_changed
+    detail: str  # 人话,直接进横幅
+
+
+def drift_findings(snapshot: SchemaModel, live: SchemaModel) -> list[R2rmlDrift]:
+    """Diff the import-time subset against a fresh reflection (P3 spec §4.1).
+
+    Subset discipline: only surfaces the snapshot covers are compared —
+    live additions are silent (they cannot break the mapping). A vanished
+    table reports once; its columns/FKs ride along, not one-by-one.
+    """
+    live_tables = {t.name: t for t in live.tables}
+    findings: list[R2rmlDrift] = []
+    for st in sorted(snapshot.tables, key=lambda t: t.name):
+        lt = live_tables.get(st.name)
+        if lt is None:
+            findings.append(
+                R2rmlDrift(
+                    table=st.name, kind="table_missing", detail=f"表 {st.name} 已从数据库消失"
+                )
+            )
+            continue
+        live_cols = {c.name: c.type for c in lt.columns}
+        for c in st.columns:
+            if c.name not in live_cols:
+                findings.append(
+                    R2rmlDrift(
+                        table=st.name,
+                        kind="column_missing",
+                        detail=f"列 {st.name}.{c.name} 已删除",
+                    )
+                )
+            elif live_cols[c.name] != c.type:
+                findings.append(
+                    R2rmlDrift(
+                        table=st.name,
+                        kind="column_type",
+                        detail=f"列 {st.name}.{c.name} 类型 {c.type}→{live_cols[c.name]}",
+                    )
+                )
+        live_fks = {(f.column, f.ref_table, f.ref_column) for f in lt.foreign_keys}
+        for f in st.foreign_keys:
+            if (f.column, f.ref_table, f.ref_column) not in live_fks:
+                findings.append(
+                    R2rmlDrift(
+                        table=st.name,
+                        kind="fk_changed",
+                        detail=(
+                            f"外键 {st.name}.{f.column}→{f.ref_table}.{f.ref_column}"
+                            " 已变化,join 可能悬空"
+                        ),
+                    )
+                )
+    return findings

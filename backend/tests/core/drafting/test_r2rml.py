@@ -11,6 +11,7 @@ from ontoworkbench.core.drafting.models import (
     TableSpec,
 )
 from ontoworkbench.core.drafting.r2rml import (
+    drift_findings,
     parse_r2rml,
     render_r2rml,
     schema_hash,
@@ -421,3 +422,101 @@ def test_render_skipped_tables_deduped():
     )
     r = render_r2rml(draft, schema, NS)
     assert r.skipped_tables == ["notes"]
+
+
+# --- P3 drift_findings (spec §4.1) ------------------------------------------
+
+
+def _dschema(*tables):
+    return SchemaModel(database_name="shop", tables=list(tables))
+
+
+_SNAP_CUSTOMER = TableSpec(
+    name="customer",
+    columns=[_col("id"), _col("name", type="VARCHAR(80)")],
+    foreign_keys=[ForeignKeySpec(column="dept_id", ref_table="dept", ref_column="id")],
+)
+_SNAP = _dschema(_SNAP_CUSTOMER, TableSpec(name="audit_log", columns=[_col("id")]))
+
+
+def test_drift_identical_schemas_return_empty():
+    """快照与活库一致 → 无漂移."""
+    assert drift_findings(_SNAP, _dschema(*_SNAP.tables)) == []
+
+
+def test_drift_table_missing():
+    """audit_log 整表消失 → 一条 table_missing."""
+    live = _dschema(_SNAP_CUSTOMER.model_copy(deep=True))
+    findings = drift_findings(_SNAP, live)
+    assert [(f.table, f.kind) for f in findings] == [("audit_log", "table_missing")]
+    assert "audit_log" in findings[0].detail
+
+
+def test_drift_table_missing_short_circuits_members():
+    """Customer 整表消失 → 只报表级一条(其 name 列/dept_id FK 不逐条报)."""
+    live = _dschema(TableSpec(name="audit_log", columns=[_col("id")]))
+    findings = drift_findings(_SNAP, live)
+    assert [(f.table, f.kind) for f in findings] == [("customer", "table_missing")]
+
+
+def test_drift_column_missing():
+    """列 name 被删 → column_missing,detail 点名 customer.name."""
+    live = _dschema(
+        TableSpec(
+            name="customer",
+            columns=[_col("id")],
+            foreign_keys=[ForeignKeySpec(column="dept_id", ref_table="dept", ref_column="id")],
+        ),
+        TableSpec(name="audit_log", columns=[_col("id")]),
+    )
+    findings = drift_findings(_SNAP, live)
+    assert [(f.table, f.kind) for f in findings] == [("customer", "column_missing")]
+    assert "customer.name" in findings[0].detail
+
+
+def test_drift_column_type():
+    """列类型变化 → column_type 带 A→B."""
+    live = _dschema(
+        TableSpec(
+            name="customer",
+            columns=[_col("id"), _col("name", type="INTEGER")],
+            foreign_keys=[ForeignKeySpec(column="dept_id", ref_table="dept", ref_column="id")],
+        ),
+        TableSpec(name="audit_log", columns=[_col("id")]),
+    )
+    findings = drift_findings(_SNAP, live)
+    assert [(f.table, f.kind) for f in findings] == [("customer", "column_type")]
+    assert "VARCHAR(80)→INTEGER" in findings[0].detail
+
+
+def test_drift_fk_changed():
+    """快照 FK 三元组在活库找不到等价物 → fk_changed."""
+    live = _dschema(
+        TableSpec(
+            name="customer",
+            columns=[_col("id"), _col("name", type="VARCHAR(80)")],
+            foreign_keys=[ForeignKeySpec(column="dept_id", ref_table="dept", ref_column="code")],
+        ),
+        TableSpec(name="audit_log", columns=[_col("id")]),
+    )
+    findings = drift_findings(_SNAP, live)
+    assert [(f.table, f.kind) for f in findings] == [("customer", "fk_changed")]
+    assert "dept_id" in findings[0].detail
+
+
+def test_drift_live_additions_are_silent():
+    """活库新增表/列/FK 一律静默(子集纪律)."""
+    grown = TableSpec(
+        name="customer",
+        columns=[_col("id"), _col("name", type="VARCHAR(80)"), _col("email")],
+        foreign_keys=[
+            ForeignKeySpec(column="dept_id", ref_table="dept", ref_column="id"),
+            ForeignKeySpec(column="region_id", ref_table="region", ref_column="id"),
+        ],
+    )
+    live = _dschema(
+        grown,
+        TableSpec(name="audit_log", columns=[_col("id")]),
+        TableSpec(name="brand_new", columns=[_col("id")]),
+    )
+    assert drift_findings(_SNAP, live) == []
