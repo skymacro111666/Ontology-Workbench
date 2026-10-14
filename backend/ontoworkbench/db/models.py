@@ -338,4 +338,9 @@ class OntologyR2rml(Base):
     # rollback slot (file ↔ previous swap).
     schema_json: Mapped[str | None] = mapped_column(Text, default=None)
     previous_ttl: Mapped[str | None] = mapped_column(Text, default=None)
+    # P3: the saved connection the mapping was drafted from, when the wizard
+    # used one — the drift check re-reflects through it without asking again.
+    db_connection_id: Mapped[UUID | None] = mapped_column(
+        Uuid, ForeignKey("db_connections.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTimeTZ, server_default=func.now())

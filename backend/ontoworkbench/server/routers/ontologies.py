@@ -467,6 +467,7 @@ def get_r2rml(
             "content": ttl.decode(),
             "contentHash": LocalUserDirStore.file_hash(ttl),
             "previousExists": doc.previous_ttl is not None,
+            "dbConnectionId": str(doc.db_connection_id) if doc.db_connection_id else None,
             "structure": [m.model_dump(by_alias=True) for m in parse_r2rml(ttl, doc.namespace)],
         }
     )

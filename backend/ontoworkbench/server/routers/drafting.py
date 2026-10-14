@@ -76,6 +76,8 @@ class ImportIn(CamelModel):
     # Explicit alias: to_camel mangles r2rml → "generateR2Rml"; the spec's
     # wire name is generateR2rml.
     generate_r2rml: bool = Field(default=False, alias="generateR2rml")
+    # P3 drift check: remember which saved connection this mapping came from.
+    db_connection_id: uuid.UUID | None = Field(default=None, alias="dbConnectionId")
 
 
 def _dialect(db_type: str | None) -> Dialect:
@@ -260,6 +262,7 @@ def import_endpoint(
                 schema_hash=schema_hash(selected),
                 schema_json=selected.model_dump_json(by_alias=True),
                 skipped_tables=rendered.skipped_tables,
+                db_connection_id=body.db_connection_id,
             )
         )
         session.commit()

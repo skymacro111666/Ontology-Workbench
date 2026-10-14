@@ -48,7 +48,9 @@ def _reflected(client: TestClient, db: Path) -> dict:
     return r.json()["data"]["schema"]
 
 
-def _imported(client: TestClient, shop_db: Path, generate_r2rml: bool) -> dict:
+def _imported(
+    client: TestClient, shop_db: Path, generate_r2rml: bool, connection_id: str | None = None
+) -> dict:
     """Import the fixture decisions; optionally ask for the R2RML companion."""
     body = {
         "schema": _reflected(client, shop_db),
@@ -60,6 +62,8 @@ def _imported(client: TestClient, shop_db: Path, generate_r2rml: bool) -> dict:
     }
     if generate_r2rml:
         body["generateR2rml"] = True
+    if connection_id is not None:
+        body["dbConnectionId"] = connection_id
     r = client.post("/api/v1/ontologies/drafting/import", json=body)
     assert r.status_code == 201
     return r.json()["data"]
@@ -244,3 +248,31 @@ def test_r2rml_file_missing_404_not_500(client: TestClient, shop_db: Path) -> No
     assert r.json()["code"] == "NOT_FOUND"
     r2 = client.get(f"/api/v1/ontologies/{oid}/r2rml/download")
     assert r2.status_code == 404
+
+
+# --- P3: the mapping row remembers its drafting connection (spec §3) --------
+
+
+def _saved_conn(client: TestClient, shop_db: Path) -> str:
+    """A saved sqlite connection pointing at the fixture file."""
+    r = client.post(
+        "/api/v1/db-connections",
+        json={"name": "shop", "dbType": "sqlite", "database": str(shop_db)},
+    )
+    assert r.status_code == 201
+    return r.json()["data"]["id"]
+
+
+def test_get_r2rml_exposes_db_connection_id(client: TestClient, shop_db: Path) -> None:
+    """Import with dbConnectionId -> lands on the mapping row, GET exposes it."""
+    cid = _saved_conn(client, shop_db)
+    oid = _imported(client, shop_db, generate_r2rml=True, connection_id=cid)["ontologyId"]
+    d = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    assert d["dbConnectionId"] == cid
+
+
+def test_get_r2rml_db_connection_id_null_without_profile(client: TestClient, shop_db: Path) -> None:
+    """Raw-values import -> dbConnectionId stays null (picker at check time)."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    d = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    assert d["dbConnectionId"] is None
