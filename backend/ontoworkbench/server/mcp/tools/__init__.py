@@ -8,6 +8,7 @@ from functools import wraps
 from typing import Any
 
 import structlog
+from mcp.server.mcpserver.exceptions import ToolError
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from ontoworkbench.server.mcp.auth import label_ctx
@@ -44,6 +45,11 @@ def audit(name: str, fn: Callable) -> Callable:
         except LoopbackError as exc:
             code = exc.code
             raise to_tool_error(exc) from None
+        except ToolError as exc:
+            # Write tools raise their own untruncated ToolError (P4 spec §4);
+            # the attached code keeps telemetry honest instead of INTERNAL_ERROR.
+            code = getattr(exc, "code", "TOOL_ERROR")
+            raise
         except Exception:
             code = "INTERNAL_ERROR"
             raise
@@ -62,7 +68,9 @@ def audit(name: str, fn: Callable) -> Callable:
 
 
 def register_tools(mcp, loopback) -> None:
-    """Register the v1 read-only tool set (filled by tools/read.py in T8)."""
+    """Register the tool set: v1 read-only (read.py) + P4 write pair (write.py)."""
     from ontoworkbench.server.mcp.tools.read import register
+    from ontoworkbench.server.mcp.tools.write import register as register_write
 
     register(mcp, loopback, audit)
+    register_write(mcp, loopback, audit)

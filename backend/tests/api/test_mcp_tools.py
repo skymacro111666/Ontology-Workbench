@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.api.test_mcp_mount import _post_rpc, mcp_env  # noqa: F401
+from tests.api.test_mcp_mount import _post_rpc, _tools_call, mcp_env  # noqa: F401
 
 # mcp_env is imported only so pytest can resolve the fixture from another test
 # module; every test then takes it as a parameter, which shadows the import
@@ -41,8 +41,8 @@ def _first_oid(client: TestClient) -> str:
     return r.json()["data"]["items"][0]["id"]
 
 
-def test_all_ten_tools_registered(mcp_env: TestClient) -> None:  # noqa: F811
-    """tools/list carries exactly the ten v1 tool names (spec §7)."""
+def test_all_twelve_tools_registered(mcp_env: TestClient) -> None:  # noqa: F811
+    """tools/list carries the ten v1 read names + the P4 write pair (spec §7)."""
     assert set(_tools(mcp_env)) == {
         "list_ontologies",
         "get_ontology",
@@ -54,6 +54,8 @@ def test_all_ten_tools_registered(mcp_env: TestClient) -> None:  # noqa: F811
         "run_validation",
         "sparql_query",
         "export_file",
+        "get_r2rml",
+        "update_r2rml",
     }
 
 
@@ -316,3 +318,108 @@ def test_agent_token_still_forbidden_elsewhere(mcp_env: TestClient) -> None:  # 
     )
     assert rb.status_code == 403
     assert rb.json()["code"] == "AGENT_FORBIDDEN"
+
+
+# --- P4: write tools (spec §4) ------------------------------------------------
+
+
+def test_tools_list_carries_the_twelve_names(mcp_env: TestClient) -> None:  # noqa: F811
+    """The two write tools register alongside the ten read tools."""
+    assert set(_tools(mcp_env)) >= {"get_r2rml", "update_r2rml"}
+
+
+def test_get_r2rml_returns_mapping_payload(mcp_env: TestClient, tmp_path: Path) -> None:  # noqa: F811
+    """get_r2rml passthrough: full Turtle + hash + structure."""
+    oid = _mapped_ontology(mcp_env, tmp_path)
+    d = _tool(mcp_env, "get_r2rml", {"oid": oid})
+    assert d["content"].startswith("@prefix rr:")
+    assert len(d["contentHash"]) == 64
+    assert d["structure"][0]["table"] == "customer"
+
+
+def test_update_r2rml_saves_through_the_gate(mcp_env: TestClient, tmp_path: Path) -> None:  # noqa: F811
+    """Update passthrough: correct body, PUT payload back, file really saved."""
+    oid = _mapped_ontology(mcp_env, tmp_path)
+    d = _tool(mcp_env, "get_r2rml", {"oid": oid})
+    edited = d["content"] + "\n# agent edit\n"
+    out = _tool(
+        mcp_env, "update_r2rml", {"oid": oid, "content": edited, "base_hash": d["contentHash"]}
+    )
+    assert out["content"] == edited
+    assert out["previousExists"] is True
+    # persisted: a fresh GET over REST sees the agent edit
+    g = mcp_env.get(
+        f"/api/v1/ontologies/{oid}/r2rml", headers={"Authorization": f"Bearer {mcp_env.jwt}"}
+    ).json()["data"]
+    assert g["content"] == edited
+
+
+def test_write_error_keeps_long_hints() -> None:
+    """_write_error never truncates: a 900-char hint rides whole (spec §4)."""
+    from ontoworkbench.server.mcp.errors import LoopbackError
+    from ontoworkbench.server.mcp.tools.write import _write_error
+
+    err = _write_error(LoopbackError("R2RML_INVALID", "m", "x" * 900))
+    assert err.args[0].endswith("x" * 900)  # untruncated past the 500 guard
+    assert err.code == "R2RML_INVALID"
+
+
+def test_update_r2rml_422_surfaces_full_findings(mcp_env: TestClient, tmp_path: Path) -> None:  # noqa: F811
+    """The REST 422 hint (located findings) is embedded verbatim in the tool error."""
+    import re
+
+    oid = _mapped_ontology(mcp_env, tmp_path)
+    d = _tool(mcp_env, "get_r2rml", {"oid": oid})
+    # drop each subjectMap block whole: valid Turtle, every map incomplete
+    broken = re.sub(r"    rr:subjectMap \[\n(?:.*\n)*?    \] ;\n", "", d["content"])
+    rest = mcp_env.put(
+        f"/api/v1/ontologies/{oid}/r2rml",
+        json={"content": broken, "baseHash": d["contentHash"]},
+        headers={"Authorization": f"Bearer {mcp_env.jwt}"},
+    )
+    assert rest.status_code == 422
+    hint = rest.json()["hint"]
+    assert hint.count("L2:") >= 4  # two maps x (template + class)
+    msg = _tools_call(
+        mcp_env,
+        mcp_env.agent_token,
+        "update_r2rml",
+        {"oid": oid, "content": broken, "base_hash": d["contentHash"]},
+    )
+    assert msg["result"].get("isError") is True
+    text = msg["result"]["content"][0]["text"]
+    assert hint in text  # every finding rides through, verbatim
+
+
+def test_update_r2rml_409_surfaces_stale(mcp_env: TestClient, tmp_path: Path) -> None:  # noqa: F811
+    """A wrong baseHash gives R2RML_STALE with its re-fetch hint."""
+    oid = _mapped_ontology(mcp_env, tmp_path)
+    msg = _tools_call(
+        mcp_env,
+        mcp_env.agent_token,
+        "update_r2rml",
+        {
+            "oid": oid,
+            "content": "@prefix rr: <http://www.w3.org/ns/r2rml#> .",
+            "base_hash": "0" * 64,
+        },
+    )
+    text = msg["result"]["content"][0]["text"]
+    assert "R2RML_STALE" in text and "重新加载" in text
+
+
+def test_write_tool_audit_records_real_code(mcp_env: TestClient, tmp_path: Path) -> None:  # noqa: F811
+    """Audit telemetry: a 422 logs result=R2RML_INVALID, not INTERNAL_ERROR."""
+    from structlog.testing import capture_logs
+
+    oid = _mapped_ontology(mcp_env, tmp_path)
+    d = _tool(mcp_env, "get_r2rml", {"oid": oid})
+    with capture_logs() as logs:
+        _tools_call(
+            mcp_env,
+            mcp_env.agent_token,
+            "update_r2rml",
+            {"oid": oid, "content": "not turtle", "base_hash": d["contentHash"]},
+        )
+    events = [e for e in logs if e.get("event") == "mcp.tool" and e.get("tool") == "update_r2rml"]
+    assert events and events[-1]["result"] == "R2RML_INVALID"
