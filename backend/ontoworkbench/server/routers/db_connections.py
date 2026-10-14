@@ -117,6 +117,24 @@ def _fernet(request: Request):
     return fernet_from_jwt_secret(request.app.state.settings.jwt_secret)
 
 
+def _saved_connection(row: DbConnection, request: Request) -> tuple[Dialect, ConnValues]:
+    """Saved-connection row → (dialect, decrypted values).
+
+    Shared by the drafting reflect endpoint and the R2RML drift check —
+    lives here (not drafting.py) because drafting already imports from
+    ontologies, and ontologies importing back would be a cycle.
+    """
+    return _dialect(row.db_type), ConnValues(
+        host=row.host,
+        port=row.port,
+        database=row.database_name,
+        username=row.username,
+        password=decrypt_str(_fernet(request), row.password_cipher)
+        if row.password_cipher
+        else None,
+    )
+
+
 def _check_connect(dialect: Dialect, values: ConnValues) -> dict:
     """SELECT 1 against the target; ok=False (OK envelope) on failure.
 

@@ -28,11 +28,11 @@ from ontoworkbench.core.errors import CoreError
 from ontoworkbench.db.models import OntologyR2rml, User
 from ontoworkbench.db.repositories import DbConnectionRepository
 from ontoworkbench.db.session import get_session
-from ontoworkbench.server.crypto import decrypt_str, fernet_from_jwt_secret
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
 from ontoworkbench.server.routers.ai_settings import get_ai_provider
 from ontoworkbench.server.routers.browse import _camel
+from ontoworkbench.server.routers.db_connections import _saved_connection
 from ontoworkbench.server.routers.ontologies import _import_bytes
 
 router = APIRouter(prefix="/api/v1/ontologies/drafting", tags=["drafting"])
@@ -96,16 +96,7 @@ def _resolve_values(
         row = DbConnectionRepository(session).get_owned(user.id, body.connection_id)
         if row is None:
             raise ApiError(ErrorCode.NOT_FOUND, "No such connection")
-        dialect = _dialect(row.db_type)
-        return dialect, ConnValues(
-            host=row.host,
-            port=row.port,
-            database=row.database_name,
-            username=row.username,
-            password=decrypt_str(_fernet(request), row.password_cipher)
-            if row.password_cipher
-            else None,
-        )
+        return _saved_connection(row, request)
     dialect = _dialect(body.db_type)
     if not body.database:
         raise ApiError(ErrorCode.VALIDATION_ERROR, "database is required")
@@ -116,11 +107,6 @@ def _resolve_values(
         username=body.username,
         password=body.password,
     )
-
-
-def _fernet(request: Request):
-    """Fernet keyed off this app's JWT secret."""
-    return fernet_from_jwt_secret(request.app.state.settings.jwt_secret)
 
 
 @router.post("/schema")

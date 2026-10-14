@@ -86,7 +86,10 @@ def reflect_schema(values: ConnValues, dialect: Dialect) -> SchemaModel:
                 )
             )
         return SchemaModel(database_name=_db_label(values, dialect), tables=tables)
-    except sa.exc.OperationalError as e:
+    except sa.exc.DatabaseError as e:
+        # OperationalError (refused/timeout/auth) plus its parent class —
+        # e.g. sqlite "file is not a database" — must map to DB_CONNECT_FAILED,
+        # never leak as a bare 500.
         raise CoreError(
             "DB_CONNECT_FAILED", "could not connect to the database", hint=str(e)[:300]
         ) from e

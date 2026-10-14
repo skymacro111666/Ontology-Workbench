@@ -276,3 +276,96 @@ def test_get_r2rml_db_connection_id_null_without_profile(client: TestClient, sho
     oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
     d = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
     assert d["dbConnectionId"] is None
+
+
+# --- P3 drift endpoint (spec §4.2) ------------------------------------------
+
+
+def _drift(client: TestClient, oid: str, connection_id: str | None = None):
+    body = {"connectionId": connection_id} if connection_id else {}
+    return client.post(f"/api/v1/ontologies/{oid}/r2rml/drift", json=body)
+
+
+def test_drift_clean_when_unchanged(client: TestClient, shop_db: Path) -> None:
+    """Unchanged database -> drifted:false (extra live tables ignored by subset rule)."""
+    cid = _saved_conn(client, shop_db)
+    oid = _imported(client, shop_db, generate_r2rml=True, connection_id=cid)["ontologyId"]
+    r = _drift(client, oid)
+    assert r.status_code == 200
+    d = r.json()["data"]
+    assert d["drifted"] is False and d["findings"] == []
+    assert d["checkedAt"]
+
+
+def test_drift_reports_dropped_column(client: TestClient, shop_db: Path) -> None:
+    """SQLite drops a column -> the matching column_missing finding."""
+    cid = _saved_conn(client, shop_db)
+    oid = _imported(client, shop_db, generate_r2rml=True, connection_id=cid)["ontologyId"]
+    con = sqlite3.connect(shop_db)
+    con.execute("ALTER TABLE customer DROP COLUMN name")
+    con.commit()
+    con.close()
+    r = _drift(client, oid)
+    assert r.status_code == 200
+    d = r.json()["data"]
+    assert d["drifted"] is True
+    assert [(f["table"], f["kind"]) for f in d["findings"]] == [("customer", "column_missing")]
+    assert "customer.name" in d["findings"][0]["detail"]
+
+
+def test_drift_accepts_body_connection_id(client: TestClient, shop_db: Path) -> None:
+    """Row has no profile -> a body connectionId works (raw-values import path)."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    cid = _saved_conn(client, shop_db)
+    r = _drift(client, oid, cid)
+    assert r.status_code == 200
+    assert r.json()["data"]["drifted"] is False
+
+
+def test_drift_no_snapshot_old_row_422(client: TestClient, shop_db: Path) -> None:
+    """P1 legacy row without schema_json -> 422 R2RML_NO_SNAPSHOT, never a 500."""
+    from uuid import UUID
+
+    from sqlalchemy import select
+
+    from ontoworkbench.db.models import OntologyR2rml
+    from ontoworkbench.db.session import sessionmaker_or_fail
+
+    cid = _saved_conn(client, shop_db)
+    oid = _imported(client, shop_db, generate_r2rml=True, connection_id=cid)["ontologyId"]
+    with sessionmaker_or_fail()() as s:
+        row = s.scalar(select(OntologyR2rml).where(OntologyR2rml.ontology_id == UUID(oid)))
+        row.schema_json = None
+        s.commit()
+    r = _drift(client, oid)
+    assert r.status_code == 422
+    assert r.json()["code"] == "R2RML_NO_SNAPSHOT"
+
+
+def test_drift_requires_a_connection_422(client: TestClient, shop_db: Path) -> None:
+    """No profile on the row and none in the body -> 422 VALIDATION_ERROR."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    r = _drift(client, oid)
+    assert r.status_code == 422
+    assert r.json()["code"] == "VALIDATION_ERROR"
+
+
+def test_drift_deleted_connection_404(client: TestClient, shop_db: Path) -> None:
+    """Saved connection deleted (sqlite keeps the dangling id) -> get_owned None -> 404."""
+    cid = _saved_conn(client, shop_db)
+    oid = _imported(client, shop_db, generate_r2rml=True, connection_id=cid)["ontologyId"]
+    assert _drift(client, oid).status_code == 200  # route alive before the delete
+    assert client.delete(f"/api/v1/db-connections/{cid}").status_code in (200, 204)
+    r = _drift(client, oid)
+    assert r.status_code == 404
+    assert r.json()["code"] == "NOT_FOUND"
+
+
+def test_drift_connect_failure_maps_502(client: TestClient, shop_db: Path) -> None:
+    """Corrupted database file -> CoreError -> 502 DB_CONNECT_FAILED (same as /drafting/schema)."""
+    cid = _saved_conn(client, shop_db)
+    oid = _imported(client, shop_db, generate_r2rml=True, connection_id=cid)["ontologyId"]
+    shop_db.write_bytes(b"this is not a sqlite database")
+    r = _drift(client, oid)
+    assert r.status_code == 502
+    assert r.json()["code"] == "DB_CONNECT_FAILED"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -20,7 +21,9 @@ from sqlalchemy.orm import Session
 
 from ontoworkbench.core import terms
 from ontoworkbench.core.drafting.models import SchemaModel
-from ontoworkbench.core.drafting.r2rml import parse_r2rml, validate_r2rml
+from ontoworkbench.core.drafting.r2rml import drift_findings, parse_r2rml, validate_r2rml
+from ontoworkbench.core.drafting.reflect import reflect_schema
+from ontoworkbench.core.errors import CoreError
 from ontoworkbench.core.indexes import build_indexes
 from ontoworkbench.core.ir import build_ir_store
 from ontoworkbench.core.ir_cache import write_ir_cache
@@ -29,6 +32,7 @@ from ontoworkbench.core.parsing import sniff_format, timed_parse_store
 from ontoworkbench.core.store import LocalUserDirStore
 from ontoworkbench.db.models import Ontology, OntologyR2rml, User
 from ontoworkbench.db.repositories import (
+    DbConnectionRepository,
     LayoutRepository,
     MutationEventRepository,
     OntologyRepository,
@@ -39,6 +43,7 @@ from ontoworkbench.observability.middleware import request_id_ctx
 from ontoworkbench.server.cache import OntologyCache, load_store
 from ontoworkbench.server.deps import get_current_user
 from ontoworkbench.server.envelope import ApiError, ErrorCode, respond
+from ontoworkbench.server.routers.db_connections import _saved_connection
 
 router = APIRouter(prefix="/api/v1", tags=["ontologies"])
 
@@ -601,6 +606,58 @@ def rollback_r2rml(
     session.commit()
     request.app.state.store.save(user.id, UUID(str(row.id)), doc.filename, previous)
     return respond(_r2rml_payload(doc, previous))
+
+
+class R2rmlDriftIn(CamelModel):
+    """POST /r2rml/drift body: connection to use when the row carries none."""
+
+    connection_id: UUID | None = None
+
+
+@router.post("/ontologies/{ontology_id}/r2rml/drift")
+def drift_r2rml(
+    ontology_id: str,
+    body: R2rmlDriftIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Manual drift check (P3 spec §4.2): re-reflect, diff against the snapshot.
+
+    Read-only: never writes schema_json/schema_hash — the snapshot is the
+    import-time truth, only a re-import updates it.
+    """
+    _, doc = _r2rml_doc(user, session, ontology_id)
+    if doc.schema_json is None:
+        raise ApiError(
+            ErrorCode.R2RML_NO_SNAPSHOT,
+            "P1 旧映射行没有库结构快照",
+            "重新导入并勾选生成 R2RML 映射后才能检查漂移。",
+        )
+    conn_id = body.connection_id or doc.db_connection_id
+    if conn_id is None:
+        raise ApiError(
+            ErrorCode.VALIDATION_ERROR,
+            "没有可用的数据库连接",
+            "先在数据库连接页保存连接,或请求带 connectionId。",
+        )
+    conn = DbConnectionRepository(session).get_owned(user.id, conn_id)
+    if conn is None:
+        raise ApiError(ErrorCode.NOT_FOUND, "No such connection")
+    dialect, values = _saved_connection(conn, request)
+    try:
+        live = reflect_schema(values, dialect)
+    except CoreError as e:
+        raise ApiError(ErrorCode(str(e.code)), e.message, e.hint) from e
+    snapshot = SchemaModel.model_validate_json(doc.schema_json)
+    findings = drift_findings(snapshot, live)
+    return respond(
+        {
+            "drifted": bool(findings),
+            "checkedAt": datetime.now(UTC).isoformat(),
+            "findings": [f.model_dump(by_alias=True) for f in findings],
+        }
+    )
 
 
 @router.put("/ontologies/{ontology_id}/source")
