@@ -1,6 +1,7 @@
 """R2RML read endpoints: envelope view + binary download."""
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -369,3 +370,43 @@ def test_drift_connect_failure_maps_502(client: TestClient, shop_db: Path) -> No
     r = _drift(client, oid)
     assert r.status_code == 502
     assert r.json()["code"] == "DB_CONNECT_FAILED"
+
+
+# --- P4: TOCTOU — the whole PUT/rollback critical section rides the lock -----
+
+
+def test_put_r2rml_waits_for_file_write_lock(client: TestClient, shop_db: Path) -> None:
+    """A PUT cannot enter while the per-oid file lock is held."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    d = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    lock = client.app.state.cache.file_write_lock(oid)
+    # The executor lives OUTSIDE the lock: its shutdown(wait=True) would
+    # otherwise wait on a worker that is itself waiting on our lock.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with lock:
+            fut = pool.submit(
+                lambda: _edited(client, oid, d["content"] + "\n# x\n", d["contentHash"])
+            )
+            with pytest.raises(TimeoutError):
+                fut.result(timeout=0.4)  # blocked: the section is inside the lock
+        assert fut.result(timeout=5).status_code == 200  # released -> completes
+
+
+def test_rollback_r2rml_waits_for_file_write_lock(client: TestClient, shop_db: Path) -> None:
+    """Rollback rides the same per-oid lock (same critical-section family)."""
+    oid = _imported(client, shop_db, generate_r2rml=True)["ontologyId"]
+    d = client.get(f"/api/v1/ontologies/{oid}/r2rml").json()["data"]
+    first = _edited(client, oid, d["content"] + "\n# v2\n", d["contentHash"])
+    assert first.status_code == 200
+    h2 = first.json()["data"]["contentHash"]
+    lock = client.app.state.cache.file_write_lock(oid)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with lock:
+            fut = pool.submit(
+                lambda: client.post(
+                    f"/api/v1/ontologies/{oid}/r2rml/rollback", json={"baseHash": h2}
+                )
+            )
+            with pytest.raises(TimeoutError):
+                fut.result(timeout=0.4)
+        assert fut.result(timeout=5).status_code == 200

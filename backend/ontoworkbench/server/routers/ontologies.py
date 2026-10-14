@@ -558,23 +558,29 @@ def put_r2rml(
     if len(data) > MAX_UPLOAD:  # same cap as PUT /source (MCP/P4 exposure)
         ow_uploads_total.labels("too_large").inc()
         raise ApiError(ErrorCode.UPLOAD_TOO_LARGE, "File exceeds the 150MB limit")
-    current = _r2rml_bytes(doc)
-    if LocalUserDirStore.file_hash(current) != body.base_hash:
-        raise ApiError(
-            ErrorCode.R2RML_STALE,
-            "The mapping changed since it was loaded",
-            "重新加载映射后在新版本上重放你的修改。",
-        )
-    schema = SchemaModel.model_validate_json(doc.schema_json) if doc.schema_json else None
-    findings = validate_r2rml(data, doc.namespace, schema)
-    if findings:
-        hint = "\n".join(
-            f"L{f.layer}: {f.message}" + (f" @{f.location}" if f.location else "") for f in findings
-        )
-        raise ApiError(ErrorCode.R2RML_INVALID, f"R2RML 映射未通过校验({len(findings)} 处)", hint)
-    doc.previous_ttl = current.decode()
-    session.commit()
-    request.app.state.store.save(user.id, UUID(str(row.id)), doc.filename, data)
+    # TOCTOU (P4 spec §5): whole read-check-commit-write section under the
+    # per-oid file lock — a second writer cannot slip between hash and write.
+    with request.app.state.cache.file_write_lock(str(row.id)):
+        current = _r2rml_bytes(doc)
+        if LocalUserDirStore.file_hash(current) != body.base_hash:
+            raise ApiError(
+                ErrorCode.R2RML_STALE,
+                "The mapping changed since it was loaded",
+                "重新加载映射后在新版本上重放你的修改。",
+            )
+        schema = SchemaModel.model_validate_json(doc.schema_json) if doc.schema_json else None
+        findings = validate_r2rml(data, doc.namespace, schema)
+        if findings:
+            hint = "\n".join(
+                f"L{f.layer}: {f.message}" + (f" @{f.location}" if f.location else "")
+                for f in findings
+            )
+            raise ApiError(
+                ErrorCode.R2RML_INVALID, f"R2RML 映射未通过校验({len(findings)} 处)", hint
+            )
+        doc.previous_ttl = current.decode()
+        session.commit()
+        request.app.state.store.save(user.id, UUID(str(row.id)), doc.filename, data)
     return respond(_r2rml_payload(doc, data))
 
 
@@ -594,17 +600,19 @@ def rollback_r2rml(
     row, doc = _r2rml_doc(user, session, ontology_id)
     if doc.previous_ttl is None:
         raise ApiError(ErrorCode.R2RML_NO_PREVIOUS, "没有可回退的上一版")
-    current = _r2rml_bytes(doc)
-    if LocalUserDirStore.file_hash(current) != body.base_hash:
-        raise ApiError(
-            ErrorCode.R2RML_STALE,
-            "The mapping changed since it was loaded",
-            "重新加载映射后再回退。",
-        )
-    previous = doc.previous_ttl.encode()
-    doc.previous_ttl = current.decode()
-    session.commit()
-    request.app.state.store.save(user.id, UUID(str(row.id)), doc.filename, previous)
+    # Same per-oid file lock as PUT — the swap is one critical section (P4 §5).
+    with request.app.state.cache.file_write_lock(str(row.id)):
+        current = _r2rml_bytes(doc)
+        if LocalUserDirStore.file_hash(current) != body.base_hash:
+            raise ApiError(
+                ErrorCode.R2RML_STALE,
+                "The mapping changed since it was loaded",
+                "重新加载映射后再回退。",
+            )
+        previous = doc.previous_ttl.encode()
+        doc.previous_ttl = current.decode()
+        session.commit()
+        request.app.state.store.save(user.id, UUID(str(row.id)), doc.filename, previous)
     return respond(_r2rml_payload(doc, previous))
 
 
