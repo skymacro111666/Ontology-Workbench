@@ -28,7 +28,7 @@
 - **数据库起草** —— 直连 PostgreSQL/MySQL/SQLite/DuckDB/ClickHouse 反射表结构,LLM 起草类与属性,lint 护栏+逐项人审后入库
 - **R2RML 映射** —— 数据库起草时随导入生成映射文档;受控编辑(语法/子集/schema 快照三层校验门)与一键回退
 - **离线文档导出** —— 生成完全零外部依赖的静态站点
-- **内置MCP功能** —— MCP服务器提供10个工具，支持Agent按需调用
+- **内置MCP功能** —— MCP服务器提供12个工具(10 只读 + R2RML 映射读写)，支持Agent按需调用
 
 ## 📸 功能展示
 
@@ -80,7 +80,7 @@ cd ../backend && uv run ow serve
 
 ## 🔌 MCP
 
-内置 MCP 服务器，提供10 个工具、streamable HTTP 传输，挂在 `/api/v1/mcp/`。创建首枚 Agent 令牌后重启服务即完成挂载，令牌清零后重启则端点消失(404)。
+内置 MCP 服务器，提供12 个工具(10 只读 + `get_r2rml`/`update_r2rml` 映射读写)、streamable HTTP 传输，挂在 `/api/v1/mcp/`。创建首枚 Agent 令牌后重启服务即完成挂载，令牌清零后重启则端点消失(404)。Agent 令牌可读写 R2RML 映射(走与网页编辑器相同的校验门与乐观锁)，其余端点一律只读。
 
 ### 创建 Agent 令牌
 

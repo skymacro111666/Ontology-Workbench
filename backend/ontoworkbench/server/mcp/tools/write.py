@@ -17,6 +17,15 @@ from mcp.server.mcpserver.exceptions import ToolError
 from ontoworkbench.server.mcp.errors import LoopbackError
 
 
+class _WriteToolError(ToolError):
+    """ToolError carrying the envelope code for the audit wrapper's telemetry."""
+
+    def __init__(self, text: str, code: str) -> None:
+        """Store the REST envelope code alongside the message."""
+        super().__init__(text)
+        self.code = code
+
+
 def _write_error(exc: LoopbackError) -> ToolError:
     """Full-fidelity mapping: code + message + hint, no truncation.
 
@@ -26,9 +35,7 @@ def _write_error(exc: LoopbackError) -> ToolError:
     text = f"{exc.code}: {exc.message}"
     if exc.hint:
         text += f"\n{exc.hint}"
-    err = ToolError(text)
-    err.code = exc.code
-    return err
+    return _WriteToolError(text, exc.code)
 
 
 def register(mcp, loopback, audit) -> None:

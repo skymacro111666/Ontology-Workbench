@@ -28,7 +28,7 @@
 - **Draft from database** — reflect the schema of PostgreSQL/MySQL/SQLite/DuckDB/ClickHouse, let an LLM draft classes and properties, gate through lint plus per-item human review before import
 - **R2RML mapping** — generated alongside each database draft; controlled editing behind a three-layer validation gate (syntax / subset / schema snapshot) with one-step rollback
 - **Offline docs export** — generates a static site with zero external dependencies
-- **Built-in MCP** — an MCP server exposing 10 tools for agents to call on demand
+- **Built-in MCP** — an MCP server exposing 12 tools (10 read-only + R2RML mapping read/write) for agents to call on demand
 
 ## 📸 Feature Showcase
 
@@ -78,7 +78,7 @@ Open `http://<your-ip-address>:8734` (set `OW_HOST=0.0.0.0` in `.env` first — 
 
 ## 🔌 MCP
 
-A built-in MCP server: 10 tools over streamable HTTP at `/api/v1/mcp/`. It mounts once the first agent token exists (restart to apply); with zero tokens the endpoint is absent (404).
+A built-in MCP server: 12 tools (10 read-only + `get_r2rml`/`update_r2rml`) over streamable HTTP at `/api/v1/mcp/`. It mounts once the first agent token exists (restart to apply); with zero tokens the endpoint is absent (404). Agent tokens may read and write the R2RML mapping (through the same gate and optimistic lock as the web editor); every other endpoint stays read-only.
 
 ### Creating an agent token
 
