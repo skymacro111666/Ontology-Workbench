@@ -154,7 +154,11 @@ class OntologyCache:
         return self._mutation_locks[ontology_id]
 
     def file_write_lock(self, ontology_id: str) -> threading.Lock:
-        """Serialize autosave vs PUT /source file writes (rare, seconds-long)."""
+        """Serialize per-oid file writes (rare, seconds-long).
+
+        Holders: autosave + the r2rml PUT/rollback critical sections.
+        PUT /source never held this lock (terminal-review verification).
+        """
         return self._file_write_locks[ontology_id]
 
     def bump_mutation_gen(self, ontology_id: str) -> None:

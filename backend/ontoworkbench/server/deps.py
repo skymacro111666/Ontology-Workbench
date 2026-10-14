@@ -2,7 +2,8 @@
 
 Two credential types, one account subject (spec D11): JWT = human session
 credential (full power), owag_ agent token = account machine credential
-(scope: the read-only endpoint allowlist below — PAT semantics).
+(scope: the endpoint allowlist below, read-only plus the R2RML mapping
+pair — PAT semantics).
 """
 
 from __future__ import annotations
@@ -58,7 +59,7 @@ def _authenticate_agent_token(request: Request, session: Session, token: str) ->
     if key not in AGENT_ALLOWED:
         raise ApiError(
             ErrorCode.AGENT_FORBIDDEN,
-            "Agent tokens are limited to allowlisted read endpoints",
+            "Agent tokens are limited to allowlisted endpoints",
         )
     request.state.agent_label = label
     request.state.credential = f"agent:{label}"
