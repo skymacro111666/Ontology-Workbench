@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
@@ -26,6 +26,7 @@ const DOC = {
   content: '@prefix rr: <http://www.w3.org/ns/r2rml#> .',
   contentHash: 'c'.repeat(64),
   previousExists: false,
+  dbConnectionId: 'conn-1',
   structure: [
     {
       table: 'customer',
@@ -110,5 +111,70 @@ describe('R2rmlPage key hygiene', () => {
       errSpy.mock.calls.some((c) => String(c[0]).includes('same key')),
     ).toBe(false)
     errSpy.mockRestore()
+  })
+})
+
+describe('R2rmlPage drift check', () => {
+  const driftOk = (findings: unknown[]) =>
+    ok({
+      drifted: findings.length > 0,
+      checkedAt: '2026-10-14T10:30:00Z',
+      findings,
+    })
+
+  function stubFetch(doc: object, drift: Response, conns: unknown[] = []) {
+    const calls: string[] = []
+    const bodies: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push(`${init?.method ?? 'GET'} ${url}`)
+        if (String(url).includes('/r2rml/drift')) {
+          bodies.push(String(init?.body ?? ''))
+          return drift
+        }
+        if (String(url).includes('/db-connections')) return ok(conns)
+        return ok(doc)
+      }),
+    )
+    return { calls, bodies }
+  }
+
+  it('posts drift directly when the row has a connection; clean banner shows', async () => {
+    /** 行上有档案连接:点击直接 POST,绿横幅「无漂移 (时间)」. */
+    const { calls, bodies } = stubFetch({ ...DOC }, driftOk([]))
+    page()
+    await userEvent.click(await screen.findByRole('button', { name: '检查漂移' }))
+    await waitFor(() => expect(screen.getByText(/无漂移/)).toBeTruthy())
+    expect(calls).toContainEqual('POST /api/v1/ontologies/oid-1/r2rml/drift')
+    expect(bodies[0]).toBe('{}')
+  })
+
+  it('opens the connection picker when the row has none', async () => {
+    /** 行上无档案:点击弹挑连接框,选中后带 connectionId POST. */
+    const { bodies } = stubFetch(
+      { ...DOC, dbConnectionId: null },
+      driftOk([]),
+      [{ id: 'c2', name: 'shop', dbType: 'sqlite' }],
+    )
+    page()
+    await userEvent.click(await screen.findByRole('button', { name: '检查漂移' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.selectOptions(within(dialog).getByLabelText(/数据库连接/), 'c2')
+    await userEvent.click(within(dialog).getByRole('button', { name: '检查漂移' }))
+    await waitFor(() => expect(screen.getByText(/无漂移/)).toBeTruthy())
+    expect(bodies[0]).toContain('"connectionId":"c2"')
+  })
+
+  it('renders each drift finding in the amber banner', async () => {
+    /** 漂移:琥珀横幅逐条渲染 detail. */
+    stubFetch(
+      { ...DOC },
+      driftOk([{ table: 'customer', kind: 'column_missing', detail: '列 customer.name 已删除' }]),
+    )
+    page()
+    await userEvent.click(await screen.findByRole('button', { name: '检查漂移' }))
+    await waitFor(() => expect(screen.getByText(/发现漂移/)).toBeTruthy())
+    expect(screen.getByText(/列 customer\.name 已删除/)).toBeTruthy()
   })
 })

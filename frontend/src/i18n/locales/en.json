@@ -120,7 +120,13 @@
     "rollbackDescDirty": "Unsaved edits will be lost; the file swaps back to the previous version and the last saved one moves into the rollback slot.",
     "rollbackConfirm": "Roll back",
     "search": "Search",
-    "findReplace": "Find/Replace (Ctrl+F)"
+    "findReplace": "Find/Replace (Ctrl+F)",
+    "checkDrift": "Check drift",
+    "driftChecking": "Checking…",
+    "driftClean": "No drift",
+    "driftFound": "Drift detected",
+    "driftPickTitle": "Choose a database connection",
+    "driftNoConn": "No saved connections yet — create one on the connections page first"
   },
   "browse": {
     "notFound": "Ontology not found",
@@ -491,7 +497,8 @@
     "DB_CONNECT_FAILED": "Database connection failed",
     "R2RML_INVALID": "The R2RML mapping failed validation",
     "R2RML_STALE": "The mapping changed since it was loaded — reload it",
-    "R2RML_NO_PREVIOUS": "No previous version to roll back to"
+    "R2RML_NO_PREVIOUS": "No previous version to roll back to",
+    "R2RML_NO_SNAPSHOT": "This mapping predates snapshots (P1) — re-import with the R2RML companion enabled to check drift"
   },
   "query": {
     "samples": "Sample queries",

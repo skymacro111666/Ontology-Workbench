@@ -489,7 +489,21 @@ export interface R2rmlDoc {
   content: string
   contentHash: string
   previousExists: boolean
+  dbConnectionId: string | null
   structure: R2rmlTriplesMap[]
+}
+
+/** POST /r2rml/drift result (P3). */
+export interface R2rmlDriftFinding {
+  table: string
+  kind: 'table_missing' | 'column_missing' | 'column_type' | 'fk_changed'
+  detail: string
+}
+
+export interface R2rmlDriftResult {
+  drifted: boolean
+  checkedAt: string
+  findings: R2rmlDriftFinding[]
 }
 
 /** Polled generate job (GET /drafting/jobs/{id}). */
