@@ -1,6 +1,7 @@
 """Tool contracts over the mounted app (spec §7 + §11.3): happy paths, pointers, truncation."""
 
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -237,3 +238,81 @@ def test_audit_trail_records_result_sizes(tmp_path, capsys, mcp_env: TestClient)
             if handler not in before:
                 root.removeHandler(handler)
                 handler.close()
+
+
+# --- P4: agent tokens reach the r2rml endpoints (and nothing wider) ---------
+
+
+def _mapped_ontology(client: TestClient, tmp_path: Path) -> str:
+    """Import a shop mapping over REST with the human JWT; return the oid."""
+    import sqlite3
+
+    from tests.api.test_ontologies_r2rml import DECISIONS_OBJ
+
+    db = tmp_path / "shop.db"
+    con = sqlite3.connect(db)
+    con.executescript(
+        """
+        CREATE TABLE customer (id INTEGER PRIMARY KEY, name VARCHAR(80));
+        CREATE TABLE orders (
+            id INTEGER PRIMARY KEY,
+            customer_id INTEGER REFERENCES customer(id)
+        );
+        """
+    )
+    con.commit()
+    con.close()
+    h = {"Authorization": f"Bearer {client.jwt}"}
+    schema = client.post(
+        "/api/v1/ontologies/drafting/schema",
+        json={"dbType": "sqlite", "database": str(db)},
+        headers=h,
+    ).json()["data"]["schema"]
+    r = client.post(
+        "/api/v1/ontologies/drafting/import",
+        json={
+            "schema": schema,
+            "decisions": DECISIONS_OBJ,
+            "rejectedClassNames": [],
+            "namespace": "https://local/shop#",
+            "filename": "shop.ttl",
+            "labelLanguage": "zh",
+            "generateR2rml": True,
+        },
+        headers=h,
+    )
+    assert r.status_code == 201
+    return r.json()["data"]["ontologyId"]
+
+
+def test_agent_token_reaches_r2rml_endpoints(mcp_env: TestClient, tmp_path: Path) -> None:  # noqa: F811
+    """Agent bearer passes the allowlist on GET and PUT /r2rml (not 403)."""
+    oid = _mapped_ontology(mcp_env, tmp_path)
+    h = {"Authorization": f"Bearer {mcp_env.agent_token}"}
+    g = mcp_env.get(f"/api/v1/ontologies/{oid}/r2rml", headers=h)
+    assert g.status_code == 200  # GET passes the gate
+    bad = mcp_env.put(
+        f"/api/v1/ontologies/{oid}/r2rml",
+        json={"content": "not turtle", "baseHash": g.json()["data"]["contentHash"]},
+        headers=h,
+    )
+    assert bad.status_code == 422  # PUT passes the gate; fails the L1 gate instead
+    assert bad.json()["code"] == "R2RML_INVALID"
+
+
+def test_agent_token_still_forbidden_elsewhere(mcp_env: TestClient) -> None:  # noqa: F811
+    """PUT /source and r2rml/rollback stay outside the agent allowlist."""
+    oid = _first_oid(mcp_env)
+    h = {"Authorization": f"Bearer {mcp_env.agent_token}"}
+    src = mcp_env.put(
+        f"/api/v1/ontologies/{oid}/source",
+        json={"content": "x", "baseFileHash": "y"},
+        headers=h,
+    )
+    assert src.status_code == 403
+    assert src.json()["code"] == "AGENT_FORBIDDEN"
+    rb = mcp_env.post(
+        f"/api/v1/ontologies/{oid}/r2rml/rollback", json={"baseHash": "0" * 64}, headers=h
+    )
+    assert rb.status_code == 403
+    assert rb.json()["code"] == "AGENT_FORBIDDEN"

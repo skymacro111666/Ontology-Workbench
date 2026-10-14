@@ -20,8 +20,9 @@ from ontoworkbench.db.session import get_session
 from ontoworkbench.observability.middleware import user_id_ctx
 from ontoworkbench.server.envelope import ApiError, ErrorCode
 
-# Machine credentials may only reach the endpoints behind the 10 MCP tools
-# (spec §5). method + route-template exact match; humans are unrestricted.
+# Machine credentials may only reach the endpoints behind the MCP tools
+# (spec §5; P4 adds the R2RML read/write pair — the only agent-reachable
+# write). method + route-template exact match; humans are unrestricted.
 AGENT_ALLOWED: frozenset[str] = frozenset(
     {
         "GET /api/v1/ontologies",
@@ -34,6 +35,8 @@ AGENT_ALLOWED: frozenset[str] = frozenset(
         "POST /api/v1/ontologies/{ontology_id}/lint/run",
         "POST /api/v1/ontologies/{ontology_id}/validation/run",
         "POST /api/v1/ontologies/{ontology_id}/query",
+        "GET /api/v1/ontologies/{ontology_id}/r2rml",
+        "PUT /api/v1/ontologies/{ontology_id}/r2rml",
     }
 )
 
