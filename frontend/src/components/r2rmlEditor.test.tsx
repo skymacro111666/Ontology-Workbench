@@ -25,6 +25,7 @@ const DOC = {
   content: '@prefix rr: <http://www.w3.org/ns/r2rml#> .\n',
   contentHash: 'hash-1',
   previousExists: false,
+  dbConnectionId: null,
   structure: [],
 }
 
