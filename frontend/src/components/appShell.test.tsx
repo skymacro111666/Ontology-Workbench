@@ -317,6 +317,19 @@ it('re-clicking the pressed view while the R2RML page is open returns to it', as
   useUiStore.setState({ r2rmlOpen: false, r2rmlDirty: false })
 })
 
+it('no view shows pressed while the R2RML page owns the content area', async () => {
+  /** 视觉真相:工作台页接管内容区时视图组全不亮、R2RML 按钮带按压底色。 */
+  shell('/browse/oid-1')
+  useUiStore.setState({ browseView: 'graph', r2rmlOpen: true, r2rmlDirty: false })
+  const graph = screen.getByRole('radio', { name: /图形/ })
+  // zustand setState 在 React 事件外,重渲染需 waitFor flush
+  await waitFor(() => expect(graph.getAttribute('aria-checked')).toBe('false'))
+  expect(screen.getByRole('radio', { name: /文本/ }).getAttribute('aria-checked')).toBe('false')
+  const btn = screen.getByRole('button', { name: 'R2RML' })
+  expect(btn.className).toContain('bg-primary-soft') // 按压底色在 R2RML 上
+  useUiStore.setState({ r2rmlOpen: false, r2rmlDirty: false })
+})
+
 it('re-clicking the pressed view while dirty routes through the discard guard', async () => {
   /** 同一交互的 dirty 分支:先弹确认,放弃修改后回到原视图。 */
   shell('/browse/oid-1')

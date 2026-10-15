@@ -282,14 +282,9 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               type="single"
               variant="outline"
               size="sm"
-              value={browseView}
+              value={r2rmlOpen ? '' : browseView}
               onValueChange={(v) => {
                 if (v) switchView(v as BrowseView)
-                // Clicking the pressed item deselects (empty value). While the
-                // R2RML page owns the content area, browseView still holds that
-                // view — reroute the click so it closes the page and returns.
-                else if (useUiStore.getState().r2rmlOpen)
-                  switchView(useUiStore.getState().browseView)
               }}
             >
               <ToggleGroupItem value="graph">
@@ -316,12 +311,15 @@ export default function AppShell({ children }: { children?: ReactNode }) {
           )}
 
           {/* Browse-only R2RML workbench toggle (the page takes the content
-              area; draft-from-database ontologies are its audience). */}
+              area; draft-from-database ontologies are its audience). While it
+              owns the area, the view group shows no pressed view — this
+              button carries the pressed state instead. */}
           {isBrowse && (
             <Button
               variant="outline"
               size="sm"
               aria-pressed={r2rmlOpen}
+              className={cn(r2rmlOpen && 'bg-primary-soft text-primary')}
               onClick={() => {
                 if (r2rmlOpen && useUiStore.getState().r2rmlDirty) setR2rmlGuard('close')
                 else setR2rmlOpen(!r2rmlOpen)
