@@ -106,6 +106,117 @@ PRESETS: list[Preset] = [
     ] .
 """,
     ),
+    Preset(
+        id="release-completeness",
+        name="发布完备性",
+        source="""\
+@base  <http://example.org/preset/> .
+@prefix sh:      <http://www.w3.org/ns/shacl#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+<#OntologyShape> a sh:NodeShape ;
+    sh:targetClass owl:Ontology ;
+    sh:property [
+        sh:path owl:versionIRI ;
+        sh:minCount 1 ;
+        sh:severity sh:Warning ;
+        sh:message "本体应声明 owl:versionIRI(发布前体检)" ;
+    ] ;
+    sh:property [
+        sh:path dcterms:license ;
+        sh:minCount 1 ;
+        sh:severity sh:Warning ;
+        sh:message "本体应声明许可证(dcterms:license)" ;
+    ] ;
+    sh:property [
+        sh:path dcterms:creator ;
+        sh:minCount 1 ;
+        sh:severity sh:Info ;
+        sh:message "本体建议声明创作者(dcterms:creator)" ;
+    ] ;
+    sh:property [
+        sh:path rdfs:comment ;
+        sh:minCount 1 ;
+        sh:severity sh:Info ;
+        sh:message "本体建议带整体说明(rdfs:comment)" ;
+    ] .
+""",
+    ),
+    Preset(
+        id="property-health",
+        name="属性健康",
+        source="""\
+@base  <http://example.org/preset/> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<#ObjectPropertyShape> a sh:NodeShape ;
+    sh:targetClass owl:ObjectProperty ;
+    sh:property [
+        sh:path rdfs:domain ;
+        sh:minCount 1 ;
+        sh:severity sh:Warning ;
+        sh:message "对象属性应声明 rdfs:domain" ;
+    ] ;
+    sh:property [
+        sh:path rdfs:range ;
+        sh:minCount 1 ;
+        sh:severity sh:Warning ;
+        sh:message "对象属性应声明 rdfs:range" ;
+    ] ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:severity sh:Info ;
+        sh:message "属性建议有 rdfs:label" ;
+    ] .
+
+<#DatatypePropertyShape> a sh:NodeShape ;
+    sh:targetClass owl:DatatypeProperty ;
+    sh:property [
+        sh:path rdfs:domain ;
+        sh:minCount 1 ;
+        sh:severity sh:Warning ;
+        sh:message "数据属性应声明 rdfs:domain" ;
+    ] ;
+    sh:property [
+        sh:path rdfs:range ;
+        sh:minCount 1 ;
+        sh:severity sh:Warning ;
+        sh:message "数据属性应声明 rdfs:range" ;
+    ] ;
+    sh:property [
+        sh:path rdfs:label ;
+        sh:minCount 1 ;
+        sh:severity sh:Info ;
+        sh:message "属性建议有 rdfs:label" ;
+    ] .
+""",
+    ),
+    Preset(
+        id="naming-convention",
+        name="命名规范·驼峰",
+        source="""\
+@base  <http://example.org/preset/> .
+@prefix sh:   <http://www.w3.org/ns/shacl#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+
+<#ClassNameShape> a sh:NodeShape ;
+    sh:targetClass owl:Class ;
+    sh:pattern "[#/][A-Z][A-Za-z0-9_-]*$" ;
+    sh:severity sh:Info ;
+    sh:message "类名局部名建议大写字母开头(UpperCamelCase)" .
+
+<#PropertyNameShape> a sh:NodeShape ;
+    sh:targetClass owl:ObjectProperty, owl:DatatypeProperty ;
+    sh:pattern "[#/][a-z][A-Za-z0-9_-]*$" ;
+    sh:severity sh:Info ;
+    sh:message "属性名局部名建议小写字母开头(lowerCamelCase)" .
+""",
+    ),
 ]
 
 

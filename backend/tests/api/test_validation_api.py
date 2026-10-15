@@ -30,7 +30,13 @@ def test_get_shapes_defaults_and_presets(client: TestClient) -> None:
     d = r.json()["data"]
     assert d["source"] is None and d["updatedAt"] is None
     ids = [p["id"] for p in d["presets"]]
-    assert ids == ["obo-integrity", "minimal-label"]
+    assert ids == [
+        "obo-integrity",
+        "minimal-label",
+        "release-completeness",
+        "property-health",
+        "naming-convention",
+    ]
     assert "sh:qualifiedMinCount 1" in d["presets"][0]["source"]
 
 

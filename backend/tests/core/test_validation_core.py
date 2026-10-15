@@ -179,6 +179,87 @@ def test_presets_carry_four_rules_and_zh_messages() -> None:
         ox.parse(p.source.encode(), format=ox.RdfFormat.TURTLE)
 
 
+def _run_preset(preset_id: str, data_ttl: str, tmp_path):
+    """End-to-end: run one bundled preset through the real engine."""
+    preset = next(p for p in PRESETS if p.id == preset_id)
+    p = tmp_path / "data.ttl"
+    p.write_bytes(data_ttl.encode())
+    turtle, _ = run_validated(PyrudofEngine(), str(p), preset.source, "turtle", timeout_s=60.0)
+    return normalize_report(turtle, {})
+
+
+def test_preset_ids_ship_all_five() -> None:
+    """The three 2026-10 presets exist alongside the original two."""
+    ids = {p.id for p in PRESETS}
+    assert {"release-completeness", "property-health", "naming-convention"} <= ids
+
+
+def test_preset_release_completeness_end_to_end(tmp_path) -> None:
+    """Bare ontology header → versionIRI/license warnings + creator/comment infos."""
+    bare = (
+        "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
+        '<http://example.org/o> a owl:Ontology ; rdfs:label "测试本体" .\n'
+    )
+    rep = _run_preset("release-completeness", bare, tmp_path)
+    assert rep.conforms is False
+    assert rep.counts["warning"] == 2  # versionIRI + license
+    assert rep.counts["info"] == 2  # creator + comment
+
+    full = (
+        "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
+        "@prefix dcterms: <http://purl.org/dc/terms/> .\n"
+        '<http://example.org/o> a owl:Ontology ; rdfs:label "测试本体" ;\n'
+        "    owl:versionIRI <http://example.org/o/1.0.0> ;\n"
+        "    dcterms:license <http://creativecommons.org/licenses/by/4.0/> ;\n"
+        '    dcterms:creator "某人" ; rdfs:comment "说明" .\n'
+    )
+    rep = _run_preset("release-completeness", full, tmp_path)
+    assert rep.conforms is True and rep.counts["violation"] == 0
+
+
+def test_preset_property_health_end_to_end(tmp_path) -> None:
+    """Property without domain/range → 2 warnings; complete one stays silent."""
+    partial = (
+        "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+        "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n"
+        "@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n"
+        "@prefix ex: <http://example.org/o#> .\n"
+        'ex:hasOwner a owl:ObjectProperty ; rdfs:label "拥有" .\n'
+        'ex:skuCode a owl:DatatypeProperty ; rdfs:label "编码" ;\n'
+        "    rdfs:domain ex:Order ; rdfs:range xsd:string .\n"
+    )
+    rep = _run_preset("property-health", partial, tmp_path)
+    assert rep.conforms is False
+    assert rep.counts["warning"] == 2  # domain + range on hasOwner
+    assert rep.counts["info"] == 0  # both carry labels
+
+    complete = partial.replace(
+        'ex:hasOwner a owl:ObjectProperty ; rdfs:label "拥有" .',
+        'ex:hasOwner a owl:ObjectProperty ; rdfs:label "拥有" ;\n'
+        "    rdfs:domain ex:Order ; rdfs:range ex:User .",
+    )
+    rep = _run_preset("property-health", complete, tmp_path)
+    assert rep.conforms is True
+
+
+def test_preset_naming_convention_end_to_end(tmp_path) -> None:
+    """A lowercase class and an Uppercase property flag as infos; clean names pass."""
+    messy = (
+        "@prefix owl: <http://www.w3.org/2002/07/owl#> .\n"
+        "@prefix ex: <http://example.org/o#> .\n"
+        "ex:orderItem a owl:Class .\n"
+        "ex:Order a owl:Class .\n"
+        "ex:HasCode a owl:DatatypeProperty .\n"
+        "ex:hasCode a owl:ObjectProperty .\n"
+    )
+    rep = _run_preset("naming-convention", messy, tmp_path)
+    assert rep.conforms is False
+    assert rep.counts["info"] == 2  # orderItem + HasCode
+    assert rep.counts["violation"] == 0
+
+
 def test_af_terms_scan() -> None:
     """SPARQL-service vocabulary is flagged; plain sh shapes come back clean."""
     sparql_ttl = b"@prefix sh: <http://www.w3.org/ns/shacl#> . [] sh:sparql [ sh:select '''''' ] ."
