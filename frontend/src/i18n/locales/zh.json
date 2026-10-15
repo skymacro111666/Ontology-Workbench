@@ -620,7 +620,8 @@
     "renameOk": "确认",
     "deleteTitle": "删除会话",
     "deleteBody": "会话「{{title}}」及其全部消息将被删除,无法恢复。",
-    "deleteConfirm": "确认删除"
+    "deleteConfirm": "确认删除",
+    "unavailable": "当前页面不支持 AI 助手"
   },
   "conn": {
     "new": "新建连接",

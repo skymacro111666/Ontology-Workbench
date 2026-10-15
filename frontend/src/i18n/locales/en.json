@@ -620,7 +620,8 @@
     "renameOk": "Confirm",
     "deleteTitle": "Delete session",
     "deleteBody": "Delete “{{title}}” and all its messages? This cannot be undone.",
-    "deleteConfirm": "Delete"
+    "deleteConfirm": "Delete",
+    "unavailable": "The AI assistant is not available on this page"
   },
   "conn": {
     "new": "New connection",

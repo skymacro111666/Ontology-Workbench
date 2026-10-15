@@ -343,6 +343,32 @@ it('re-clicking the pressed view while dirty routes through the discard guard', 
   useUiStore.setState({ r2rmlOpen: false, r2rmlDirty: false })
 })
 
+it('enables the AI assistant button only on views that host the drawer', async () => {
+  /** 四个承载视图可点;注册表视图与 R2RML 页禁用(可见但不可点)。 */
+  shell('/browse/oid-1')
+  for (const v of ['graph', 'text', 'query', 'validate'] as const) {
+    useUiStore.setState({ browseView: v, r2rmlOpen: false })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'AI 助手' }).hasAttribute('disabled')).toBe(false),
+    )
+  }
+  useUiStore.setState({ browseView: 'registry' })
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'AI 助手' }).hasAttribute('disabled')).toBe(true),
+  )
+  useUiStore.setState({ browseView: 'graph', r2rmlOpen: true })
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'AI 助手' }).hasAttribute('disabled')).toBe(true),
+  )
+  useUiStore.setState({ r2rmlOpen: false })
+})
+
+it('shows the AI assistant button disabled outside the workspace', () => {
+  /** 首页等非工作区路由:按钮保留但置灰。 */
+  shell('/')
+  expect(screen.getByRole('button', { name: 'AI 助手' }).hasAttribute('disabled')).toBe(true)
+})
+
 it('opens the blank-create dialog from the file menu 新建 submenu', async () => {
   shell('/')
   await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))

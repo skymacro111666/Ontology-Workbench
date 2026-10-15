@@ -39,7 +39,8 @@ const PROFILE_TINT: Record<string, string> = {
 
 /** Sidebar column templates per collapse state — literal class strings so
  *  Tailwind emits them; a collapsed sidebar shrinks to a 24px rail. The
- *  *Ai variants add the 372px assistant drawer column (graph mode only). */
+ *  *Ai variants add the 372px assistant drawer column (graph/text/query/
+ *  validate views). */
 const GRAPH_COLS = {
   both: 'grid-cols-[264px_1fr_312px]',
   left: 'grid-cols-[24px_1fr_312px]',
@@ -53,10 +54,15 @@ const GRAPH_COLS = {
 const TEXT_COLS = {
   both: 'grid-cols-[264px_1fr]',
   left: 'grid-cols-[24px_1fr]',
+  bothAi: 'grid-cols-[264px_1fr_372px]',
+  leftAi: 'grid-cols-[24px_1fr_372px]',
 } as const
 
 const colsFor = (view: BrowseView, lc: boolean, rc: boolean, ai: boolean): string => {
-  if (view !== 'graph') return lc ? TEXT_COLS.left : TEXT_COLS.both
+  if (view !== 'graph') {
+    const key = (lc ? 'left' : 'both') + (ai ? 'Ai' : '')
+    return TEXT_COLS[key as keyof typeof TEXT_COLS]
+  }
   const key = (lc && rc ? 'none' : lc ? 'left' : rc ? 'right' : 'both') + (ai ? 'Ai' : '')
   return GRAPH_COLS[key as keyof typeof GRAPH_COLS]
 }
@@ -157,7 +163,12 @@ export default function Browse() {
     <div
       className={cn(
         'grid h-full min-h-0 grid-rows-[1fr_30px] transition-[grid-template-columns] duration-200',
-        colsFor(r2rmlOpen ? 'text' : browseView, leftCollapsed, rightCollapsed, aiChatOpen),
+        colsFor(
+          r2rmlOpen ? 'text' : browseView,
+          leftCollapsed,
+          rightCollapsed,
+          aiChatOpen && !r2rmlOpen,
+        ),
       )}
     >
       {/* Zone 1: class tree. Collapses to a left rail; the panel stays
@@ -224,10 +235,13 @@ export default function Browse() {
           </div>
         </aside>
       )}
-      {/* Zone 3.5: read-only AI assistant drawer (graph mode only, spec-2 §5).
+      {/* Zone 3.5: read-only AI assistant drawer (graph/text/query/validate —
+       *  every view except registry; the R2RML page owns the whole area).
        *  Rendered only while open so the grid column count always matches
-       *  colsFor; text views keep their two-column layout unchanged. */}
-      {browseView === 'graph' && aiChatOpen && !r2rmlOpen && (
+       *  colsFor. The condition spans the four hosting views, so switching
+       *  among them keeps the drawer mounted — the live stream and the
+       *  input draft survive the switch. */}
+      {aiChatOpen && !r2rmlOpen && browseView !== 'registry' && (
         <aside className="min-h-0 overflow-hidden">
           <Suspense fallback={<div className="text-ink-3 py-16 text-center text-sm">{t('common.loading')}</div>}>
             <AiChatDrawer oid={oid} />

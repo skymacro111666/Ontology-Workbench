@@ -163,6 +163,11 @@ export default function AppShell({ children }: { children?: ReactNode }) {
   // The R2RML dialog only mounts on Browse; on /graph the button would be a
   // dead click whose open flag lingers and pops the dialog on the next visit.
   const isBrowse = location.pathname.startsWith('/browse')
+  // The AI drawer mounts on the four hosting views (graph/text/query/validate)
+  // with the R2RML page closed; everywhere else the toggle stays visible but
+  // disabled — the open flag persists and the drawer returns on the next
+  // hosting view.
+  const aiDrawerSupported = isBrowse && !r2rmlOpen && browseView !== 'registry'
   const themeLabels = {
     light: t('shell.themeLight'),
     dark: t('shell.themeDark'),
@@ -330,12 +335,16 @@ export default function AppShell({ children }: { children?: ReactNode }) {
             </Button>
           )}
 
-          {/* Read-only AI assistant drawer toggle (the drawer renders on
-              Browse pages; elsewhere the flag persists for the next visit). */}
+          {/* Read-only AI assistant drawer toggle. Enabled only where the
+              drawer can mount (graph/text/query/validate, R2RML closed);
+              elsewhere it stays visible but disabled, the flag persisting
+              for the next hosting view. */}
           <Button
             variant="outline"
             size="sm"
-            aria-pressed={aiChatOpen}
+            aria-pressed={aiDrawerSupported && aiChatOpen}
+            disabled={!aiDrawerSupported}
+            title={aiDrawerSupported ? undefined : t('chatPanel.unavailable')}
             onClick={() => setAiChatOpen(!aiChatOpen)}
           >
             <SparklesIcon aria-hidden="true" />

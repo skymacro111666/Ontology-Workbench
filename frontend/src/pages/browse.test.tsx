@@ -91,6 +91,7 @@ function stubFetch() {
     else if (u.includes('/source'))
       data = { filename: 'pizza.ttl', format: 'turtle', content: '@prefix pizza: <…> .\n' }
     else if (u.includes('/tree')) data = []
+    else if (u.includes('/chat/')) data = [] // session list/messages — arrays
     else if (u.includes(encodeURIComponent(ANIMAL))) data = animal()
     else if (u.includes('/entities/')) data = dog()
     else data = meta()
@@ -135,7 +136,12 @@ function renderBrowse(
 
 beforeEach(() => {
   useBrowseStore.setState({ selectedEid: null, revealEid: null })
-  useUiStore.setState({ browseView: 'graph', leftCollapsed: false, rightCollapsed: false })
+  useUiStore.setState({
+    browseView: 'graph',
+    leftCollapsed: false,
+    rightCollapsed: false,
+    aiChatOpen: false,
+  })
   resetG6()
 })
 
@@ -338,5 +344,58 @@ describe('Browse workspace (overview-only)', () => {
     // One toast per failed streak: refetches keep returning failed, but the
     // warn-once ref stays armed until saveState leaves 'failed'.
     expect(screen.getAllByText(/自动保存失败/).length).toBe(1)
+  })
+})
+
+describe('AI drawer availability (graph/text/query/validate)', () => {
+  const PH = '问点什么,如:哪些类没有实例?'
+
+  it('mounts the AI drawer on the text, query and validate views', async () => {
+    for (const view of ['text', 'query', 'validate'] as const) {
+      const { unmount } = renderBrowse(stubFetch())
+      act(() => {
+        useUiStore.setState({ browseView: view, aiChatOpen: true })
+      })
+      expect(await screen.findByPlaceholderText(PH)).toBeTruthy()
+      unmount()
+      cleanup()
+    }
+  })
+
+  it('keeps the draft intact while switching between hosting views', async () => {
+    renderBrowse(stubFetch())
+    act(() => {
+      useUiStore.setState({ aiChatOpen: true })
+    })
+    const box = (await screen.findByPlaceholderText(PH)) as HTMLTextAreaElement
+    fireEvent.change(box, { target: { value: '哪些类没有实例?' } })
+    act(() => {
+      useUiStore.setState({ browseView: 'text' })
+    })
+    // 同一组件实例不卸载:输入草稿跨视图存活。
+    const kept = (await screen.findByPlaceholderText(PH)) as HTMLTextAreaElement
+    expect(kept.value).toBe('哪些类没有实例?')
+    act(() => {
+      useUiStore.setState({ browseView: 'graph', aiChatOpen: false })
+    })
+  })
+
+  it('unmounts on the registry view and the R2RML page', async () => {
+    renderBrowse(stubFetch())
+    act(() => {
+      useUiStore.setState({ aiChatOpen: true })
+    })
+    expect(await screen.findByPlaceholderText(PH)).toBeTruthy()
+    act(() => {
+      useUiStore.setState({ browseView: 'registry' })
+    })
+    await waitFor(() => expect(screen.queryByPlaceholderText(PH)).toBeNull())
+    act(() => {
+      useUiStore.setState({ browseView: 'graph', r2rmlOpen: true })
+    })
+    await waitFor(() => expect(screen.queryByPlaceholderText(PH)).toBeNull())
+    act(() => {
+      useUiStore.setState({ r2rmlOpen: false, aiChatOpen: false })
+    })
   })
 })
