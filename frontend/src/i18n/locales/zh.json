@@ -126,7 +126,8 @@
     "driftClean": "无漂移",
     "driftFound": "发现漂移",
     "driftPickTitle": "选择数据库连接",
-    "driftNoConn": "没有已保存的连接——先去数据库连接页新建"
+    "driftNoConn": "没有已保存的连接——先去数据库连接页新建",
+    "mapStats": "{{cols}} 列 · {{fks}} 关系"
   },
   "browse": {
     "notFound": "本体不存在",

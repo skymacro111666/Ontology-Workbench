@@ -57,21 +57,39 @@ afterEach(() => {
 })
 
 describe('R2rmlPage', () => {
-  it('renders the structure tab with correspondences and skipped badge', async () => {
-    /** 结构页签默认打开:表→类行、列→属性行、skipped 徽章都在。 */
+  it('renders the structure tab with cards, pills and skipped badge', async () => {
+    /** 结构页签默认打开:一表一卡(表名+类 pill+统计),datatype 小 pill、FK ⇄ 行、skipped 徽章都在。 */
     vi.stubGlobal('fetch', vi.fn(async () => ok(DOC)))
     page()
-    expect(await screen.findByText('customer → Customer')).toBeTruthy()
-    expect(screen.getByText('name → name (xsd:string)')).toBeTruthy()
-    expect(screen.getByText(/hasCustomer: customer_id → customer.id/)).toBeTruthy()
-    expect(screen.getByText(/audit_log/)).toBeTruthy() // skipped 徽章
+    expect(await screen.findByText('customer')).toBeTruthy() // 卡头表名
+    expect(screen.getByText('Customer')).toBeTruthy() // 类名 pill
+    expect(screen.getByText('1 列 · 1 关系')).toBeTruthy() // 统计徽章
+    expect(screen.getByText('xsd:string')).toBeTruthy() // datatype pill
+    expect(screen.getByText('⇄')).toBeTruthy() // FK 徽标
+    expect(screen.getByText(/customer_id → customer\.id/)).toBeTruthy() // FK 行
+    expect(screen.getByText(/audit_log/)).toBeTruthy() // skipped 行(A3 未做,保持原样)
+  })
+
+  it('collapses and expands a table card from its head', async () => {
+    /** B2:点卡头收起=只剩表名/统计一行;再点展开。 */
+    vi.stubGlobal('fetch', vi.fn(async () => ok(DOC)))
+    page()
+    expect(await screen.findByText('xsd:string')).toBeTruthy()
+    const head = screen.getByRole('button', { name: /customer/ })
+    expect(head.getAttribute('aria-expanded')).toBe('true')
+    await userEvent.click(head)
+    expect(head.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByText('xsd:string')).toBeNull()
+    expect(screen.getByText('1 列 · 1 关系')).toBeTruthy() // 收起仍见统计
+    await userEvent.click(head)
+    expect(screen.getByText('xsd:string')).toBeTruthy()
   })
 
   it('switches to the source tab showing the Turtle text', async () => {
     /** 源码页签=CM6 编辑器,内容在 .cm-content(CM6 按行拆节点,取 textContent)。 */
     vi.stubGlobal('fetch', vi.fn(async () => ok(DOC)))
     const { container } = page()
-    await screen.findByText('customer → Customer')
+    await screen.findByText('customer')
     await userEvent.click(screen.getByRole('radio', { name: '源码' }))
     await waitFor(() => {
       const content = container.querySelector('.cm-content') as HTMLElement
@@ -106,7 +124,8 @@ describe('R2rmlPage key hygiene', () => {
     }
     vi.stubGlobal('fetch', vi.fn(async () => ok(dup)))
     page()
-    await screen.findAllByText(/customer → Customer/)
+    expect(await screen.findAllByText('customer')).toHaveLength(2) // 两张同名表卡
+    expect(screen.getByText('Customer2')).toBeTruthy() // 第二张卡的类 pill 照常渲染
     expect(
       errSpy.mock.calls.some((c) => String(c[0]).includes('same key')),
     ).toBe(false)

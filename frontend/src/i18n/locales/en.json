@@ -126,7 +126,8 @@
     "driftClean": "No drift",
     "driftFound": "Drift detected",
     "driftPickTitle": "Choose a database connection",
-    "driftNoConn": "No saved connections yet — create one on the connections page first"
+    "driftNoConn": "No saved connections yet — create one on the connections page first",
+    "mapStats": "{{cols}} cols · {{fks}} relations"
   },
   "browse": {
     "notFound": "Ontology not found",

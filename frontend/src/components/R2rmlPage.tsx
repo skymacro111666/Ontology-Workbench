@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Button } from '@/components/ui/button'
 import {
@@ -131,7 +132,8 @@ export default function R2rmlPage({ oid }: { oid: string }) {
   )
 }
 
-/** Structured correspondences (view block moved from R2rmlDialog verbatim). */
+/** Structured correspondences — one collapsible card per table (mockup
+ *  2026-10-16: A1 cards + A2 row semantics + B2 collapse). */
 function R2rmlStructure({ doc }: { doc: R2rmlDoc }) {
   const { t } = useTranslation()
   return (
@@ -141,30 +143,74 @@ function R2rmlStructure({ doc }: { doc: R2rmlDoc }) {
           {t('r2rml.skippedBadge')}: {doc.skippedTables.join('、')}
         </p>
       )}
-      <div className="border-line overflow-auto rounded-ctl border text-xs">
+      <div className="flex flex-col gap-2">
         {doc.structure.map((m, mi) => (
-          <div
-            key={`${mi}-${m.table}`}
-            className="border-line border-b border-dashed px-2 py-1.5 last:border-0"
-          >
-            <div className="font-mono">
-              {m.table} → {m.className}
-            </div>
-            {m.columnProps.map((p, ci) => (
-              <div key={`${ci}-${p.column}`} className="text-ink-2 font-mono">
-                {'  '}
-                {p.column} → {p.predicate} ({p.datatype})
-              </div>
-            ))}
-            {m.fkProps.map((p, fi) => (
-              <div key={`${fi}-${p.predicate}`} className="text-primary font-mono">
-                {'  '}
-                {p.predicate}: {p.childColumn} → {p.parentTable}.{p.parentColumn}
-              </div>
-            ))}
-          </div>
+          <TableCard key={`${mi}-${m.table}`} m={m} />
         ))}
       </div>
+    </div>
+  )
+}
+
+function TableCard({ m }: { m: R2rmlDoc['structure'][number] }) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="border-line bg-panel overflow-hidden rounded-card border">
+      <button
+        type="button"
+        className="bg-panel-2 border-line flex w-full cursor-pointer items-center gap-2 border-b px-2.5 py-1.5 text-left"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <span
+          className={cn(
+            'text-ink-3 inline-block text-[10px] transition-transform',
+            !open && '-rotate-90',
+          )}
+        >
+          ▼
+        </span>
+        <span className="text-xs font-semibold font-mono">{m.table}</span>
+        <span className="border-primary-border bg-primary-soft text-primary rounded-full px-2 py-0.5 text-[10.5px] font-semibold">
+          {m.className}
+        </span>
+        <span className="text-ink-3 ml-auto text-[10.5px] whitespace-nowrap">
+          {t('r2rml.mapStats', { cols: m.columnProps.length, fks: m.fkProps.length })}
+        </span>
+      </button>
+      {open && (
+        <div className="px-2.5 pt-1 pb-2">
+          {m.columnProps.map((p, ci) => (
+            <div
+              key={`${ci}-${p.column}`}
+              className="flex flex-wrap items-center gap-2 py-0.5 text-xs"
+            >
+              <span className="min-w-[140px] font-mono">{p.column}</span>
+              <span className="text-ink-3">→</span>
+              <span className="text-ink-2 font-mono">{p.predicate}</span>
+              <span className="text-ink-2 border-line bg-canvas rounded-full border px-1.5 py-0.5 font-mono text-[10px]">
+                {p.datatype}
+              </span>
+            </div>
+          ))}
+          {m.fkProps.map((p, fi) => (
+            <div
+              key={`${fi}-${p.predicate}`}
+              className="text-primary flex flex-wrap items-center gap-2 py-0.5 text-xs"
+            >
+              <span className="border-primary-border bg-primary-soft rounded-md border px-1 py-px text-[10px]">
+                ⇄
+              </span>
+              <span className="min-w-[140px] font-mono">{p.predicate}</span>
+              <span className="text-ink-3">→</span>
+              <span className="font-mono">
+                {p.childColumn} → {p.parentTable}.{p.parentColumn}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
