@@ -1920,7 +1920,7 @@ requires-dist = [
     { name = "pyjwt", specifier = ">=2.10" },
     { name = "pymysql", specifier = ">=1.1" },
     { name = "pyoxigraph", specifier = "==0.5.11" },
-    { name = "pyrudof", specifier = "==0.3.18" },
+    { name = "pyrudof", specifier = "==0.3.25" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "sqlalchemy", specifier = ">=2.0.52" },
     { name = "structlog", specifier = ">=26.1.0" },
@@ -2399,14 +2399,15 @@ wheels = [
 
 [[package]]
 name = "pyrudof"
-version = "0.3.18"
+version = "0.3.25"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
+sdist = { url = "https://pypi.tuna.tsinghua.edu.cn/packages/4c/3e/22ee1c1546292dd84c3d7779f6e704dbf0936eea8cb2c7e733c85ca459b8/pyrudof-0.3.25.tar.gz", hash = "sha256:76762ac991d5581c70c771e143ee065b436c19e4c0a951fddc100b73e9a5967d", size = 4845213, upload-time = "2026-10-09T10:35:45.888Z" }
 wheels = [
-    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/b4/c1/a6e38eb263e6016d0c5eb8dc34bea8a7663b71881645f8a290fde66f8825/pyrudof-0.3.18-cp37-abi3-macosx_13_0_arm64.whl", hash = "sha256:b4ce1f001677e0f808bf301d3046f92c1df930aa91e0902a16987651a561be0b", size = 15903500, upload-time = "2026-09-04T10:25:34.544Z" },
-    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/2c/35/e166ac33a12aa765babd5e76e465b589e5e020a2b67f8b466b9b9b9ae498/pyrudof-0.3.18-cp37-abi3-macosx_13_0_x86_64.whl", hash = "sha256:f3405535617e7cf2a16a95871e1984adb0c33a0390f812f9e2a49f4cc149c5ce", size = 16694733, upload-time = "2026-09-04T10:25:37.392Z" },
-    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/92/00/1bca3e6f66d2bf044eff7e75d8cf2e740aa2d99b4af334b360731901d6d9/pyrudof-0.3.18-cp37-abi3-manylinux_2_34_aarch64.whl", hash = "sha256:4a7cbfef548bf5be4b3bbff1fe666f7e3b2f03406e67261cc1246707f4c5e516", size = 23328319, upload-time = "2026-09-04T10:25:39.963Z" },
-    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/41/f1/1bffe78245158613a968d3c9958defed99ee9e02a409a2ffac679c440506/pyrudof-0.3.18-cp37-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:73ea67788463a9801f2630843baf7a73393b01d88c36b5c952d4f45a4e477e2e", size = 23622635, upload-time = "2026-09-04T10:25:42.669Z" },
-    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/fb/4d/4fb1520f742e82cc5e9b7c2c7e883ff7200a4d9ff9e878264f57bbcfc176/pyrudof-0.3.18-cp37-abi3-win_amd64.whl", hash = "sha256:dae16438e0b6f8e49cd4b9fa8aaa19b75126de5ab11ada7e56188b8e4b87d0c1", size = 18299958, upload-time = "2026-09-04T10:25:45.636Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/93/f7/9b125e0bda7979309bd9498b3f576fe3b62a6f08f8df006c6045e832e626/pyrudof-0.3.25-cp310-abi3-macosx_13_0_arm64.whl", hash = "sha256:b3b6fc1b3d318dbd2a4eabcbae715036d952296dd08c7108204bcc0385434e43", size = 16600517, upload-time = "2026-10-09T10:35:31.778Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/ef/bc/a7269a5d18170df63e6acd5862cf2be48e53d2e8990cabb9493cf3a7d94d/pyrudof-0.3.25-cp310-abi3-macosx_13_0_x86_64.whl", hash = "sha256:ec5f81e1614a4b0bc7aafc7689d9b681a8d658172ab4f24a7e8c3a37f34fd61a", size = 17214118, upload-time = "2026-10-09T10:35:35.272Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/7a/16/25ff50ac8b6af8ee15935cfc97d6f12acba59ecb7562c9485ee18dabc5ab/pyrudof-0.3.25-cp310-abi3-manylinux_2_34_aarch64.whl", hash = "sha256:924996885f79188e489461f38319244ac0830876f53aa3604f36a8e7b1fce6b0", size = 24005908, upload-time = "2026-10-09T10:35:38.179Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/4f/98/1903410775c940d96a0b592d462101d06cbce17146d1d9267973b8f7815f/pyrudof-0.3.25-cp310-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:d5ac4245c3e0606cc6cf0e41593936237af32eaac17c98b3851e780f173f2447", size = 24256588, upload-time = "2026-10-09T10:35:41.057Z" },
+    { url = "https://pypi.tuna.tsinghua.edu.cn/packages/61/94/140d0ba51debad34d1c29aafabab20f09c607afcc4c42d91ae927942bfa6/pyrudof-0.3.25-cp310-abi3-win_amd64.whl", hash = "sha256:65ae442301b017beffdbf235ec02b4e775f4b1a94f714b565090a54b2708f285", size = 18756333, upload-time = "2026-10-09T10:35:43.771Z" },
 ]
 
 [[package]]

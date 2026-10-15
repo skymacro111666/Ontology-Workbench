@@ -30,7 +30,7 @@ dependencies = [
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.10",
     "pyoxigraph==0.5.11",
-    "pyrudof==0.3.18",
+    "pyrudof==0.3.25",
     "python-multipart>=0.0.32",
     "sqlalchemy>=2.0.52",
     "structlog>=26.1.0",
@@ -83,11 +83,6 @@ disallow_untyped_defs = true
 [[tool.mypy.overrides]]
 module = "ontoworkbench.db.*"
 disallow_untyped_defs = true
-
-[[tool.mypy.overrides]]
-# pyrudof ships no type stubs (PyO3 wheel) — its whole surface is Any to us.
-module = "pyrudof.*"
-ignore_missing_imports = true
 
 [tool.importlinter]
 root_package = "ontoworkbench"
