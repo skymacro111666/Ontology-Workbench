@@ -285,6 +285,11 @@ export default function AppShell({ children }: { children?: ReactNode }) {
               value={browseView}
               onValueChange={(v) => {
                 if (v) switchView(v as BrowseView)
+                // Clicking the pressed item deselects (empty value). While the
+                // R2RML page owns the content area, browseView still holds that
+                // view — reroute the click so it closes the page and returns.
+                else if (useUiStore.getState().r2rmlOpen)
+                  switchView(useUiStore.getState().browseView)
               }}
             >
               <ToggleGroupItem value="graph">

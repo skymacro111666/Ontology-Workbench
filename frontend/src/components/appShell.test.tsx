@@ -306,6 +306,30 @@ it('closes the workbench page on a clean view switch', async () => {
   useUiStore.setState({ r2rmlOpen: false, r2rmlDirty: false })
 })
 
+it('re-clicking the pressed view while the R2RML page is open returns to it', async () => {
+  /** Radix single-toggle 点击已按下项发出空串;R2RML 页开着时应回到该视图
+   *  而非无反应(browseView 停留在原值,图形仍显示为按下)。 */
+  shell('/browse/oid-1')
+  useUiStore.setState({ browseView: 'graph', r2rmlOpen: true, r2rmlDirty: false })
+  await userEvent.click(screen.getByRole('radio', { name: /图形/ }))
+  expect(useUiStore.getState().r2rmlOpen).toBe(false)
+  expect(useUiStore.getState().browseView).toBe('graph')
+  useUiStore.setState({ r2rmlOpen: false, r2rmlDirty: false })
+})
+
+it('re-clicking the pressed view while dirty routes through the discard guard', async () => {
+  /** 同一交互的 dirty 分支:先弹确认,放弃修改后回到原视图。 */
+  shell('/browse/oid-1')
+  useUiStore.setState({ browseView: 'graph', r2rmlOpen: true, r2rmlDirty: true })
+  await userEvent.click(screen.getByRole('radio', { name: /图形/ }))
+  expect(useUiStore.getState().r2rmlOpen).toBe(true) // 未确认,不动
+  await userEvent.click(await screen.findByRole('button', { name: /放弃修改/ }))
+  expect(useUiStore.getState().r2rmlOpen).toBe(false)
+  expect(useUiStore.getState().r2rmlDirty).toBe(false)
+  expect(useUiStore.getState().browseView).toBe('graph')
+  useUiStore.setState({ r2rmlOpen: false, r2rmlDirty: false })
+})
+
 it('opens the blank-create dialog from the file menu 新建 submenu', async () => {
   shell('/')
   await userEvent.click(screen.getByRole('button', { name: '文件 ▾' }))
